@@ -68,9 +68,10 @@ Execute these steps in order each run.
 
 ### Step 0: Ensure Obsidian is running
 
-Run `obsidian version`. If it fails, launch Obsidian and wait for it to become
-responsive before proceeding. Try up to 3 times with a few seconds between
-attempts. If Obsidian cannot be started, log the failure to CHANGELOG and exit.
+Run `obsidian version`. If it fails, launch Obsidian (e.g., run `obsidian` or
+open it via the system launcher) and retry `obsidian version` up to 3 times
+with a few seconds between attempts. If Obsidian still cannot be reached,
+log the failure to CHANGELOG and exit.
 
 ### Step 1: Read state
 
@@ -92,8 +93,12 @@ Walk the vault directory tree, skipping dotfolders (`.obsidian`, `.config`,
 For files clearly misplaced (in a parent folder when a more specific child
 folder exists, or not matching their folder's topic scope):
 
-1. Use `obsidian move path="old/path.md" to="new/folder"` to relocate. Never
-   use raw filesystem `mv`.
+When in doubt, do not move — only relocate a file when the correct
+destination is unambiguous from folder naming alone.
+
+1. Use `obsidian move path="old/path.md" to="new/folder"` to relocate files
+   and `obsidian rename path="file.md" name="new-name"` for in-place renames.
+   Never use raw filesystem `mv` or `rename`.
 2. After each move, grep the vault for the old filename as a sanity check that
    all references were updated by Obsidian.
 3. If any stale references are found during this check — whether markdown-style
