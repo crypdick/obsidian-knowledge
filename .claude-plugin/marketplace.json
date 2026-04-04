@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "obsidian-knowledge-base-skill",
-      "source": ".",
+      "source": "./",
       "description": "Skills for maintaining Obsidian knowledge base vaults",
       "version": "0.1.0"
     }
