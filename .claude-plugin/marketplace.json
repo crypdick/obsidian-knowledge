@@ -1,5 +1,5 @@
 {
-  "name": "obsidian-knowledge-base-skill",
+  "name": "obsidian-knowledge",
   "owner": {
     "name": "Ricardo"
   },
@@ -8,7 +8,7 @@
   },
   "plugins": [
     {
-      "name": "obsidian-knowledge-base-skill",
+      "name": "obsidian-knowledge",
       "source": "./",
       "description": "Skills for maintaining Obsidian knowledge base vaults",
       "version": "0.3.0"
