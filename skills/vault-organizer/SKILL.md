@@ -46,7 +46,10 @@ Format:
 
 - Created `folder/index.md` (N entries)
 - Moved `old/path.md` → `new/path.md` via `obsidian move`
-- Fixed N stale links found during move sanity check
+- Renamed `old/scan.pdf.pdf` → `2020-02-15-dispute-timesheet.pdf` (high confidence)
+- Rotated `path/to/image.jpg` to correct orientation
+- Flagged `path/to/IMG_123.jpg` — proposed: `2016-12-22-description.jpg` (low confidence, added to NEEDS_ATTENTION)
+- Fixed N stale links found during move/rename sanity check
 - Added N items to NEEDS_ATTENTION
 - Resolved N items from NEEDS_ATTENTION
 ```
