@@ -2,20 +2,20 @@
 name: vault-organizer
 description: >-
   This skill should be used when the user asks to "organize the vault",
-  "update indexes", "fix broken links", "garden the vault", "sync indexes",
-  "clean up the vault", "maintain the vault", or after making substantial
-  structural edits (creating, moving, renaming, or deleting files) in an
-  Obsidian vault. Also triggered by scheduled cron invocations for routine
-  vault maintenance.
+  "update indexes", "fix broken links", "rename ambiguous files", "fix
+  filenames", "garden the vault", "sync indexes", "clean up the vault",
+  "maintain the vault", or after making substantial structural edits
+  (creating, moving, renaming, or deleting files) in an Obsidian vault.
+  Also triggered by scheduled cron invocations for routine vault maintenance.
 version: 0.1.0
 ---
 
 # Vault Organizer
 
 Maintain an Obsidian vault's structural organization: sync indexes, organize
-files, detect and fix broken links, and report unresolvable issues. This skill
-runs a single-pass pipeline that never edits the content of primary files —
-only indexes, links, and file locations.
+and rename files, detect and fix broken links, and report unresolvable issues.
+This skill runs a single-pass pipeline that never edits the content of primary
+files — only indexes, links, file locations, and file names.
 
 ## Prerequisites
 
