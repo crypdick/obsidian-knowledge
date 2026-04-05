@@ -23,6 +23,10 @@ only indexes, links, and file locations.
   (`Settings → General → Command line interface`)
 - **"Use [[Wikilinks]]"** must be enabled in Obsidian settings
 - **"Automatically update internal links"** must be enabled in Obsidian settings
+- If more than one vault is registered in Obsidian, specify which vault to
+  target in every CLI call (e.g., `obsidian vault="My Vault" ...`). The CLI
+  defaults to the most recently focused vault, which may not be the one being
+  organized.
 
 ## State files
 
