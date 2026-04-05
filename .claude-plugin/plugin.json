@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Skills, hooks, and conventions for maintaining Obsidian knowledge base vaults",
   "author": {
     "name": "Ricardo Decal"
@@ -8,6 +8,17 @@
   "license": "MIT",
   "keywords": ["obsidian", "knowledge-base", "vault", "organization"],
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/protect-vault.py"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
