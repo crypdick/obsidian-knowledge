@@ -90,6 +90,7 @@ Walk the vault directory tree, skipping dotfolders (`.obsidian`, `.config`,
 `.git`, `.trash`, etc.). Build a map of:
 - All folders and which have an `index.md`
 - All `.md` files and their locations
+- All non-markdown files and their locations
 - Parent-child folder relationships
 
 ### Step 3: Organize files
