@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/remind-log.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/update-changelog.sh"
           },
           {
             "type": "command",
