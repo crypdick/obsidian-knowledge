@@ -18,6 +18,17 @@ Maintains vault organization through a single-pass pipeline:
 - **Report issues** — maintains a `NEEDS_ATTENTION.md` worklist for issues
   requiring human judgment
 
+### remember-conversations
+
+Files valuable conversation outputs as permanent vault notes so insights
+compound rather than disappearing into chat history:
+
+- **Analyses, comparisons, decision rationales** — anything worth finding later
+- **Automatic placement** — notes filed in `convos/` subfolders within the
+  relevant subtree, preserving progressive disclosure
+- **Stop hook integration** — a reminder nudges the agent to file conversations
+  at the end of each session
+
 ## Requirements
 
 - [Obsidian](https://obsidian.md/) with CLI enabled

@@ -1,10 +1,26 @@
 {
   "name": "obsidian-knowledge-base-skill",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Skills for maintaining Obsidian knowledge base vaults",
   "author": {
     "name": "Ricardo"
   },
   "license": "MIT",
-  "keywords": ["obsidian", "knowledge-base", "vault", "organization"]
+  "keywords": ["obsidian", "knowledge-base", "vault", "organization"],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/remind-log.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/remind-convos.sh"
+          }
+        ]
+      }
+    ]
+  }
 }
