@@ -7,7 +7,7 @@ description: >-
   reminder, by the user saying "file this", "save this conversation",
   "remember this", or at agent discretion when a response deserves to outlive
   chat history.
-version: 0.2.0
+version: 0.4.0
 ---
 
 # Remember Conversations

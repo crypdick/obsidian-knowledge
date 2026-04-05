@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # Stop hook: remind the agent to update CHANGELOG.md in the vault.
-# Only fires when working inside an Obsidian vault directory.
-[[ "$PWD" == *obsidian* ]] || exit 0
+#
+# Vault detection: walks up from $PWD looking for a .obsidian/ directory,
+# which Obsidian creates in every vault root. If no vault is found, the
+# hook exits silently so it doesn't fire in non-vault workspaces.
+
+dir="$PWD"
+while [[ "$dir" != "/" ]]; do
+  [[ -d "$dir/.obsidian" ]] && break
+  dir="$(dirname "$dir")"
+done
+[[ -d "$dir/.obsidian" ]] || exit 0
 
 cat <<'EOF'
 {
