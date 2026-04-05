@@ -34,24 +34,35 @@ compound rather than disappearing into chat history:
 
 ## Hooks
 
-Both hooks are Stop hooks — they fire at the end of each Claude Code session.
+### Vault protection (PreToolUse)
 
-### Vault detection
+`protect-vault.py` runs before every Bash, Write, and Edit tool call.
+It provides two layers of safety:
 
-Each hook walks up the directory tree from `$PWD` looking for a `.obsidian/`
-directory (the config folder Obsidian creates in every vault root). If no
-vault is found, the hook exits silently. This means the hooks only fire when
-the agent's working directory is inside an Obsidian vault.
+**Read-only `_sources/` directories.** Folders named `_sources/` anywhere
+in the vault tree are protected from agent writes. These typically hold
+irreplaceable originals (tax records, legal filings, vital docs, property
+deeds). Agents can read them to generate summaries and indexes, but cannot
+create, modify, rename, move, or delete files inside them.
 
-### update-changelog.sh
+**Destructive command guards.** Recursive `rm` and `mv` targeting paths
+that appear to be inside an Obsidian vault are blocked.
 
-Reminds the agent to append a dated entry to `CHANGELOG.md` if the session
-produced edits, decisions, discoveries, or context worth preserving.
+**Escape hatch.** Prefix a Bash command with `I_AM_BEING_CAREFUL=1` to
+bypass all guards after the user explicitly confirms. Write/Edit to
+`_sources/` has no inline bypass — use Bash with the escape hatch.
 
-### remind-convos.sh
+### Stop hooks
 
-Reminds the agent to use the `remember-conversations` skill to file
-valuable conversation outputs as vault notes in `convos/` subfolders.
+Both Stop hooks fire at the end of each Claude Code session. Each walks up
+from `$PWD` looking for a `.obsidian/` directory to detect whether the
+agent is working inside a vault. They fire once per session to avoid
+re-triggering loops.
+
+- **update-changelog.sh** — reminds the agent to append a dated entry to
+  `CHANGELOG.md` if the session produced edits, decisions, or discoveries
+- **remind-convos.sh** — reminds the agent to use the
+  `remember-conversations` skill to file valuable conversation outputs
 
 ## Requirements
 
