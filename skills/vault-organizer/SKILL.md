@@ -113,6 +113,89 @@ destination is unambiguous from folder naming alone.
 Do not do a standalone vault-wide scan for markdown links. Only fix link format
 issues encountered opportunistically during move/rename sanity checks.
 
+#### Rename ambiguous files
+
+After organizing file locations, scan all non-markdown files found in Step 2 for
+ambiguous names. A filename is considered ambiguous if it matches any of these
+patterns:
+
+1. **Device-generated** — matches patterns like `IMG_\d+`, `DSC_\d+`,
+   `Screenshot \d+`, `Photograph (\d+)`, `PXL_\d+`
+2. **Hash-based** — filename (minus extension) is entirely hex characters, or
+   matches common hash+suffix patterns (e.g.,
+   `db02eee9316b577e8f8a097b81ab6126-uncropped_scaled_within_1536_1152`)
+3. **Generic labels** — filename (minus extension and any date prefix) is a
+   single common word like `scan`, `receipt`, `invoice`, `document`, `form`,
+   `image`, `photo`, `file`, `untitled`, or a numbered variant like `form 1`,
+   `form 2`. This list is illustrative — flag any filename that provides no
+   meaningful identification of the file's content.
+4. **Numeric-only** — filename (minus extension) is purely digits (e.g.,
+   `15863.gif`)
+5. **Double extensions** — like `scan.pdf.pdf` (also fix the extension)
+
+**Scope:** Include all vault folders including `_sources/` directories. Skip
+`.trash/` and dotfolders. Skip files already following the
+`YYYY-MM-DD-descriptive-slug` convention.
+
+For each flagged file:
+
+**1. Read the file** to extract identifying information:
+- **PDFs:** Read text content. Look for dates, vendor names, order/reference
+  IDs, document type.
+- **Images (jpg, png, webp, gif):** View the image using multimodal
+  capabilities. Identify what is depicted — a document, receipt, room photo,
+  ID card, etc.
+- **Other formats:** Best-effort read. If the format is not readable, rely on
+  folder context alone.
+
+**2. Fix image orientation.** If the file is an image and it is not right-side-up
+(detected via EXIF orientation tag or visual inspection), rotate it to the
+correct orientation before renaming. Use `exiftool -auto-rotate` or
+`magick mogrify -auto-orient` to apply the correction. For files in `_sources/`,
+use the `I_AM_BEING_CAREFUL=1` escape hatch.
+
+**3. Gather context:**
+- **Folder path** — strong signal (e.g., `life/finance-property/taxes/2015/`
+  implies a 2015 tax document). Used as a hint, not ground truth.
+- **Neighboring files** — if siblings are well-named, they hint at what this
+  file is.
+- **EXIF data** — for images, if `exiftool` is available. Contains dates,
+  camera info.
+
+The file's own content is the ultimate source of truth. If folder context
+conflicts with file content, trust file content.
+
+**4. Generate a new name** following the vault convention:
+- With date: `yyyy-mm-dd-descriptive-slug.ext`
+- Without date: `descriptive-slug.ext`
+
+Slug is lowercase, hyphen-separated, human-readable. Date source priority:
+1. File content (extracted date from text/document)
+2. EXIF metadata
+3. Filename-embedded date (e.g., `IMG_20160130` → `2016-01-30`)
+4. Folder context (e.g., parent folder named `2015/`)
+5. Omit date
+
+**5. Assign confidence and act:**
+
+- **High confidence** — clear text extraction with unambiguous date, vendor,
+  or description; or image content clearly matches and confirms folder context.
+  Rename via `obsidian rename path="old/name.ext" name="new-name.ext"`. For
+  files in `_sources/`, use the `I_AM_BEING_CAREFUL=1` escape hatch. Then
+  grep the vault for the old filename to verify Obsidian updated all
+  references — fix any stale wikilinks, markdown links, or raw path mentions.
+- **Low confidence** — vague image content, no date found, folder context is
+  the primary signal, or multiple plausible interpretations. Add to
+  NEEDS_ATTENTION with the proposed name (see format below).
+
+NEEDS_ATTENTION entry format for rename escalations:
+```
+- [ ] `path/to/IMG_20161222_124409.jpg` — ambiguous filename.
+  Proposed: `2016-12-22-fl-drivers-license-photo.jpg`.
+  Confidence low: name derived primarily from folder context, image shows
+  a card but details unclear.
+```
+
 ### Step 4: Sync indexes
 
 For every folder in the vault:
