@@ -5,11 +5,13 @@
 # which Obsidian creates in every vault root. If no vault is found, the
 # hook exits silently so it doesn't fire in non-vault workspaces.
 #
-# Fire-once guard: uses a temp file keyed to $PPID (the Claude Code
-# process) so the reminder only fires once per session. Without this,
-# the "block" decision prevents the session from ending, the agent
-# responds, the session tries to stop again, and the hook re-fires
-# in an infinite loop.
+# Fire-once guard: the Stop hook input includes stop_hook_active (true
+# when Claude is already continuing due to a prior stop hook block).
+# We also use a session-scoped marker keyed to session_id from the
+# hook input so the reminder fires exactly once per session, even with
+# multiple agents working on the same vault.
+
+input=$(cat)
 
 dir="$PWD"
 while [[ "$dir" != "/" ]]; do
@@ -18,9 +20,17 @@ while [[ "$dir" != "/" ]]; do
 done
 [[ -d "$dir/.obsidian" ]] || exit 0
 
-marker="/tmp/.obsidian-hook-convos-${PPID}"
-[[ -f "$marker" ]] && exit 0
-touch "$marker"
+# If a stop hook already blocked this turn, let Claude finish
+stop_active=$(echo "$input" | jq -r '.stop_hook_active // false')
+[[ "$stop_active" == "true" ]] && exit 0
+
+# One reminder per session
+session_id=$(echo "$input" | jq -r '.session_id // empty')
+if [[ -n "$session_id" ]]; then
+  marker="/tmp/.obsidian-hook-convos-${session_id}"
+  [[ -f "$marker" ]] && exit 0
+  touch "$marker"
+fi
 
 cat <<'EOF'
 {
