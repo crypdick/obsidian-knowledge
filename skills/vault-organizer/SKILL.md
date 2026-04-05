@@ -30,7 +30,7 @@ files — only indexes, links, file locations, and file names.
 
 ## State files
 
-All persistent state lives in `<vault>/.config/obsidian-knowledge-base-skill/`.
+All persistent state lives in `<vault>/.config/obsidian-knowledge/`.
 Create this directory on first run if it does not exist.
 
 ### CHANGELOG.md
