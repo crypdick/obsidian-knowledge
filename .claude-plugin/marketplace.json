@@ -10,8 +10,7 @@
     {
       "name": "obsidian-knowledge-base-skill",
       "source": "./",
-      "description": "Skills for maintaining Obsidian knowledge base vaults",
-      "version": "0.1.0"
+      "description": "Skills for maintaining Obsidian knowledge base vaults"
     }
   ]
 }
