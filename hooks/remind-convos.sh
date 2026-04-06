@@ -7,9 +7,8 @@
 #
 # Fire-once guard: the Stop hook input includes stop_hook_active (true
 # when Claude is already continuing due to a prior stop hook block).
-# We also use a session-scoped marker keyed to session_id from the
-# hook input so the reminder fires exactly once per session, even with
-# multiple agents working on the same vault.
+# Cooldown: fires at most once every 5 minutes per session, using a
+# marker file's mtime as the timestamp.
 
 input=$(cat)
 
@@ -24,17 +23,20 @@ done
 stop_active=$(echo "$input" | jq -r '.stop_hook_active // false')
 [[ "$stop_active" == "true" ]] && exit 0
 
-# One reminder per session
+# Cooldown: at most once every 5 minutes per session
 session_id=$(echo "$input" | jq -r '.session_id // empty')
 if [[ -n "$session_id" ]]; then
   marker="/tmp/.obsidian-hook-convos-${session_id}"
-  [[ -f "$marker" ]] && exit 0
+  if [[ -f "$marker" ]]; then
+    age=$(( $(date +%s) - $(stat -c %Y "$marker") ))
+    (( age < 300 )) && exit 0
+  fi
   touch "$marker"
 fi
 
 cat <<'EOF'
 {
   "decision": "block",
-  "reason": "Reminder: if this conversation produced a synthesis, analysis, comparison, decision rationale, or discovery worth preserving, use the remember-conversations skill to file it as a note in the relevant convos/ subfolder. If nothing worth filing or you already filed, carry on."
+  "reason": "Reminder: before wrapping up, consider what's worth preserving from this session. Options: (1) Changelog entry — always, if anything substantive happened. (2) Diary note — if you worked through a process, incident, or debugging session worth narrating. (3) Convo note — if you produced analysis, comparisons, or decision rationales. (4) Guide — if you discovered a procedure others would need to repeat. Think especially about gotchas for future maintainers — tricky configurations, non-obvious failure modes, things that cost time to figure out. Use the remember-conversations skill to file. If nothing worth preserving or you already filed, carry on."
 }
 EOF
