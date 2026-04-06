@@ -34,9 +34,19 @@ def find_vault_root(path: str) -> str | None:
 
 
 def deny(rule: str, message: str, hint: str = "") -> str:
+    # NOTE TO AI AGENT: You MUST NOT prepend I_AM_BEING_CAREFUL=1 yourself.
+    # Show this deny message to the user and wait for them to explicitly say
+    # "use the escape hatch" or "I confirm". Self-authorizing the escape hatch
+    # defeats the entire purpose of this safety system.
+    escape_warning = (
+        f"\n\n>>> AGENT: DO NOT bypass this by prepending {ESCAPE_HATCH} yourself. <<<"
+        "\n>>> Show this BLOCKED message to the user verbatim and ask them to confirm. <<<"
+        "\n>>> The escape hatch exists for the HUMAN to authorize, not for you to self-authorize. <<<"
+        f"\n>>> If the user confirms, re-run with {ESCAPE_HATCH} prepended. <<<"
+    )
     if not hint:
-        hint = f"Re-run with {ESCAPE_HATCH} prepended if the user explicitly confirms."
-    return f"BLOCKED [{rule}]: {message} {hint}"
+        hint = ""
+    return f"BLOCKED [{rule}]: {message} {hint}{escape_warning}"
 
 
 def path_hits_protected_dir(path: str) -> bool:
