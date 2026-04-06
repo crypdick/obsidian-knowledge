@@ -28,6 +28,26 @@ files — only indexes, links, file locations, and file names.
   defaults to the most recently focused vault, which may not be the one being
   organized.
 
+## Note types
+
+The plugin recognizes these note types. Use them to classify files during
+organization and determine correct placement:
+
+- **Source / reference** — original documents, scans, PDFs, images.
+  Lives in a `_sources/` subfolder of the relevant area. Write-protected.
+- **Wiki** — compiled knowledge about a topic. Lives inline in the
+  relevant folder.
+- **Guide** — prescriptive how-to procedures. Lives inline.
+- **Design doc / plan** — decision records and implementation plans.
+  Lives in a `plans/` subfolder of the relevant area.
+- **Session note** — agent-generated output from a conversation session.
+  Lives in a `sessions/` subfolder, with a suffix indicating the type:
+  `-diary` for narrative accounts of processes, incidents, or events;
+  `-convo` for analytical synthesis, comparisons, or decision rationales.
+- **TODO** — task backlogs. Prefixed with context to avoid wikilink
+  collisions (e.g., `TODO-project.md`).
+- **Index** — folder navigation. See Step 4.
+
 ## State files
 
 All persistent state lives in `<vault>/.config/obsidian-knowledge/`.
@@ -36,7 +56,9 @@ Create this directory on first run if it does not exist.
 ### CHANGELOG.md
 
 Append-only log of actions taken. Newest entry first. Each run adds a
-date-stamped section with one-line entries describing each action taken.
+date-stamped section. Keep entries terse — one line per action. Link out
+to session notes, diary entries, or guides for detail rather than
+documenting inline.
 
 Format:
 ```
@@ -46,12 +68,11 @@ Format:
 
 - Created `folder/index.md` (N entries)
 - Moved `old/path.md` → `new/path.md` via `obsidian move`
-- Renamed `old/scan.pdf.pdf` → `2020-02-15-dispute-timesheet.pdf` (high confidence)
-- Rotated `path/to/image.jpg` to correct orientation
-- Flagged `path/to/IMG_123.jpg` — proposed: `2016-12-22-description.jpg` (low confidence, added to NEEDS_ATTENTION)
+- Renamed `old/scan.pdf.pdf` → `2020-02-15-dispute-timesheet.pdf`
 - Fixed N stale links found during move/rename sanity check
-- Added N items to NEEDS_ATTENTION
-- Resolved N items from NEEDS_ATTENTION
+- Added `path/to/file.md:15` to NEEDS_ATTENTION — unresolved link, no match found
+- Resolved `path/to/old-issue.md` from NEEDS_ATTENTION — renamed to `descriptive-name.md`
+- See [[2026-04-06-vault-reorg-diary]] for details
 ```
 
 ### NEEDS_ATTENTION.md
@@ -98,6 +119,9 @@ Walk the vault directory tree, skipping dotfolders (`.obsidian`, `.config`,
 
 ### Step 3: Organize files
 
+Respect the vault's access zones defined in `.claude/vault-zones.yaml`.
+Only organize files in zones where the agent has write access.
+
 For files clearly misplaced (in a parent folder when a more specific child
 folder exists, or not matching their folder's topic scope):
 
@@ -136,9 +160,10 @@ patterns:
    `15863.gif`)
 5. **Double extensions** — like `scan.pdf.pdf` (also fix the extension)
 
-**Scope:** Include all vault folders including `_sources/` directories. Skip
-`.trash/` and dotfolders. Skip files already following the
-`YYYY-MM-DD-descriptive-slug` convention.
+**Scope:** Include all vault folders including `_sources/` directories
+(use the `I_AM_BEING_CAREFUL=1` escape hatch for renames there). Skip
+`.trash/` and dotfolders. Skip files that already have descriptive,
+human-readable names.
 
 For each flagged file:
 
@@ -154,12 +179,13 @@ For each flagged file:
 **2. Fix image orientation.** If the file is an image and it is not right-side-up
 (detected via EXIF orientation tag or visual inspection), rotate it to the
 correct orientation before renaming. Use `exiftool -auto-rotate` or
-`magick mogrify -auto-orient` to apply the correction. For files in `_sources/`,
-use the `I_AM_BEING_CAREFUL=1` escape hatch.
+`magick mogrify -auto-orient` to apply the correction. For files in
+`_sources/`, do not modify — add to NEEDS_ATTENTION noting the orientation
+issue so the user can decide whether to rotate the original.
 
 **3. Gather context:**
-- **Folder path** — strong signal (e.g., `life/finance-property/taxes/2015/`
-  implies a 2015 tax document). Used as a hint, not ground truth.
+- **Folder path** — strong signal (e.g., a `taxes/2015/` parent implies
+  a 2015 tax document). Used as a hint, not ground truth.
 - **Neighboring files** — if siblings are well-named, they hint at what this
   file is.
 - **EXIF data** — for images, if `exiftool` is available. Contains dates,
@@ -168,11 +194,8 @@ use the `I_AM_BEING_CAREFUL=1` escape hatch.
 The file's own content is the ultimate source of truth. If folder context
 conflicts with file content, trust file content.
 
-**4. Generate a new name** following the vault convention:
-- With date: `yyyy-mm-dd-descriptive-slug.ext`
-- Without date: `descriptive-slug.ext`
-
-Slug is lowercase, hyphen-separated, human-readable. Date source priority:
+**4. Generate a new name** following the vault's naming conventions in
+CLAUDE.md. Date source priority:
 1. File content (extracted date from text/document)
 2. EXIF metadata
 3. Filename-embedded date (e.g., `IMG_20160130` → `2016-01-30`)
@@ -201,7 +224,7 @@ NEEDS_ATTENTION entry format for rename escalations:
 
 ### Step 4: Sync indexes
 
-For every folder in the vault:
+For every folder in the `ai_managed` zones (per `.claude/vault-zones.yaml`):
 
 **If no `index.md` exists:** Create one with a heading matching the folder name
 and thin pointer entries for each file and subfolder.
@@ -220,7 +243,7 @@ entries that are still valid.
 ```
 
 Rules:
-- One entry per line: wikilink + em dash + orientation phrase (~3-8 words)
+- One entry per line: wikilink + em dash + short orientation phrase
 - The phrase answers "what is this?" — enough to decide whether to open the
   file. Not a summary. Not a sentence.
 - Subfolders first (linking to their `index.md` with display alias), then
@@ -247,8 +270,9 @@ For each unresolved link, apply this resolution logic in order:
    no candidate.
 
 Also run:
-- `obsidian orphans` — files with no incoming links. Add orphans to their
-  parent folder's index if not already present.
+- `obsidian orphans` — files with no incoming links. For orphans in
+  `ai_managed` zones, add them to their parent folder's index if not
+  already present. Ignore orphans outside managed zones.
 - `obsidian deadends` — files with no outgoing links. Informational only;
   many leaf files legitimately have no outgoing links. Do not flag these.
 
@@ -261,4 +285,4 @@ unresolvable issues found. Write the file (or delete it if empty).
 
 Add a date-stamped section at the top summarizing all actions taken: files
 moved, indexes created/updated, links fixed, NEEDS_ATTENTION items
-added/resolved. If no actions were taken, write "No changes needed."
+added/resolved. Skip the entry entirely if no actions were taken.
