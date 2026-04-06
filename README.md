@@ -9,7 +9,7 @@ Obsidian knowledge base vaults.
 
 Maintains vault organization through a single-pass pipeline:
 
-- **Sync indexes** — creates and updates `index.md` files with thin pointer entries for every folder
+- **Sync indexes** — creates and updates `index.md` files with thin pointer entries for managed zones
 - **Organize files** — moves misplaced files to appropriate locations using the Obsidian CLI
 - **Rename ambiguous files** — detects files with non-descriptive names
   (device-generated, hash-based, generic labels), reads their content, and
@@ -64,8 +64,8 @@ session to avoid being noisy in long conversations.
 
 - **update-changelog.sh** — reminds the agent to append a dated entry to
   `CHANGELOG.md` if the session produced edits, decisions, or discoveries
-- **remind-convos.sh** — reminds the agent to use the
-  `remember-conversations` skill to file valuable conversation outputs
+- **remind-convos.sh** — reminds the agent to preserve session outputs
+  (diary notes, convo notes, guides, changelog entries, gotchas)
 
 ## Requirements
 
@@ -99,16 +99,15 @@ Or set up a scheduled run for routine maintenance.
 The skill stores its state in your vault at
 `.config/obsidian-knowledge/` (CHANGELOG.md and NEEDS_ATTENTION.md).
 
-### Vault CLAUDE.md
+### Vault configuration
 
-For best results, add a `CLAUDE.md` to your vault root instructing agents
-to invoke the skill after substantial structural edits:
+For best results, add a `CLAUDE.md` to your vault root with naming
+conventions and instructions to invoke the skill after structural edits.
 
-```markdown
-After making substantial edits to this vault (creating, moving, renaming,
-or deleting files), invoke the vault-organizer skill to update indexes
-and verify link integrity.
-```
+The vault-organizer respects access zones defined in
+`.claude/vault-zones.yaml`. Create this file to control which folders
+the agent can organize, where indexes are required, and which areas
+are read-only. See the skill's documentation for the expected format.
 
 ## License
 

@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "description": "Skills, hooks, and conventions for maintaining Obsidian knowledge base vaults",
   "author": {
     "name": "Ricardo Decal"
