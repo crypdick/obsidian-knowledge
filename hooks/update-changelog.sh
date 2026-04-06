@@ -7,9 +7,8 @@
 #
 # Fire-once guard: the Stop hook input includes stop_hook_active (true
 # when Claude is already continuing due to a prior stop hook block).
-# We also use a session-scoped marker keyed to session_id from the
-# hook input so the reminder fires exactly once per session, even with
-# multiple agents working on the same vault.
+# Cooldown: fires at most once every 5 minutes per session, using a
+# marker file's mtime as the timestamp.
 
 input=$(cat)
 
@@ -24,11 +23,14 @@ done
 stop_active=$(echo "$input" | jq -r '.stop_hook_active // false')
 [[ "$stop_active" == "true" ]] && exit 0
 
-# One reminder per session
+# Cooldown: at most once every 5 minutes per session
 session_id=$(echo "$input" | jq -r '.session_id // empty')
 if [[ -n "$session_id" ]]; then
   marker="/tmp/.obsidian-hook-changelog-${session_id}"
-  [[ -f "$marker" ]] && exit 0
+  if [[ -f "$marker" ]]; then
+    age=$(( $(date +%s) - $(stat -c %Y "$marker") ))
+    (( age < 300 )) && exit 0
+  fi
   touch "$marker"
 fi
 
