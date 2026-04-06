@@ -9,13 +9,11 @@ Obsidian knowledge base vaults.
 
 Maintains vault organization through a single-pass pipeline:
 
-- **Sync indexes** — creates and updates `index.md` files with thin pointer
-  entries for every folder
-- **Organize files** — moves misplaced files to appropriate locations using
-  the Obsidian CLI
+- **Sync indexes** — creates and updates `index.md` files with thin pointer entries for every folder
+- **Organize files** — moves misplaced files to appropriate locations using the Obsidian CLI
 - **Rename ambiguous files** — detects files with non-descriptive names
   (device-generated, hash-based, generic labels), reads their content, and
-  renames them to `yyyy-mm-dd-descriptive-slug.ext`
+  renames them following the vault's naming conventions from CLAUDE.md
 - **Fix broken links** — detects unresolved links and resolves them when
   possible, flags ambiguous cases for human review
 - **Report issues** — maintains a `NEEDS_ATTENTION.md` worklist for issues
@@ -23,14 +21,19 @@ Maintains vault organization through a single-pass pipeline:
 
 ### remember-conversations
 
-Files valuable conversation outputs as permanent vault notes so insights
-compound rather than disappearing into chat history:
+Files valuable conversation outputs as permanent vault notes and updates
+the changelog, so insights compound rather than disappearing into chat
+history:
 
-- **Analyses, comparisons, decision rationales** — anything worth finding later
-- **Automatic placement** — notes filed in `convos/` subfolders within the
-  relevant subtree, preserving progressive disclosure
-- **Stop hook integration** — a reminder nudges the agent to file conversations
-  at the end of each session
+- **Session notes** — two types: `-diary` for narrative accounts (what
+  happened, what was tried) and `-convo` for analytical synthesis
+  (comparisons, decision rationales, research summaries)
+- **Changelog updates** — appends a dated entry to CHANGELOG.md
+  summarizing actions taken
+- **Automatic placement** — notes filed in `sessions/` subfolders within
+  the relevant subtree, preserving progressive disclosure
+- **Stop hook integration** — a reminder nudges the agent to file
+  sessions at the end of each conversation
 
 ## Hooks
 
@@ -54,10 +57,10 @@ bypass all guards after the user explicitly confirms. Write/Edit to
 
 ### Stop hooks
 
-Both Stop hooks fire at the end of each Claude Code session. Each walks up
+Both Stop hooks fire at the end of each Claude Code turn. Each walks up
 from `$PWD` looking for a `.obsidian/` directory to detect whether the
-agent is working inside a vault. They fire once per session to avoid
-re-triggering loops.
+agent is working inside a vault. They have a 5-minute cooldown per
+session to avoid being noisy in long conversations.
 
 - **update-changelog.sh** — reminds the agent to append a dated entry to
   `CHANGELOG.md` if the session produced edits, decisions, or discoveries
