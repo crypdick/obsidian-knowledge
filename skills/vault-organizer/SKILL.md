@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 0.5.0
+version: 0.6.0
 ---
 
 # Vault Organizer
@@ -40,10 +40,12 @@ organization and determine correct placement:
 - **Guide** — prescriptive how-to procedures. Lives inline.
 - **Design doc / plan** — decision records and implementation plans.
   Lives in a `plans/` subfolder of the relevant area.
-- **Session note** — agent-generated output from a conversation session.
-  Lives in a `sessions/` subfolder, with a suffix indicating the type:
-  `-diary` for narrative accounts of processes, incidents, or events;
-  `-convo` for analytical synthesis, comparisons, or decision rationales.
+- **Convo note** — agent-generated analytical synthesis from a
+  conversation: comparisons between options, decision rationales,
+  research summaries, or discoveries. Lives in a `convos/` subfolder
+  of the relevant area.
+- **Diary note** — narrative account of a process, incident, or event.
+  Lives in a `diary/` subfolder of the relevant area.
 - **TODO** — task backlogs. Prefixed with context to avoid wikilink
   collisions (e.g., `TODO-project.md`).
 - **Index** — folder navigation. See Step 4.
