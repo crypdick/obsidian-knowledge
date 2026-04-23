@@ -6,9 +6,11 @@ Ships with the obsidian-knowledge plugin. Provides:
 - Read-only _sources/ directories (irreplaceable originals like tax records,
   legal filings, vital docs). Agents can read but not write.
 - Guards against recursive rm/mv on vault paths.
+- Redirects operational knowledge from agent auto-memory to the vault wiki.
 
 Escape hatch: prefix Bash commands with I_AM_BEING_CAREFUL=1 to bypass.
 Write/Edit to _sources/ has no inline bypass — use Bash with the escape hatch.
+The wiki-policy rule has no escape hatch — write to the wiki instead.
 """
 
 import json
@@ -33,7 +35,7 @@ def find_vault_root(path: str) -> str | None:
     return None
 
 
-def deny(rule: str, message: str, hint: str = "") -> str:
+def deny(rule: str, message: str, hint: str = "", show_escape_hint: bool = True) -> str:
     # NOTE TO AI AGENT: You MUST NOT prepend I_AM_BEING_CAREFUL=1 yourself.
     # Show this deny message to the user and wait for them to explicitly say
     # "use the escape hatch" or "I confirm". Self-authorizing the escape hatch
@@ -43,7 +45,7 @@ def deny(rule: str, message: str, hint: str = "") -> str:
         "\n>>> Show this BLOCKED message to the user verbatim and ask them to confirm. <<<"
         "\n>>> The escape hatch exists for the HUMAN to authorize, not for you to self-authorize. <<<"
         f"\n>>> If the user confirms, re-run with {ESCAPE_HATCH} prepended. <<<"
-    )
+    ) if show_escape_hint else ""
     if not hint:
         hint = ""
     return f"BLOCKED [{rule}]: {message} {hint}{escape_warning}"
@@ -105,6 +107,37 @@ def protected_dirs_bash(tool_name: str, tool_input: dict) -> str | None:
     return None
 
 
+def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
+    """Redirect operational knowledge from agent auto-memory to the Obsidian wiki.
+
+    Blocks Write/Edit to feedback_*.md, project_*.md, reference_*.md in any
+    ~/.claude/projects/*/memory/ directory. MEMORY.md (the pointer index) and
+    user_*.md (user-profile facts) are allowed through.
+    """
+    if tool_name not in ("Write", "Edit"):
+        return None
+    file_path = tool_input.get("file_path", "")
+    if not re.search(r"/\.claude/projects/[^/]+/memory/", file_path):
+        return None
+    basename = os.path.basename(file_path)
+    blocked_prefixes = ("feedback_", "project_", "reference_")
+    if not any(basename.startswith(p) for p in blocked_prefixes):
+        return None
+    return deny(
+        "wiki-policy",
+        f"Writing '{basename}' to agent auto-memory is not permitted. "
+        "Auto-memory is a per-project silo — invisible to other sessions, other tools, and vault search.",
+        hint=(
+            "\n\nWhere to write instead:\n"
+            "  - Behavioral rules (how the agent should act) → CLAUDE.md in the Obsidian vault\n"
+            "  - Facts about the world (tools, gotchas, procedures, system state) → wiki/ in the vault\n"
+            "  - MEMORY.md is the only file permitted here — use it only as a pointer to vault locations.\n"
+            "\n(The I_AM_BEING_CAREFUL=1 escape hatch does not apply to this rule — there is no bypass.)"
+        ),
+        show_escape_hint=False,
+    )
+
+
 def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
     """Block recursive rm/mv on paths that appear to be inside an Obsidian vault."""
     if tool_name != "Bash":
@@ -134,6 +167,7 @@ RULES = [
     protected_dirs_file,
     protected_dirs_bash,
     destructive_vault_ops,
+    block_memory_file_creation,
 ]
 
 
