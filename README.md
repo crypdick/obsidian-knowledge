@@ -40,7 +40,7 @@ history:
 ### Vault protection (PreToolUse)
 
 `protect-vault.py` runs before every Bash, Write, and Edit tool call.
-It provides two layers of safety:
+It provides four layers of safety:
 
 **Read-only `_sources/` directories.** Folders named `_sources/` anywhere
 in the vault tree are protected from agent writes. These typically hold
@@ -51,9 +51,20 @@ create, modify, rename, move, or delete files inside them.
 **Destructive command guards.** Recursive `rm` and `mv` targeting paths
 that appear to be inside an Obsidian vault are blocked.
 
+**Published file guard.** Write and Edit to any vault file with
+`dg-publish: true` in its frontmatter are blocked — edits to published
+files go live on the website and require explicit user confirmation.
+
+**Auto-memory redirect.** Agents are blocked from writing operational
+knowledge (`feedback_*.md`, `project_*.md`, `reference_*.md`) to their
+per-project auto-memory. Auto-memory is a silo invisible to other sessions,
+other tools, and vault search. The hook redirects this knowledge to the
+vault wiki instead, where it compounds and stays searchable.
+
 **Escape hatch.** Prefix a Bash command with `I_AM_BEING_CAREFUL=1` to
-bypass all guards after the user explicitly confirms. Write/Edit to
-`_sources/` has no inline bypass — use Bash with the escape hatch.
+bypass the `_sources/` and published-file guards after the user explicitly
+confirms. The auto-memory redirect has no escape hatch — write to the wiki
+instead.
 
 ### Stop hooks
 
