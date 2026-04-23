@@ -7,6 +7,7 @@ Ships with the obsidian-knowledge plugin. Provides:
   legal filings, vital docs). Agents can read but not write.
 - Guards against recursive rm/mv on vault paths.
 - Redirects operational knowledge from agent auto-memory to the vault wiki.
+- Blocks edits to published files (dg-publish: true) without user confirmation.
 
 Escape hatch: prefix Bash commands with I_AM_BEING_CAREFUL=1 to bypass.
 Write/Edit to _sources/ has no inline bypass — use Bash with the escape hatch.
@@ -138,6 +139,38 @@ def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
     )
 
 
+def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
+    """Block edits to vault files marked dg-publish: true without user confirmation."""
+    if tool_name not in ("Write", "Edit"):
+        return None
+    file_path = tool_input.get("file_path", "")
+    if not file_path or not find_vault_root(file_path):
+        return None
+    if tool_name == "Edit":
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read(1000)
+        except (OSError, UnicodeDecodeError):
+            return None
+    else:
+        content = tool_input.get("content", "")
+    if not content.startswith("---"):
+        return None
+    end = content.find("---", 3)
+    if end == -1:
+        return None
+    frontmatter = content[3:end]
+    if not re.search(r"^dg-publish:\s*true", frontmatter, re.MULTILINE):
+        return None
+    return deny(
+        "published-file",
+        f"'{os.path.basename(file_path)}' is published to the website (dg-publish: true). Edits will go live.",
+        f"To modify, use Bash with {ESCAPE_HATCH} after the user confirms.",
+    )
+
+
 def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
     """Block recursive rm/mv on paths that appear to be inside an Obsidian vault."""
     if tool_name != "Bash":
@@ -166,6 +199,7 @@ def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
 RULES = [
     protected_dirs_file,
     protected_dirs_bash,
+    block_published_file_edits,
     destructive_vault_ops,
     block_memory_file_creation,
 ]
