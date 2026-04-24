@@ -8,7 +8,7 @@ description: >-
   by the user saying "file this", "save this conversation", "remember
   this", or at agent discretion when a response deserves to outlive
   chat history.
-version: 0.6.0
+version: 0.7.0
 ---
 
 # Remember Conversations
@@ -24,7 +24,7 @@ fits based on what happened.
 
 ### Changelog entry
 
-Always append to `.config/obsidian-knowledge/CHANGELOG.md` if the
+Always append to `Utility/obsidian-knowledge/changelog.md` if the
 session produced anything substantive — edits, decisions, discoveries,
 dead ends. Keep entries terse (one line per action) and link out to
 session notes for detail rather than documenting inline. Follow the
@@ -150,6 +150,6 @@ permitted for self-documentation.
    ```
 
 7. **Update the changelog** — append a dated entry to
-   `.config/obsidian-knowledge/CHANGELOG.md` summarizing actions taken.
+   `Utility/obsidian-knowledge/changelog.md` summarizing actions taken.
    Link to session notes created above rather than documenting detail
    inline.

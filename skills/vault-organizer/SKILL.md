@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 0.7.0
+version: 0.8.0
 ---
 
 # Vault Organizer
@@ -42,7 +42,7 @@ the user specifies otherwise. All subsequent paths in this skill are relative
 to `<vault_root>`.
 
 Key locations (all relative to `<vault_root>`):
-- **State files** — `<vault_root>/.config/obsidian-knowledge/` (CHANGELOG.md, NEEDS_ATTENTION.md)
+- **State files** — `<vault_root>/Utility/obsidian-knowledge/` (changelog.md, needs-attention.md)
 - **Zone config** — `<vault_root>/.claude/vault-zones.yaml`
 - **Vault instructions** — `<vault_root>/CLAUDE.md` (naming conventions, agent rules)
 
@@ -73,10 +73,10 @@ organization and determine correct placement:
 
 ## State files
 
-All persistent state lives in `<vault_root>/.config/obsidian-knowledge/`.
+All persistent state lives in `<vault_root>/Utility/obsidian-knowledge/`.
 Create this directory on first run if it does not exist.
 
-### CHANGELOG.md
+### changelog.md
 
 Append-only log of actions taken. Newest entry first. Each run adds a
 date-stamped section. Keep entries terse — one line per action. Link out
@@ -93,12 +93,12 @@ Format:
 - Moved `old/path.md` → `new/path.md` via `obsidian move`
 - Renamed `old/scan.pdf.pdf` → `2020-02-15-dispute-timesheet.pdf`
 - Fixed N stale links found during move/rename sanity check
-- Added `path/to/file.md:15` to NEEDS_ATTENTION — unresolved link, no match found
-- Resolved `path/to/old-issue.md` from NEEDS_ATTENTION — renamed to `descriptive-name.md`
+- Added `path/to/file.md:15` to needs-attention.md — unresolved link, no match found
+- Resolved `path/to/old-issue.md` from needs-attention.md — renamed to `descriptive-name.md`
 - See [[2026-04-06-vault-reorg-diary]] for details
 ```
 
-### NEEDS_ATTENTION.md
+### needs-attention.md
 
 Living worklist of issues requiring human judgment. Entries are `- [ ]`
 checkboxes with file path, issue description, and any candidates considered.
@@ -135,11 +135,11 @@ cat "$VAULT/.claude/vault-zones.yaml"  # ai_managed, ai_assisted, read-only zone
 Run `obsidian version`. If it fails, launch Obsidian (e.g., run `obsidian` or
 open it via the system launcher) and retry `obsidian version` up to 3 times
 with a few seconds between attempts. If Obsidian still cannot be reached,
-log the failure to CHANGELOG and exit.
+log the failure to changelog.md and exit.
 
 ### Step 1: Read state
 
-Read `$VAULT/.config/obsidian-knowledge/NEEDS_ATTENTION.md` if it exists.
+Read `$VAULT/Utility/obsidian-knowledge/needs-attention.md` if it exists.
 Parse existing entries to:
 - Avoid re-investigating known issues
 - Detect items that have been resolved since last run (the referenced file or
@@ -228,7 +228,7 @@ For each flagged file:
 (detected via EXIF orientation tag or visual inspection), rotate it to the
 correct orientation before renaming. Use `exiftool -auto-rotate` or
 `magick mogrify -auto-orient` to apply the correction. For files in
-`_sources/`, do not modify — add to NEEDS_ATTENTION noting the orientation
+`_sources/`, do not modify — add to needs-attention.md noting the orientation
 issue so the user can decide whether to rotate the original.
 
 **3. Gather context:**
@@ -260,9 +260,9 @@ CLAUDE.md. Date source priority:
   references — fix any stale wikilinks, markdown links, or raw path mentions.
 - **Low confidence** — vague image content, no date found, folder context is
   the primary signal, or multiple plausible interpretations. Add to
-  NEEDS_ATTENTION with the proposed name (see format below).
+  needs-attention.md with the proposed name (see format below).
 
-NEEDS_ATTENTION entry format for rename escalations:
+needs-attention.md entry format for rename escalations:
 ```
 - [ ] `path/to/IMG_20161222_124409.jpg` — ambiguous filename.
   Proposed: `2016-12-22-fl-drivers-license-photo.jpg`.
@@ -342,8 +342,8 @@ For each unresolved link worth investigating, apply this resolution logic:
 2. **Similar match:** Search for files with similar names or overlapping
    content. If one is a clear match with high confidence, fix the link.
 3. **Ambiguous candidate:** If a plausible candidate exists but confidence is
-   low, add to NEEDS_ATTENTION with the candidate noted.
-4. **No match:** If nothing resembles the target, add to NEEDS_ATTENTION with
+   low, add to needs-attention.md with the candidate noted.
+4. **No match:** If nothing resembles the target, add to needs-attention.md with
    no candidate.
 
 Also run:
@@ -353,14 +353,60 @@ Also run:
 - `obsidian deadends` — files with no outgoing links. Informational only;
   many leaf files legitimately have no outgoing links. Do not flag these.
 
-### Step 6: Update NEEDS_ATTENTION.md
+### Step 6: Regenerate reports
+
+Rewrite content-health reports under `$VAULT/Utility/obsidian-knowledge/reports/`.
+These are a pure derivative zone — every file in `reports/` is overwritten
+from scratch each run, and nothing human-touched lives there.
+
+Currently one report:
+
+**`open-questions.md`** — compiled list of `> [!question]` Obsidian callouts
+across `wiki/`. Agents and humans read this to see unresolved questions
+flagged in prose.
+
+Procedure:
+
+1. Scan for callouts:
+   ```bash
+   grep -rn '^> \[!question\]' "$VAULT/wiki" --include='*.md' --exclude-dir=_sources
+   ```
+   Each match gives `<file>:<line>:> [!question]`. The question text lives
+   on the immediately following line(s), each prefixed with `> `. Multi-line
+   questions continue until a blank line or a non-`>` line.
+
+2. For each hit, read the file around the match to capture the question
+   body. Strip the `> ` prefix from continuation lines and join with
+   spaces. Collapse into a single-line summary for the report entry (the
+   full text stays in the source page).
+
+3. Build entries in this format, sorted by file path then line number:
+   ```
+   - [[wiki/relative/path/to/page]] — line N — "the question text"
+   ```
+
+4. Overwrite `$VAULT/Utility/obsidian-knowledge/reports/open-questions.md`
+   with:
+   - `# Open questions` heading
+   - A regeneration notice (do not hand-edit)
+   - `**Last run:** YYYY-MM-DD HH:MM` timestamp
+   - The entry list — or `_No open questions flagged._` if zero hits
+   - The marker convention reminder (keep verbatim from existing scaffold)
+   - The scope section (keep verbatim from existing scaffold)
+
+The scaffold in the live vault already contains the non-entry sections —
+preserve their structure when regenerating. Only the entry list and the
+`Last run` line change between runs.
+
+### Step 7: Update needs-attention.md
 
 Remove entries for issues resolved during this run. Add new entries for
 unresolvable issues found. Write the file (or delete it if empty).
 
-### Step 7: Append to CHANGELOG.md
+### Step 8: Append to changelog.md
 
 Add a date-stamped section at the top of
-`$VAULT/.config/obsidian-knowledge/CHANGELOG.md` summarizing all actions
-taken: files moved, indexes created/updated, links fixed, NEEDS_ATTENTION
-items added/resolved. Skip the entry entirely if no actions were taken.
+`$VAULT/Utility/obsidian-knowledge/changelog.md` summarizing all actions
+taken: files moved, indexes created/updated, links fixed, needs-attention.md
+items added/resolved, reports regenerated. Skip the entry entirely if no
+actions were taken.

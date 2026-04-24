@@ -16,8 +16,11 @@ Maintains vault organization through a single-pass pipeline:
   renames them following the vault's naming conventions from CLAUDE.md
 - **Fix broken links** — detects unresolved links and resolves them when
   possible, flags ambiguous cases for human review
-- **Report issues** — maintains a `NEEDS_ATTENTION.md` worklist for issues
+- **Report issues** — maintains a `needs-attention.md` worklist for issues
   requiring human judgment
+- **Regenerate reports** — rewrites `reports/open-questions.md` from
+  `> [!question]` callouts across `wiki/`, giving agents and humans a
+  single place to see unresolved questions flagged in prose
 
 ### remember-conversations
 
@@ -28,7 +31,7 @@ history:
 - **Session notes** — two types: `-diary` for narrative accounts (what
   happened, what was tried) and `-convo` for analytical synthesis
   (comparisons, decision rationales, research summaries)
-- **Changelog updates** — appends a dated entry to CHANGELOG.md
+- **Changelog updates** — appends a dated entry to `changelog.md`
   summarizing actions taken
 - **Automatic placement** — notes filed in `sessions/` subfolders within
   the relevant subtree, preserving progressive disclosure
@@ -74,7 +77,7 @@ have a 5-minute cooldown per session to avoid being noisy in long
 conversations.
 
 - **update-changelog.sh** — reminds the agent to append a dated entry to
-  `CHANGELOG.md` if the session produced edits, decisions, or discoveries
+  `changelog.md` if the session produced edits, decisions, or discoveries
 - **remind-convos.sh** — reminds the agent to preserve session outputs
   (diary notes, convo notes, guides, changelog entries, gotchas)
 
@@ -119,7 +122,13 @@ Invoke the skill directly:
 Or set up a scheduled run for routine maintenance.
 
 The skill stores its state in your vault at
-`.config/obsidian-knowledge/` (CHANGELOG.md and NEEDS_ATTENTION.md).
+`Utility/obsidian-knowledge/`:
+
+- `changelog.md` — append-only log of vault changes
+- `needs-attention.md` — human-resolved worklist
+- `reports/open-questions.md` — regenerated dashboard of `> [!question]` callouts
+
+Historical state was under `.config/obsidian-knowledge/` prior to v1.1.0.
 
 ### Vault configuration
 
