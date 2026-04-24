@@ -68,10 +68,10 @@ instead.
 
 ### Stop hooks
 
-Both Stop hooks fire at the end of each Claude Code turn. Each walks up
-from `$PWD` looking for a `.obsidian/` directory to detect whether the
-agent is working inside a vault. They have a 5-minute cooldown per
-session to avoid being noisy in long conversations.
+Both Stop hooks fire at the end of each Claude Code turn. Each checks
+whether the working directory is inside a configured vault root. They
+have a 5-minute cooldown per session to avoid being noisy in long
+conversations.
 
 - **update-changelog.sh** — reminds the agent to append a dated entry to
   `CHANGELOG.md` if the session produced edits, decisions, or discoveries
@@ -97,6 +97,17 @@ claude plugin marketplace add crypdick/obsidian-knowledge
 # Install the plugin
 claude plugin install obsidian-knowledge@obsidian-knowledge
 ```
+
+After installing, create `~/.config/obsidian-knowledge/vaults.yaml` listing
+your vault root paths:
+
+```yaml
+vaults:
+  - /path/to/your/obsidian/vault
+```
+
+The protection hooks use this file to know which directories to guard. Without
+it, the `_sources/`, published-file, and destructive-ops rules will not fire.
 
 ## Usage
 

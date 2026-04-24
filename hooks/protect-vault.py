@@ -2,12 +2,19 @@
 """
 PreToolUse hook: protect Obsidian vault integrity.
 
-Ships with the obsidian-knowledge plugin. Provides:
+Ships with the obsidian-knowledge plugin. Requires vault roots configured in
+~/.config/obsidian-knowledge/vaults.yaml:
+
+    vaults:
+      - /path/to/your/vault
+
+Provides:
 - Read-only _sources/ directories (irreplaceable originals like tax records,
   legal filings, vital docs). Agents can read but not write.
-- Guards against recursive rm/mv on vault paths.
-- Redirects operational knowledge from agent auto-memory to the vault wiki.
+- Guards against recursive rm/mv on vault paths, including relative paths
+  when the working directory is inside a vault.
 - Blocks edits to published files (dg-publish: true) without user confirmation.
+- Redirects operational knowledge from agent auto-memory to the vault wiki.
 
 Escape hatch: prefix Bash commands with I_AM_BEING_CAREFUL=1 to bypass.
 Write/Edit to _sources/ has no inline bypass — use Bash with the escape hatch.
@@ -18,22 +25,58 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 ESCAPE_HATCH = "I_AM_BEING_CAREFUL=1"
-PROTECTED_DIRS = ["_sources"]  # folder names that are read-only to the agent
+PROTECTED_DIRS = ["_sources"]
+CONFIG_PATH = Path.home() / ".config" / "obsidian-knowledge" / "vaults.yaml"
+
+
+# ── Config ───────────────────────────────────────────────────────
+
+
+def load_vault_roots() -> list[str]:
+    """Load vault root paths from ~/.config/obsidian-knowledge/vaults.yaml."""
+    if not CONFIG_PATH.exists():
+        return []
+    try:
+        text = CONFIG_PATH.read_text()
+    except OSError:
+        return []
+    roots = []
+    for line in text.splitlines():
+        m = re.match(r"^\s*-\s+(.+)$", line)
+        if m:
+            p = m.group(1).strip().strip("'\"")
+            if p and not p.startswith("#"):
+                roots.append(os.path.abspath(os.path.expanduser(p)))
+    return roots
+
+
+VAULT_ROOTS = load_vault_roots()
+
+
+def is_in_vault(path: str) -> bool:
+    """Return True if path is inside any configured vault root."""
+    abs_path = os.path.abspath(os.path.expanduser(path))
+    return any(
+        abs_path == root or abs_path.startswith(root + os.sep)
+        for root in VAULT_ROOTS
+    )
+
+
+def command_touches_vault(command: str) -> bool:
+    """Return True if the command operates on or from within a vault."""
+    if is_in_vault(os.getcwd()):
+        return True
+    return any(
+        is_in_vault(token)
+        for token in command.split()
+        if token.startswith(("/", "~"))
+    )
 
 
 # ── Helpers ──────────────────────────────────────────────────────
-
-
-def find_vault_root(path: str) -> str | None:
-    """Walk up from path looking for .obsidian/ directory (Obsidian's vault marker)."""
-    d = os.path.dirname(path) if not os.path.isdir(path) else path
-    while d != "/":
-        if os.path.isdir(os.path.join(d, ".obsidian")):
-            return d
-        d = os.path.dirname(d)
-    return None
 
 
 def deny(rule: str, message: str, hint: str = "", show_escape_hint: bool = True) -> str:
@@ -63,13 +106,13 @@ def path_hits_protected_dir(path: str) -> bool:
 
 
 def protected_dirs_file(tool_name: str, tool_input: dict) -> str | None:
-    """Block Write/Edit to _sources/ directories inside any Obsidian vault."""
+    """Block Write/Edit to _sources/ directories inside any configured vault."""
     if tool_name not in ("Write", "Edit"):
         return None
     file_path = tool_input.get("file_path", "")
     if not path_hits_protected_dir(file_path):
         return None
-    if find_vault_root(file_path):
+    if is_in_vault(file_path):
         dirs = ", ".join(PROTECTED_DIRS)
         return deny(
             "protected-dir",
@@ -108,6 +151,58 @@ def protected_dirs_bash(tool_name: str, tool_input: dict) -> str | None:
     return None
 
 
+def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
+    """Block edits to vault files marked dg-publish: true without user confirmation."""
+    if tool_name not in ("Write", "Edit"):
+        return None
+    file_path = tool_input.get("file_path", "")
+    if not file_path or not is_in_vault(file_path):
+        return None
+    if tool_name == "Edit":
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read(1000)
+        except (OSError, UnicodeDecodeError):
+            return None
+    else:
+        content = tool_input.get("content", "")
+    if not content.startswith("---"):
+        return None
+    end = content.find("---", 3)
+    if end == -1:
+        return None
+    frontmatter = content[3:end]
+    if not re.search(r"^dg-publish:\s*true", frontmatter, re.MULTILINE):
+        return None
+    return deny(
+        "published-file",
+        f"'{os.path.basename(file_path)}' is published to the website (dg-publish: true). Edits will go live.",
+        f"To modify, use Bash with {ESCAPE_HATCH} after the user confirms.",
+    )
+
+
+def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
+    """Block recursive rm/mv on vault paths, including via relative paths from within a vault."""
+    if tool_name != "Bash":
+        return None
+    command = tool_input.get("command", "")
+    if not command_touches_vault(command):
+        return None
+    if re.search(r"\brm\s+.*-[a-z]*[rR]", command):
+        return deny(
+            "destructive-rm",
+            "Recursive rm on a path that appears to be in an Obsidian vault.",
+        )
+    if re.search(r"\bmv\b", command):
+        return deny(
+            "destructive-mv",
+            "mv on a path that appears to be in an Obsidian vault. Use the Obsidian CLI for moves to preserve internal links.",
+        )
+    return None
+
+
 def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
     """Redirect operational knowledge from agent auto-memory to the Obsidian wiki.
 
@@ -137,61 +232,6 @@ def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
         ),
         show_escape_hint=False,
     )
-
-
-def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
-    """Block edits to vault files marked dg-publish: true without user confirmation."""
-    if tool_name not in ("Write", "Edit"):
-        return None
-    file_path = tool_input.get("file_path", "")
-    if not file_path or not find_vault_root(file_path):
-        return None
-    if tool_name == "Edit":
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read(1000)
-        except (OSError, UnicodeDecodeError):
-            return None
-    else:
-        content = tool_input.get("content", "")
-    if not content.startswith("---"):
-        return None
-    end = content.find("---", 3)
-    if end == -1:
-        return None
-    frontmatter = content[3:end]
-    if not re.search(r"^dg-publish:\s*true", frontmatter, re.MULTILINE):
-        return None
-    return deny(
-        "published-file",
-        f"'{os.path.basename(file_path)}' is published to the website (dg-publish: true). Edits will go live.",
-        f"To modify, use Bash with {ESCAPE_HATCH} after the user confirms.",
-    )
-
-
-def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
-    """Block recursive rm/mv on paths that appear to be inside an Obsidian vault."""
-    if tool_name != "Bash":
-        return None
-    command = tool_input.get("command", "")
-    # Case-insensitive check for "obsidian" anywhere in the command.
-    # Broad by design: false-positives are cheap (just requires the escape
-    # hatch), false-negatives could mean data loss.
-    if not re.search(r"obsidian", command, re.IGNORECASE):
-        return None
-    if re.search(r"\brm\s+.*-[a-z]*[rR]", command):
-        return deny(
-            "destructive-rm",
-            "Recursive rm on a path that appears to be in an Obsidian vault.",
-        )
-    if re.search(r"\bmv\b", command):
-        return deny(
-            "destructive-mv",
-            "mv on a path that appears to be in an Obsidian vault. This could relocate or overwrite irreplaceable data.",
-        )
-    return None
 
 
 # ── Registry ─────────────────────────────────────────────────────
