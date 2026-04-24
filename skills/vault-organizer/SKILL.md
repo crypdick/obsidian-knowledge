@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 0.6.0
+version: 0.7.0
 ---
 
 # Vault Organizer
@@ -27,6 +27,27 @@ files — only indexes, links, file locations, and file names.
   target in every CLI call (e.g., `obsidian vault="My Vault" ...`). The CLI
   defaults to the most recently focused vault, which may not be the one being
   organized.
+
+## Orientation: vault root, state, and config locations
+
+**The plugin may be invoked from a working directory that is NOT the vault.**
+Always start by locating the vault explicitly:
+
+```bash
+cat ~/.config/obsidian-knowledge/vaults.yaml
+```
+
+This file lists the vault root path(s). Use the first listed vault unless
+the user specifies otherwise. All subsequent paths in this skill are relative
+to `<vault_root>`.
+
+Key locations (all relative to `<vault_root>`):
+- **State files** — `<vault_root>/.config/obsidian-knowledge/` (CHANGELOG.md, NEEDS_ATTENTION.md)
+- **Zone config** — `<vault_root>/.claude/vault-zones.yaml`
+- **Vault instructions** — `<vault_root>/CLAUDE.md` (naming conventions, agent rules)
+
+These are at the vault root, not inside any managed sub-zone even if your
+working directory is elsewhere.
 
 ## Note types
 
@@ -52,7 +73,7 @@ organization and determine correct placement:
 
 ## State files
 
-All persistent state lives in `<vault>/.config/obsidian-knowledge/`.
+All persistent state lives in `<vault_root>/.config/obsidian-knowledge/`.
 Create this directory on first run if it does not exist.
 
 ### CHANGELOG.md
@@ -96,8 +117,21 @@ Format:
 
 Execute these steps in order each run.
 
-### Step 0: Ensure Obsidian is running
+### Step 0: Locate vault and ensure Obsidian is running
 
+**First, find the vault root:**
+```bash
+cat ~/.config/obsidian-knowledge/vaults.yaml
+```
+
+Set `VAULT` to the path from that file (e.g., `/home/user/Documents/obsidian`).
+Then read the vault's own instructions and zone config:
+```bash
+cat "$VAULT/CLAUDE.md"          # naming conventions, agent rules
+cat "$VAULT/.claude/vault-zones.yaml"  # ai_managed, ai_assisted, read-only zones
+```
+
+**Then verify Obsidian is running:**
 Run `obsidian version`. If it fails, launch Obsidian (e.g., run `obsidian` or
 open it via the system launcher) and retry `obsidian version` up to 3 times
 with a few seconds between attempts. If Obsidian still cannot be reached,
@@ -105,7 +139,8 @@ log the failure to CHANGELOG and exit.
 
 ### Step 1: Read state
 
-Read `NEEDS_ATTENTION.md` if it exists. Parse existing entries to:
+Read `$VAULT/.config/obsidian-knowledge/NEEDS_ATTENTION.md` if it exists.
+Parse existing entries to:
 - Avoid re-investigating known issues
 - Detect items that have been resolved since last run (the referenced file or
   link now exists)
@@ -119,9 +154,20 @@ Walk the vault directory tree, skipping dotfolders (`.obsidian`, `.config`,
 - All non-markdown files and their locations
 - Parent-child folder relationships
 
+**Efficient command to find folders missing indexes** (within a managed zone,
+e.g., `wiki/`):
+```bash
+find "$VAULT/wiki" -type d | grep -v '/\.' | sort | while read dir; do
+  [ ! -f "$dir/index.md" ] && echo "MISSING: $dir"
+done
+```
+
+This immediately shows which folders need indexes — run it before any other
+analysis to scope the work.
+
 ### Step 3: Organize files
 
-Respect the vault's access zones defined in `.claude/vault-zones.yaml`.
+Respect the vault's access zones defined in `$VAULT/.claude/vault-zones.yaml`.
 Only organize files in zones where the agent has write access.
 
 For files clearly misplaced (in a parent folder when a more specific child
@@ -226,7 +272,7 @@ NEEDS_ATTENTION entry format for rename escalations:
 
 ### Step 4: Sync indexes
 
-For every folder in the `ai_managed` zones (per `.claude/vault-zones.yaml`):
+For every folder in the `ai_managed` zones (per `$VAULT/.claude/vault-zones.yaml`):
 
 **If no `index.md` exists:** Create one with a heading matching the folder name
 and thin pointer entries for each file and subfolder.
@@ -234,6 +280,13 @@ and thin pointer entries for each file and subfolder.
 **If `index.md` exists:** Add entries for files/subfolders not yet listed.
 Remove entries pointing to files that no longer exist. Preserve any existing
 entries that are still valid.
+
+**Note on path-based wikilinks:** When updating existing indexes, watch for
+path-based wikilinks using outdated paths (e.g., `[[old/path/file|Display]]`).
+These appear as broken links in `obsidian unresolved` and cause files to show
+as orphans even when listed. Replace stale path-based links with filename-based
+wikilinks (`[[filename|Display]]`) which Obsidian resolves reliably regardless
+of where the file moves.
 
 #### Index entry format
 
@@ -260,7 +313,29 @@ Rules:
 Run `obsidian unresolved verbose format=json` to get all unresolved links
 with their source files.
 
-For each unresolved link, apply this resolution logic in order:
+**Filter out intentional stubs before investigating.** The `obsidian unresolved`
+output is almost always noisy — most entries are deliberate forward references
+that the user never intended to create yet. Blindly acting on all of them
+creates busy work and false positives.
+
+Before investigating, narrow the list:
+- **Scope to managed zones only.** Ignore links whose source file lives outside
+  the `ai_managed` zones — those are out of scope for this skill.
+- **Recognise intentional stubs by naming convention.** Every vault has
+  consistent link-naming patterns (prefixes, suffixes, brackets, sigils) that
+  distinguish "I'll write this note someday" references from real broken links.
+  Spend a moment scanning the raw output to identify recurring patterns — links
+  that appear many times across unrelated files are almost certainly a stub
+  convention, not a mass breakage.
+- **Template placeholders** (`{{...}}`, `<% ... %>`, or similar) are never
+  actionable — skip them.
+
+Focus investigation on links **from files inside managed zones** that reference
+filenames you'd expect to already exist: structural files (`CLAUDE.md`, sibling
+index files, guides), files explicitly referenced in prose as though they exist,
+or links that appear only once or twice and don't match any recurring pattern.
+
+For each unresolved link worth investigating, apply this resolution logic:
 
 1. **Exact name match:** Search the vault for a file with the same name. If
    found (it was moved), fix the link to point to the new location.
@@ -285,6 +360,7 @@ unresolvable issues found. Write the file (or delete it if empty).
 
 ### Step 7: Append to CHANGELOG.md
 
-Add a date-stamped section at the top summarizing all actions taken: files
-moved, indexes created/updated, links fixed, NEEDS_ATTENTION items
-added/resolved. Skip the entry entirely if no actions were taken.
+Add a date-stamped section at the top of
+`$VAULT/.config/obsidian-knowledge/CHANGELOG.md` summarizing all actions
+taken: files moved, indexes created/updated, links fixed, NEEDS_ATTENTION
+items added/resolved. Skip the entry entirely if no actions were taken.
