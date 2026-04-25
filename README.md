@@ -38,6 +38,25 @@ history:
 - **Stop hook integration** — a reminder nudges the agent to file
   sessions at the end of each conversation
 
+### improve-harness
+
+Multi-phase side-quest workflow to fix harness friction. Triggered by
+`/improve-harness <description>` or natural-language frustration phrases.
+The side quest runs as a headless `claude -p --worktree` session that
+produces a proposal (with internal review), receives main-agent
+executive review, then implements (with internal review via
+`subagent-driven-development`) and leaves a branch for human approval.
+
+The skill is organized for progressive disclosure: `SKILL.md` is a thin
+index; sub-asset files (`phases.md`, `templates.md`, `conventions.md`)
+hold the details and load only when needed.
+
+### deploy-harness
+
+Single-purpose skill: merge an approved `improve/<slug>` branch into
+main, bump patch version, push to origin. Called from `improve-harness`
+Phase 5 or invokable manually.
+
 ## Hooks
 
 ### Vault protection (PreToolUse)
@@ -80,6 +99,40 @@ conversations.
   `changelog.md` if the session produced edits, decisions, or discoveries
 - **remind-convos.sh** — reminds the agent to preserve session outputs
   (diary notes, convo notes, guides, changelog entries, gotchas)
+
+### recall-init (SessionStart)
+
+`recall-init.py` runs at every session start. Two responsibilities:
+
+1. **Verify the memory symlink.** Checks that `~/.claude/projects/` is
+   symlinked to `<vault-root>/wiki/systems/repos/`. If not, emits a
+   non-blocking warning telling the user to run `/setup-harness`.
+2. **Inject the harness primer.** Adds a 5-directive context block to
+   the session: memory location, recall via `rg`, capture at session
+   end, friction reflection, user-frustration reflection. The primer
+   stands alone — agents that read only this know how to operate
+   within the harness.
+
+### reflect-nudge (PostToolUse on Bash)
+
+`reflect-nudge.py` fires every 10 bash invocations within a session.
+Continuous — no per-session suppression. Reminds the agent to step back
+and consider whether observed friction warrants a harness improvement.
+
+## Commands
+
+### /setup-harness
+
+One-time migration. Rsyncs `~/.claude/projects/*` into
+`<vault>/wiki/systems/repos/`, surfaces collisions for manual merge,
+then replaces `~/.claude/projects/` with a symlink. Idempotent re-runs
+are safe.
+
+### /improve-harness <description>
+
+Triggers the meta-improvement workflow. The argument is the friction
+description — main agent uses it to seed the incident report and
+generate a slug.
 
 ## Requirements
 
