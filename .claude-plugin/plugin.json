@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Skills, hooks, and conventions for maintaining Obsidian knowledge base vaults",
   "author": {
     "name": "Ricardo Decal"
@@ -29,6 +29,27 @@
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/remind-convos.py"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/recall-init.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/reflect-nudge.py"
           }
         ]
       }
