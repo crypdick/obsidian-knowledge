@@ -1,6 +1,4 @@
 """Shared test fixtures for obsidian-knowledge plugin hooks."""
-import json
-import os
 import sys
 from pathlib import Path
 
