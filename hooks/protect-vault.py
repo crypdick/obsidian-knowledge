@@ -452,6 +452,12 @@ def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
     blocked_prefixes = ("feedback_", "project_", "reference_")
     if not any(basename.startswith(p) for p in blocked_prefixes):
         return None
+    if not VAULT_ROOTS:
+        vault_lines = "  (no vaults configured in ~/.config/obsidian-knowledge/vaults.yaml)"
+    elif len(VAULT_ROOTS) == 1:
+        vault_lines = f"  Vault: {VAULT_ROOTS[0]}"
+    else:
+        vault_lines = "  Vaults:\n" + "\n".join(f"    - {r}" for r in VAULT_ROOTS)
     return deny(
         "wiki-policy",
         f"Writing '{basename}' to agent auto-memory is not permitted. "
@@ -461,6 +467,7 @@ def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
             "  - Behavioral rules (how the agent should act) → CLAUDE.md in the Obsidian vault\n"
             "  - Facts about the world (tools, gotchas, procedures, system state) → wiki/ in the vault\n"
             "  - MEMORY.md is the only file permitted here — use it only as a pointer to vault locations.\n"
+            f"\n{vault_lines}\n"
             "\n(The I_AM_BEING_CAREFUL=1 escape hatch does not apply to this rule — there is no bypass.)"
         ),
         show_escape_hint=False,

@@ -13,41 +13,24 @@ version: 0.7.0
 
 # Remember Conversations
 
-Capture valuable conversation outputs as permanent notes in the vault
-and log what happened, so that insights compound rather than disappearing
-into chat history.
+Capture valuable conversation output as permanent vault notes. Log what happened so insights compound, not vanish into chat.
 
 ## Outputs
 
-Each session can produce up to two outputs. Decide which combination
-fits based on what happened.
+Each session yield up to two outputs. Pick combo by what happened.
 
 ### Changelog entry
 
-Always append to `Utility/obsidian-knowledge/changelog.md` if the
-session produced anything substantive — edits, decisions, discoveries,
-dead ends. Keep entries terse (one line per action) and link out to
-session notes for detail rather than documenting inline. Follow the
-format defined by the vault-organizer skill. Skip if nothing meaningful
-happened or you already logged.
+Always append to `Utility/obsidian-knowledge/changelog.md` if session produced substance — edits, decisions, discoveries, dead ends. One line per action. Link to session notes for detail, not inline doc. Follow format from vault-organizer skill. Skip if nothing meaningful or already logged.
 
 ### Session notes
 
-Create a session note when the conversation produced something a future
-agent or the user would benefit from finding later. There are two types,
-filed in **separate folders**:
+Create session note when convo produced something future agent or user benefit finding later. Two types, **separate folders**:
 
-- **Convo note** — analytical synthesis: comparisons between options,
-  decision rationales, research summaries, discoveries, or connections
-  that weren't obvious before. Lives in a `convos/` subfolder of the
-  relevant area.
-- **Diary note** — narrative account: what happened, what was tried,
-  what worked or didn't, and why. Use for processes, incidents, debugging
-  sessions, or any sequence of events worth retelling. Lives in a
-  `diary/` subfolder of the relevant area.
+- **Convo note** — analytical synthesis: option comparisons, decision rationales, research summaries, discoveries, non-obvious connections. Lives in `convos/` subfolder of relevant area.
+- **Diary note** — narrative: what happened, what tried, what worked or not, why. Use for processes, incidents, debug sessions, event sequences worth retell. Lives in `diary/` subfolder of relevant area.
 
-A session can produce both types if it involved a notable process AND
-yielded a separable analytical insight.
+Session can produce both if notable process AND separable analytical insight.
 
 Do **not** create session notes for:
 - Simple lookups or factual answers
@@ -56,7 +39,7 @@ Do **not** create session notes for:
 
 ## Note structure
 
-Every session note follows this structure:
+Every session note follow this structure:
 
 ```markdown
 # {Descriptive title}
@@ -80,12 +63,11 @@ for convos, etc. As long as it needs to be.}
 - [[wikilinks to relevant vault pages]]
 ```
 
-Adapt sections to fit — not every note needs every section.
+Adapt sections to fit — not every note need every section.
 
 ## Filing location
 
-Convo notes go in `convos/` and diary notes go in `diary/` subfolders
-within the relevant subtree:
+Convo notes go in `convos/`, diary notes go in `diary/` subfolders within relevant subtree:
 
 ```
 area/topic/
@@ -102,28 +84,19 @@ area/topic/
 
 ### Choosing the right subtree
 
-Place the note in the most specific subtree that covers its topic. If a
-conversation spans multiple domains, choose the primary one and add
-wikilinks to the others in the Related section.
+Place note in most specific subtree covering topic. If convo span multiple domains, pick primary, add wikilinks to others in Related.
 
 ### Filename convention
 
-Follow the vault's CLAUDE.md for naming style. If no convention is
-defined, default to `YYYY-MM-DD-{slug}.md`. The folder location
-(`convos/` vs `diary/`) distinguishes the note type — no type suffix
-is required, though adding `-convo` or `-diary` to a filename is
-permitted for self-documentation.
+Follow vault's CLAUDE.md for naming. No convention defined → default `YYYY-MM-DD-{slug}.md`. Folder location (`convos/` vs `diary/`) distinguish type — no type suffix required, but `-convo` or `-diary` suffix permitted for self-doc.
 
 ## Procedure
 
-1. **Determine the subtree** — identify where session notes belong
-   based on topic.
+1. **Determine the subtree** — identify where session notes belong by topic.
 
-2. **Determine the type** — convo or diary — and target the
-   corresponding subfolder (`convos/` or `diary/`).
+2. **Determine the type** — convo or diary — target matching subfolder (`convos/` or `diary/`).
 
-3. **Create the subfolder if needed** — if the subtree doesn't have
-   the target folder yet, create it with an `index.md`:
+3. **Create the subfolder if needed** — if subtree lack target folder, create with `index.md`:
    ```markdown
    # Conversations
 
@@ -131,25 +104,18 @@ permitted for self-documentation.
    ```
    (Use `# Diary` for diary folders.)
 
-4. **Write the note** — create the file using the Obsidian CLI so
-   Obsidian's link index stays in sync:
+4. **Write the note** — create file via Obsidian CLI so Obsidian link index stay in sync:
    ```bash
    obsidian create path="{subtree}/convos/YYYY-MM-DD-slug.md" content="..." vault="<vault-name>"
    ```
-   Use `\n` for newlines in the content value. Always specify the vault
-   name if more than one vault is registered.
+   Use `\n` for newlines in content value. Always specify vault name if more than one vault registered.
 
-5. **Update the subfolder's `index.md`** — add an entry for the new
-   note.
+5. **Update the subfolder's `index.md`** — add entry for new note.
 
-6. **Update parent `index.md`** — if the `convos/` or `diary/`
-   subfolder is new, add it to the parent folder's index:
+6. **Update parent `index.md`** — if `convos/` or `diary/` subfolder new, add to parent folder index:
    ```markdown
    - [[convos/index|Conversations]] — analytical synthesis notes
    - [[diary/index|Diary]] — narrative session accounts
    ```
 
-7. **Update the changelog** — append a dated entry to
-   `Utility/obsidian-knowledge/changelog.md` summarizing actions taken.
-   Link to session notes created above rather than documenting detail
-   inline.
+7. **Update the changelog** — append dated entry to `Utility/obsidian-knowledge/changelog.md` summarizing actions. Link to session notes above, not inline detail.
