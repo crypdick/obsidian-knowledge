@@ -25,52 +25,23 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
+
+# Vault discovery is shared with the Stop hooks via lib/vault_config.py.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
 
 ESCAPE_HATCH = "I_AM_BEING_CAREFUL=1"
 PROTECTED_DIRS = ["_sources"]
-CONFIG_PATH = Path.home() / ".config" / "obsidian-knowledge" / "vaults.yaml"
-
-
-# ── Config ───────────────────────────────────────────────────────
-
-
-def load_vault_roots() -> list[str]:
-    """Load vault root paths from ~/.config/obsidian-knowledge/vaults.yaml."""
-    if not CONFIG_PATH.exists():
-        return []
-    try:
-        text = CONFIG_PATH.read_text()
-    except OSError:
-        return []
-    roots = []
-    for line in text.splitlines():
-        m = re.match(r"^\s*-\s+(.+)$", line)
-        if m:
-            p = m.group(1).strip().strip("'\"")
-            if p and not p.startswith("#"):
-                roots.append(os.path.abspath(os.path.expanduser(p)))
-    return roots
-
 
 VAULT_ROOTS = load_vault_roots()
 
 
-def is_in_vault(path: str) -> bool:
-    """Return True if path is inside any configured vault root."""
-    abs_path = os.path.abspath(os.path.expanduser(path))
-    return any(
-        abs_path == root or abs_path.startswith(root + os.sep)
-        for root in VAULT_ROOTS
-    )
-
-
 def command_touches_vault(command: str) -> bool:
     """Return True if the command operates on or from within a vault."""
-    if is_in_vault(os.getcwd()):
+    if is_in_vault(os.getcwd(), VAULT_ROOTS):
         return True
     return any(
-        is_in_vault(token)
+        is_in_vault(token, VAULT_ROOTS)
         for token in command.split()
         if token.startswith(("/", "~"))
     )
@@ -112,7 +83,7 @@ def protected_dirs_file(tool_name: str, tool_input: dict) -> str | None:
     file_path = tool_input.get("file_path", "")
     if not path_hits_protected_dir(file_path):
         return None
-    if is_in_vault(file_path):
+    if is_in_vault(file_path, VAULT_ROOTS):
         dirs = ", ".join(PROTECTED_DIRS)
         return deny(
             "protected-dir",
@@ -122,32 +93,73 @@ def protected_dirs_file(tool_name: str, tool_input: dict) -> str | None:
     return None
 
 
+def _bash_write_targets(command: str) -> list:
+    """Return paths targeted by destructive operations in a bash command.
+
+    Walks each write operation (redirect, rm/mv/etc., sed -i) and collects
+    the actual *target* paths. Avoids the old "any write pattern + zone
+    name anywhere in command" trap that false-positived on benign cases
+    like `ls _sources/ 2>/dev/null && rm /tmp/x` (rm targets /tmp, not
+    _sources, but both tokens were present).
+    """
+    targets: list = []
+
+    # Stdout/stderr redirects: > target, >> target. Skip /dev/null.
+    # Lookbehind avoids matching `<<` heredocs and `2>&1`.
+    for m in re.finditer(r'(?<![<>&])>>?\s*(\S+)', command):
+        target = m.group(1)
+        if target != '/dev/null':
+            targets.append(target)
+
+    # Destructive commands: collect non-flag args until next |;& or EOL.
+    destructive_cmd = r'\b(?:rm|mv|rmdir|unlink|truncate|shred|chmod|chown)\b'
+    for m in re.finditer(rf'{destructive_cmd}([^|;&]*)', command):
+        for tok in m.group(1).split():
+            if not tok.startswith('-'):
+                targets.append(tok)
+
+    # sed -i (in-place edit): file args after -i.
+    for m in re.finditer(r'\bsed\b[^|;&]*\s-i\b([^|;&]*)', command):
+        for tok in m.group(1).split():
+            if tok.startswith(('-', "'", '"')):
+                continue
+            targets.append(tok)
+
+    return targets
+
+
 def protected_dirs_bash(tool_name: str, tool_input: dict) -> str | None:
     """Block Bash write operations targeting _sources/ paths."""
     if tool_name != "Bash":
         return None
     command = tool_input.get("command", "")
-    if not any(d in command for d in PROTECTED_DIRS):
-        return None
-    write_patterns = [
-        r"\brm\b",
-        r"\bmv\b",
-        r"\brmdir\b",
-        r"\bunlink\b",
-        r">\s*\S*_sources",
-        r">>\s*\S*_sources",
-        r"\bsed\b.*-i",
-        r"\bchmod\b",
-        r"\bchown\b",
-        r"\btruncate\b",
-        r"\bshred\b",
-    ]
-    if any(re.search(p, command) for p in write_patterns):
-        dirs = ", ".join(PROTECTED_DIRS)
-        return deny(
-            "protected-dir-bash",
-            f"Bash command would modify files in a protected directory ({dirs}). These contain irreplaceable originals.",
-        )
+
+    for target in _bash_write_targets(command):
+        if path_hits_protected_dir(target):
+            dirs = ", ".join(PROTECTED_DIRS)
+            return deny(
+                "protected-dir-bash",
+                f"Bash command would modify files in a protected directory ({dirs}). These contain irreplaceable originals.",
+            )
+
+    # Safety net: catch `cd /path/_sources && rm foo` — relative-path
+    # destructive ops after entering a protected dir. Target-based parsing
+    # alone misses this because `foo` doesn't contain `_sources`. Since
+    # _sources/ holds irreplaceable originals, defense-in-depth is worth
+    # the occasional friction.
+    has_destructive = bool(re.search(
+        r'\b(?:rm|mv|rmdir|unlink|truncate|shred|chmod|chown|sed\s+-i)\b',
+        command,
+    ))
+    if has_destructive:
+        for m in re.finditer(r'\bcd\s+(\S+)', command):
+            if path_hits_protected_dir(m.group(1)):
+                dirs = ", ".join(PROTECTED_DIRS)
+                return deny(
+                    "protected-dir-bash",
+                    f"Bash command appears to cd into a protected directory ({dirs}) before a destructive op. "
+                    "Refusing on the side of caution.",
+                )
     return None
 
 
@@ -156,7 +168,7 @@ def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
     if tool_name not in ("Write", "Edit"):
         return None
     file_path = tool_input.get("file_path", "")
-    if not file_path or not is_in_vault(file_path):
+    if not file_path or not is_in_vault(file_path, VAULT_ROOTS):
         return None
     if tool_name == "Edit":
         if not os.path.isfile(file_path):
@@ -184,22 +196,55 @@ def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
 
 
 def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
-    """Block recursive rm/mv on vault paths, including via relative paths from within a vault."""
+    """Block recursive rm/mv when the *target* is a vault path (absolute,
+    or relative when cwd is inside a vault).
+
+    Old implementation fired whenever `mv` or recursive `rm` appeared in
+    a command and the command "touched the vault" (cwd in vault, or any
+    `/`-prefixed token in vault). That produced false positives like
+    `git status && mv /tmp/a /tmp/b` from inside a vault directory: the
+    mv has nothing to do with the vault, but the rule blocked because
+    cwd was a vault root.
+    """
     if tool_name != "Bash":
         return None
     command = tool_input.get("command", "")
-    if not command_touches_vault(command):
-        return None
-    if re.search(r"\brm\s+.*-[a-z]*[rR]", command):
-        return deny(
-            "destructive-rm",
-            "Recursive rm on a path that appears to be in an Obsidian vault.",
-        )
-    if re.search(r"\bmv\b", command):
-        return deny(
-            "destructive-mv",
-            "mv on a path that appears to be in an Obsidian vault. Use the Obsidian CLI for moves to preserve internal links.",
-        )
+    cwd = os.getcwd()
+    cwd_in_vault = is_in_vault(cwd, VAULT_ROOTS)
+
+    def target_in_vault(token: str) -> bool:
+        if token.startswith(("/", "~")):
+            return is_in_vault(token, VAULT_ROOTS)
+        # Relative paths are vault paths only if cwd is in a vault.
+        return cwd_in_vault
+
+    # Walk each rm and mv invocation in its own segment.
+    for m in re.finditer(r'\b(rm|mv)\b([^|;&]*)', command):
+        cmd = m.group(1)
+        tokens = m.group(2).split()
+        flags = [t for t in tokens if t.startswith("-")]
+        paths = [t for t in tokens if not t.startswith("-")]
+
+        if cmd == "rm":
+            # Only flag recursive removes (the dangerous variant).
+            if not any(re.search(r"[rR]", f) for f in flags):
+                continue
+            for p in paths:
+                if target_in_vault(p):
+                    return deny(
+                        "destructive-rm",
+                        "Recursive rm on a path that appears to be in an Obsidian vault.",
+                    )
+
+        if cmd == "mv":
+            for p in paths:
+                if target_in_vault(p):
+                    return deny(
+                        "destructive-mv",
+                        "mv on a path that appears to be in an Obsidian vault. "
+                        "Use the Obsidian CLI for moves to preserve internal links.",
+                    )
+
     return None
 
 

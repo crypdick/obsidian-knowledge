@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Skills, hooks, and conventions for maintaining Obsidian knowledge base vaults",
   "author": {
     "name": "Ricardo Decal"
@@ -24,11 +24,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/update-changelog.sh"
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/update-changelog.py"
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/remind-convos.sh"
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/remind-convos.py"
           }
         ]
       }
