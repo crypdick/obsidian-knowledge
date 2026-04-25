@@ -1,8 +1,4 @@
 """Tests for recall_init_lib (symlink verification + primer build)."""
-from pathlib import Path
-
-import pytest
-
 from lib import recall_init_lib  # noqa: E402
 
 

@@ -4,8 +4,6 @@ import os
 import subprocess
 from pathlib import Path
 
-import pytest
-
 PLUGIN_ROOT = Path(__file__).parent.parent
 HOOK = PLUGIN_ROOT / "hooks" / "recall-init.py"
 

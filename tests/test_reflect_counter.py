@@ -1,8 +1,4 @@
 """Tests for the per-session bash-call counter."""
-from pathlib import Path
-
-import pytest
-
 from lib import reflect_counter
 
 
