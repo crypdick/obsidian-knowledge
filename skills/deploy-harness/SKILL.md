@@ -52,10 +52,15 @@ Single-purpose skill: ship a branch.
    git push origin main
    ```
 
-8. Report to caller:
-   - Final SHA: `git rev-parse HEAD`
-   - New version: `<X.Y.Z+1>`
-   - Branch deleted (locally): `git branch -d <branch>`
+8. Delete the merged branch locally:
+   ```bash
+   git branch -d <branch>
+   ```
+
+9. Report to caller:
+   - Final SHA from `git rev-parse HEAD`
+   - New version (`<X.Y.Z+1>`)
+   - Confirmation that `<branch>` was deleted locally
 
 ## Safety
 

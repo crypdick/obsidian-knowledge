@@ -13,6 +13,8 @@ Determines:
 
 Creates `.improve-harness/<slug>/` state directory. Writes `status` file with content `0`.
 
+For REPO-SCOPED targets: ensure `<target-repo>/.gitignore` lists `.improve-harness/`. Append it if missing (the plugin repo already ignores it). State directories should never be committed to the working repo.
+
 ## Phase 1 — Proposal subagent (with internal review)
 
 Main agent invokes:
