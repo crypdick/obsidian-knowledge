@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 0.8.0
+version: 0.9.0
 ---
 
 # Vault Organizer
@@ -43,7 +43,7 @@ to `<vault_root>`.
 
 Key locations (all relative to `<vault_root>`):
 - **State files** — `<vault_root>/Utility/obsidian-knowledge/` (changelog.md, needs-attention.md)
-- **Zone config** — `<vault_root>/.claude/vault-zones.yaml`
+- **Zone config** — `<vault_root>/.claude/obsidian-knowledge.yaml`
 - **Vault instructions** — `<vault_root>/CLAUDE.md` (naming conventions, agent rules)
 
 These are at the vault root, not inside any managed sub-zone even if your
@@ -128,7 +128,7 @@ Set `VAULT` to the path from that file (e.g., `/home/user/Documents/obsidian`).
 Then read the vault's own instructions and zone config:
 ```bash
 cat "$VAULT/CLAUDE.md"          # naming conventions, agent rules
-cat "$VAULT/.claude/vault-zones.yaml"  # ai_managed, ai_assisted, read-only zones
+cat "$VAULT/.claude/obsidian-knowledge.yaml"  # ai_managed, ai_assisted, read-only zones
 ```
 
 **Then verify Obsidian is running:**
@@ -167,7 +167,7 @@ analysis to scope the work.
 
 ### Step 3: Organize files
 
-Respect the vault's access zones defined in `$VAULT/.claude/vault-zones.yaml`.
+Respect the vault's access zones defined in `$VAULT/.claude/obsidian-knowledge.yaml`.
 Only organize files in zones where the agent has write access.
 
 For files clearly misplaced (in a parent folder when a more specific child
@@ -272,7 +272,7 @@ needs-attention.md entry format for rename escalations:
 
 ### Step 4: Sync indexes
 
-For every folder in the `ai_managed` zones (per `$VAULT/.claude/vault-zones.yaml`):
+For every folder in the `ai_managed` zones (per `$VAULT/.claude/obsidian-knowledge.yaml`):
 
 **If no `index.md` exists:** Create one with a heading matching the folder name
 and thin pointer entries for each file and subfolder.

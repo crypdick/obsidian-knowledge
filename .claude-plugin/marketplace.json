@@ -11,7 +11,7 @@
       "name": "obsidian-knowledge",
       "source": "./",
       "description": "Skills, hooks, and conventions for maintaining Obsidian knowledge base vaults",
-      "version": "1.2.0"
+      "version": "2.0.0"
     }
   ]
 }

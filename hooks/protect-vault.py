@@ -2,23 +2,28 @@
 """
 PreToolUse hook: protect Obsidian vault integrity.
 
-Ships with the obsidian-knowledge plugin. Requires vault roots configured in
-~/.config/obsidian-knowledge/vaults.yaml:
+Ships with the obsidian-knowledge plugin. Discovers vaults from
+~/.config/obsidian-knowledge/vaults.yaml; reads per-vault policy from
+each vault's `.claude/obsidian-knowledge.yaml`.
 
-    vaults:
-      - /path/to/your/vault
+Always-on rules (no per-vault config required):
+- Read-only `_sources/` directories (irreplaceable originals like tax
+  records, legal filings, vital docs).
+- Recursive rm/mv on vault paths flagged for Obsidian-CLI use instead.
+- Edits to dg-publish:true files blocked without user confirmation.
+- Operational knowledge writes to ~/.claude/projects/*/memory/ blocked.
 
-Provides:
-- Read-only _sources/ directories (irreplaceable originals like tax records,
-  legal filings, vital docs). Agents can read but not write.
-- Guards against recursive rm/mv on vault paths, including relative paths
-  when the working directory is inside a vault.
-- Blocks edits to published files (dg-publish: true) without user confirmation.
-- Redirects operational knowledge from agent auto-memory to the vault wiki.
+Per-vault opt-in rules (no-op without config):
+- ai_readonly_folders / ai_readonly_root_files — Write, Edit, Bash
+  destructive ops blocked on these paths.
+- publish_allowlist — `dg-publish: true` only allowed in listed paths.
+- generic_filenames — block creation of wikilink-collision-prone names.
+- illegal_filename_chars — block creation of files with chars that
+  break sync targets.
 
 Escape hatch: prefix Bash commands with I_AM_BEING_CAREFUL=1 to bypass.
-Write/Edit to _sources/ has no inline bypass — use Bash with the escape hatch.
-The wiki-policy rule has no escape hatch — write to the wiki instead.
+Some rules have no escape hatch (wiki-policy, publish-guard) — see deny
+messages.
 """
 
 import json
@@ -26,9 +31,11 @@ import os
 import re
 import sys
 
-# Vault discovery is shared with the Stop hooks via lib/vault_config.py.
+# Shared with Stop hooks via lib/vault_config.py; per-vault policy via
+# lib/vault_policy.py.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
+from lib.vault_policy import find_containing_vault, load_vault_policy  # noqa: E402
 
 ESCAPE_HATCH = "I_AM_BEING_CAREFUL=1"
 PROTECTED_DIRS = ["_sources"]
@@ -164,22 +171,26 @@ def protected_dirs_bash(tool_name: str, tool_input: dict) -> str | None:
 
 
 def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
-    """Block edits to vault files marked dg-publish: true without user confirmation."""
-    if tool_name not in ("Write", "Edit"):
+    """Warn before Edit-ing files already marked dg-publish: true.
+
+    Narrowed to Edit only as of v2.0: for Write, the publish_guard rule
+    handles the location-vs-allowlist check on the new content. Edit
+    operates on an existing file whose frontmatter we read from disk —
+    the warning is "you're about to modify content that's already live
+    on the published site."
+    """
+    if tool_name != "Edit":
         return None
     file_path = tool_input.get("file_path", "")
     if not file_path or not is_in_vault(file_path, VAULT_ROOTS):
         return None
-    if tool_name == "Edit":
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read(1000)
-        except (OSError, UnicodeDecodeError):
-            return None
-    else:
-        content = tool_input.get("content", "")
+    if not os.path.isfile(file_path):
+        return None
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read(1000)
+    except (OSError, UnicodeDecodeError):
+        return None
     if not content.startswith("---"):
         return None
     end = content.find("---", 3)
@@ -248,6 +259,183 @@ def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
     return None
 
 
+# ── Per-vault policy rules (opt-in via .claude/obsidian-knowledge.yaml) ──
+
+
+def _publishable_zone_match(abs_path: str, vault_root: str, policy: dict) -> str | None:
+    """Return the offending zone label if `abs_path` is publishable, else None."""
+    rel = os.path.relpath(abs_path, vault_root)
+    parts = rel.split(os.sep)
+    folders = policy.get("ai_readonly_folders", []) or []
+    root_files = policy.get("ai_readonly_root_files", []) or []
+    if parts and parts[0] in folders:
+        return f"{parts[0]}/"
+    if len(parts) == 1 and rel in root_files:
+        return rel
+    return None
+
+
+def ai_readonly_file(tool_name: str, tool_input: dict) -> str | None:
+    """Block Write/Edit on publishable-zone paths (Zone 1)."""
+    if tool_name not in ("Write", "Edit"):
+        return None
+    file_path = tool_input.get("file_path", "")
+    if not file_path:
+        return None
+    vault_root = find_containing_vault(file_path, VAULT_ROOTS)
+    if not vault_root:
+        return None
+    policy = load_vault_policy(vault_root)
+    abs_path = os.path.abspath(os.path.expanduser(file_path))
+    label = _publishable_zone_match(abs_path, vault_root, policy)
+    if not label:
+        return None
+    return deny(
+        "ai-readonly",
+        f"Cannot modify files in the publishable zone ({label}). "
+        "These are Digital Garden content managed by the user.",
+    )
+
+
+def ai_readonly_bash(tool_name: str, tool_input: dict) -> str | None:
+    """Block destructive Bash ops targeting publishable-zone paths."""
+    if tool_name != "Bash":
+        return None
+    command = tool_input.get("command", "")
+    cwd = os.getcwd()
+    cwd_vault = find_containing_vault(cwd, VAULT_ROOTS)
+    # Anchor on cwd-vault for relative-path resolution; otherwise look for
+    # any vault root mentioned in the command's targets.
+    for target in _bash_write_targets(command):
+        if target.startswith(("/", "~")):
+            abs_target = os.path.abspath(os.path.expanduser(target))
+        else:
+            if not cwd_vault:
+                continue  # relative path outside any vault — skip
+            abs_target = os.path.abspath(os.path.join(cwd, target))
+        target_vault = find_containing_vault(abs_target, VAULT_ROOTS)
+        if not target_vault:
+            continue
+        policy = load_vault_policy(target_vault)
+        label = _publishable_zone_match(abs_target, target_vault, policy)
+        if label:
+            return deny(
+                "ai-readonly-bash",
+                f"Bash command would modify files in the publishable zone ({label}). "
+                "These are Digital Garden content managed by the user.",
+            )
+    return None
+
+
+def _matches_publish_allowlist(rel_path: str, allowlist: list) -> bool:
+    for entry in allowlist:
+        if entry.endswith("/"):
+            stripped = entry.rstrip("/")
+            if rel_path == stripped or rel_path.startswith(entry):
+                return True
+        elif rel_path == entry:
+            return True
+    return False
+
+
+def publish_guard(tool_name: str, tool_input: dict) -> str | None:
+    """Block setting `dg-publish: true` outside the publish allowlist."""
+    if tool_name not in ("Write", "Edit"):
+        return None
+    content = (
+        tool_input.get("content", "")
+        if tool_name == "Write"
+        else tool_input.get("new_string", "")
+    )
+    if "dg-publish" not in content:
+        return None
+    if not re.search(r"^\s*dg-publish:\s*true\s*$", content, re.MULTILINE):
+        return None
+    file_path = tool_input.get("file_path", "")
+    if not file_path:
+        return None
+    vault_root = find_containing_vault(file_path, VAULT_ROOTS)
+    if not vault_root:
+        return None
+    policy = load_vault_policy(vault_root)
+    allowlist = policy.get("publish_allowlist", []) or []
+    if not allowlist:
+        return None
+    rel = os.path.relpath(os.path.abspath(file_path), vault_root)
+    if _matches_publish_allowlist(rel, allowlist):
+        return None
+    return deny(
+        "publish-guard",
+        f"Cannot set dg-publish: true on {rel}. Publishing is only allowed in "
+        "paths listed in publish_allowlist (.claude/obsidian-knowledge.yaml).",
+        show_escape_hint=False,
+    )
+
+
+def generic_filename_guard(tool_name: str, tool_input: dict) -> str | None:
+    """Block creation of generic basenames that collide on Obsidian wikilinks."""
+    if tool_name != "Write":
+        return None
+    file_path = tool_input.get("file_path", "")
+    if not file_path:
+        return None
+    vault_root = find_containing_vault(file_path, VAULT_ROOTS)
+    if not vault_root:
+        return None
+    if os.path.exists(file_path):
+        return None  # overwriting an existing file
+    policy = load_vault_policy(vault_root)
+    generics = {g.lower() for g in (policy.get("generic_filenames", []) or [])}
+    if not generics:
+        return None
+    basename = os.path.basename(file_path)
+    if basename.lower() not in generics:
+        return None
+    if basename.lower() == "index.md":
+        return None
+    stem = os.path.splitext(basename)[0]
+    return deny(
+        "generic-filename",
+        f"Refusing to create '{basename}'. Obsidian resolves wikilinks by "
+        f"basename, so this would collide with every other '{basename}' across "
+        f"the vault. Prefix with context — e.g., '{stem}-<context>.md'. "
+        "(index.md is the only exception; it's disambiguated via [[folder/index]].)",
+        show_escape_hint=False,
+    )
+
+
+def illegal_filename_guard(tool_name: str, tool_input: dict) -> str | None:
+    """Block creation of files with chars illegal on any sync target."""
+    if tool_name != "Write":
+        return None
+    file_path = tool_input.get("file_path", "")
+    if not file_path:
+        return None
+    vault_root = find_containing_vault(file_path, VAULT_ROOTS)
+    if not vault_root:
+        return None
+    if os.path.exists(file_path):
+        return None
+    policy = load_vault_policy(vault_root)
+    chars = policy.get("illegal_filename_chars", []) or []
+    if not chars:
+        return None
+    illegal_re = re.compile("[" + re.escape("".join(chars)) + "]")
+    basename = os.path.basename(file_path)
+    bad = illegal_re.findall(basename)
+    if not bad:
+        return None
+    bad_chars = " ".join(sorted(set(bad)))
+    safe_name = illegal_re.sub("-", basename)
+    return deny(
+        "illegal-filename",
+        f"Refusing to create '{basename}'. Characters {bad_chars} are illegal "
+        "on one or more sync targets (Linux, macOS, Android) and will prevent "
+        f"Syncthing from syncing. Suggested alternative: '{safe_name}'",
+        show_escape_hint=False,
+    )
+
+
 def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
     """Redirect operational knowledge from agent auto-memory to the Obsidian wiki.
 
@@ -282,10 +470,17 @@ def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
 # ── Registry ─────────────────────────────────────────────────────
 
 RULES = [
+    # Order matters: path-specific rules first, then content/destination,
+    # then existing-state warnings. First match wins.
     protected_dirs_file,
     protected_dirs_bash,
-    block_published_file_edits,
+    ai_readonly_file,
+    ai_readonly_bash,
     destructive_vault_ops,
+    publish_guard,
+    block_published_file_edits,
+    generic_filename_guard,
+    illegal_filename_guard,
     block_memory_file_creation,
 ]
 
