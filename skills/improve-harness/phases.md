@@ -24,6 +24,7 @@ cd <target-repo> && claude -p \
   --model sonnet \
   --max-budget-usd 30 \
   --output-format json \
+  --permission-mode acceptEdits \
   --add-dir ~/.claude/projects \
   "PHASE 1 of improve-harness workflow.
    Read <plugin-root>/skills/improve-harness/SKILL.md and follow pointers.
