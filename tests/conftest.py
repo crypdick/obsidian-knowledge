@@ -18,14 +18,6 @@ def tmp_vault(tmp_path):
 
 
 @pytest.fixture
-def tmp_claude_projects(tmp_path):
-    """Create a fake ~/.claude/projects dir."""
-    projects = tmp_path / "claude" / "projects"
-    projects.mkdir(parents=True)
-    return projects
-
-
-@pytest.fixture
 def tmp_vaults_yaml(tmp_path, monkeypatch, tmp_vault):
     """Create vaults.yaml pointing to tmp_vault and patch CONFIG_PATH."""
     config_dir = tmp_path / "config" / "obsidian-knowledge"

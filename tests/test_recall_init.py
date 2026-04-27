@@ -28,19 +28,14 @@ def run_hook(stdin_payload: dict, env_overrides: dict | None = None) -> tuple[in
 
 
 class TestRecallInit:
-    def test_emits_primer_when_symlink_ok(self, tmp_vault, tmp_path):
-        """Symlink exists; hook injects systemMessage with primer."""
-        target = tmp_vault / "wiki" / "systems" / "repos"
-        symlink = tmp_path / "projects"
-        symlink.symlink_to(target)
-
+    def test_emits_primer_when_vault_configured(self, tmp_vault, tmp_path):
+        """Vault configured; hook injects systemMessage with primer."""
         config_dir = tmp_path / "obsidian-knowledge"
         config_dir.mkdir()
         (config_dir / "vaults.yaml").write_text(f"vaults:\n  - {tmp_vault}\n")
 
         env = {
             "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(config_dir / "vaults.yaml"),
-            "OBSIDIAN_KNOWLEDGE_CLAUDE_PROJECTS": str(symlink),
         }
         code, out = run_hook({"session_id": "abc"}, env)
 
@@ -49,23 +44,15 @@ class TestRecallInit:
         assert "harness" in out["systemMessage"].lower()
         assert "/improve-harness" in out["systemMessage"]
 
-    def test_warns_when_symlink_missing(self, tmp_vault, tmp_path):
-        """Symlink missing; hook emits warning systemMessage but does not block."""
-        config_dir = tmp_path / "obsidian-knowledge"
-        config_dir.mkdir()
-        (config_dir / "vaults.yaml").write_text(f"vaults:\n  - {tmp_vault}\n")
-
-        bogus = tmp_path / "nonexistent"
+    def test_no_output_when_no_vault_config(self, tmp_path):
+        """No vaults.yaml; hook emits nothing."""
         env = {
-            "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(config_dir / "vaults.yaml"),
-            "OBSIDIAN_KNOWLEDGE_CLAUDE_PROJECTS": str(bogus),
+            "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(tmp_path / "nonexistent.yaml"),
         }
         code, out = run_hook({"session_id": "abc"}, env)
 
-        assert code == 0  # non-blocking
-        assert "systemMessage" in out
-        msg = out["systemMessage"].lower()
-        assert "not configured" in msg or "/setup-harness" in msg
+        assert code == 0
+        assert out == {}
 
     def test_errors_on_multi_vault_config(self, tmp_path):
         """vaults.yaml lists 2+ vaults; hook errors with clear message."""
