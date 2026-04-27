@@ -1,7 +1,5 @@
 # State files
 
-Reference for changelog.md and needs-attention.md formats.
-
 State lives at `<vault_root>/Utility/obsidian-knowledge/`. Create dir on first run if missing.
 
 ## changelog.md

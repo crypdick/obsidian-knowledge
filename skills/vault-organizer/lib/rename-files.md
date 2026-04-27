@@ -1,7 +1,5 @@
 # Rename ambiguous files
 
-Reference for renaming non-markdown files with ambiguous names.
-
 ## What counts as ambiguous
 
 1. **Device-generated** — `IMG_\d+`, `DSC_\d+`, `Screenshot \d+`, `Photograph (\d+)`, `PXL_\d+`

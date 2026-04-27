@@ -1,7 +1,5 @@
 # Index format
 
-Reference for MISSING_INDEX and MISSING_ENTRY fixes.
-
 ## Creating a missing index
 
 Create `<folder>/index.md`:
@@ -18,7 +16,6 @@ Create `<folder>/index.md`:
 - [[some-file]] — orientation phrase
 ```
 
-Rules:
 - One entry per line: wikilink + em dash + short orientation phrase
 - Phrase answers "what is this?" — enough to decide open/skip. Not summary. Not sentence.
 - Subfolders first, then files alphabetically

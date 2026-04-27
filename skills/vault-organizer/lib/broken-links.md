@@ -1,17 +1,15 @@
 # Broken links
 
-Reference for Step 4: detecting and fixing broken links and orphans.
-
 ## Unresolved links
 
 Run `obsidian unresolved verbose format=json`.
 
-**Filter before acting** — output is almost always noisy. Most entries are deliberate forward references ("I'll write this someday"). Blindly acting = busy work.
+**Filter before acting** — output almost always noisy, most entries intentional stubs. Blindly acting = busy work.
 
 Narrow the list:
-- **Scope to managed zones.** Ignore links from files outside `ai_managed` zones.
-- **Intentional stubs.** Scan for recurring patterns across many unrelated files — those are stub conventions, not mass breakage.
-- **Template placeholders** (`{{...}}`, `<% ... %>`...) — never actionable, skip.
+- Ignore links from files outside `ai_managed` zones.
+- Recurring pattern across many unrelated files = stub convention, not mass breakage. Skip.
+- Template placeholders (`{{...}}`, `<% ... %>`) — never actionable, skip.
 
 Focus only on links **from managed-zone files** referencing filenames expected to exist: structural files, files referenced in prose as if existing, one-off links not matching stub patterns.
 

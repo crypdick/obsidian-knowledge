@@ -1,12 +1,10 @@
 # Note types
 
-Reference for DUMPING_GROUND fixes — classifying inline files to decide where they belong.
-
 ## Type → subfolder
 
 | Type | Where it lives | Signal |
 |------|---------------|--------|
-| Background reference | `reference/` | Looked up but rarely edited: protocol docs, supplement notes, diet guides. Editable notes — distinct from `_sources/` (write-protected originals). |
+| Background reference | `reference/` | Lookup-only, rarely edited. Editable notes — ≠ `_sources/` originals (write-protected). |
 | Design doc / plan | `plans/` | Decision records, implementation plans, roadmaps |
 | Convo note | `convos/` | Agent synthesis: comparisons, decision rationales, research summaries |
 | Diary note | `diary/` | Narrative account of process, incident, event |
