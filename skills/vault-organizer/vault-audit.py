@@ -70,7 +70,11 @@ def audit_folder(folder: Path) -> list[str]:
 
     index_text = index.read_text(encoding="utf-8", errors="replace")
     linked_targets = extract_wikilink_targets(index_text)
-    linked_basenames = {t.lower().rstrip('/').split('/')[-1].removesuffix('.md') for t in linked_targets}
+    linked_basenames = {
+        component.lower().removesuffix('.md')
+        for t in linked_targets
+        for component in t.rstrip('/').split('/')
+    }
 
     for md in children_md:
         if is_skipped(md.name):
