@@ -102,16 +102,11 @@ conversations.
 
 ### recall-init (SessionStart)
 
-`recall-init.py` runs at every session start. Two responsibilities:
-
-1. **Verify the memory symlink.** Checks that `~/.claude/projects/` is
-   symlinked to `<vault-root>/wiki/systems/repos/`. If not, emits a
-   non-blocking warning telling the user to run `/setup-harness`.
-2. **Inject the harness primer.** Adds a 5-directive context block to
-   the session: memory location, recall via `rg`, capture at session
-   end, friction reflection, user-frustration reflection. The primer
-   stands alone — agents that read only this know how to operate
-   within the harness.
+`recall-init.py` runs at every session start. Injects the harness
+primer: a 5-directive context block covering memory location, recall
+via `rg`, capture at session end, friction reflection, and
+user-frustration reflection. The primer stands alone — agents that
+read only this know how to operate within the harness.
 
 ### reflect-nudge (PostToolUse on Bash)
 
@@ -120,13 +115,6 @@ Continuous — no per-session suppression. Reminds the agent to step back
 and consider whether observed friction warrants a harness improvement.
 
 ## Commands
-
-### /setup-harness
-
-One-time migration. Rsyncs `~/.claude/projects/*` into
-`<vault>/wiki/systems/repos/`, surfaces collisions for manual merge,
-then replaces `~/.claude/projects/` with a symlink. Idempotent re-runs
-are safe.
 
 ### /improve-harness <description>
 
