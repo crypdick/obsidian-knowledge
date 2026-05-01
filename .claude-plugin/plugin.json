@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Skills, hooks, and conventions for maintaining Obsidian knowledge base vaults",
   "author": {
     "name": "Ricardo Decal"
@@ -29,6 +29,10 @@
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/remind-convos.py"
+          },
+          {
+            "type": "command",
+            "command": "uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/scan-vault-secrets.py"
           }
         ]
       }

@@ -90,7 +90,7 @@ instead.
 
 ### Stop hooks
 
-Both Stop hooks fire at the end of each Claude Code turn. Each checks
+Stop hooks fire at the end of each Claude Code turn. Each checks
 whether the working directory is inside a configured vault root. They
 have a 5-minute cooldown per session to avoid being noisy in long
 conversations.
@@ -99,6 +99,20 @@ conversations.
   `changelog.md` if the session produced edits, decisions, or discoveries
 - **remind-convos.sh** — reminds the agent to preserve session outputs
   (diary notes, convo notes, guides, changelog entries, gotchas)
+- **scan-vault-secrets.py** — runs `detect-secrets` against the vault
+  and surfaces unaudited findings to the agent. The plugin makes no
+  assumptions about which password manager you use — agents are told
+  to follow your vault's documented secrets-management convention, so
+  **document yours somewhere agents can find it** (root `CLAUDE.md` or
+  a wiki note). The first scan walks the entire vault (slow, ~1–2 min
+  on large vaults); subsequent scans are incremental against the
+  baseline at `<vault>/.secrets.baseline`. Mark false positives with:
+  ```
+  detect-secrets audit <vault>/.secrets.baseline
+  ```
+  Requires [`uv`](https://docs.astral.sh/uv/) on `PATH` (the hook is a
+  uv inline script — `detect-secrets` is installed automatically into a
+  uv-managed cache, no global pip install needed).
 
 ### recall-init (SessionStart)
 
@@ -131,6 +145,9 @@ generate a slug.
   - **Automatically update internal links** (`Settings → Files and Links`)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with plugin
   support
+- [`uv`](https://docs.astral.sh/uv/) on `PATH` — required by
+  `scan-vault-secrets.py`, which is a uv inline script and resolves
+  its `detect-secrets` dependency through uv's cache
 
 ## Installation
 
