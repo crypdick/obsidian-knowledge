@@ -42,6 +42,17 @@ AUDIT_SKIP_ZONES = {"Utility"}
 SCAN_SKIP_DIR_NAMES = {"_sources", ".trash", "node_modules"}
 FRONTMATTER_SCAN_LINE_LIMIT = 60
 
+# Patterns matching filenames that belong in a typed subfolder (diary/, convos/,
+# plans/) rather than at folder root. Inline files NOT matching these are
+# treated as wiki/guide notes — convention says those stay at root and should
+# not count toward the dumping-ground threshold.
+MISPLACED_INLINE_PATTERNS = [
+    re.compile(r'^\d{4}-\d{1,2}-\d{1,2}'),       # date-prefixed: diary/log
+    re.compile(r'-design\.md$', re.IGNORECASE),  # design doc / plan
+    re.compile(r'-convo\.md$', re.IGNORECASE),   # convo note
+    re.compile(r'-diary\.md$', re.IGNORECASE),   # diary note
+]
+
 
 def load_managed_zones(vault_root: Path) -> list[str]:
     config_path = vault_root / ".claude" / "obsidian-knowledge.yaml"
@@ -100,13 +111,26 @@ def audit_folder(folder: Path) -> list[str]:
             f for f in children_md
             if not is_skipped(f.name) and f.name.lower() != "index.md"
         ]
-        if len(inline_files) >= DUMPING_GROUND_THRESHOLD:
+        misplaced = [f for f in inline_files if is_misplaced_inline(f.name)]
+        if len(misplaced) >= DUMPING_GROUND_THRESHOLD:
             issues.append(
                 f"DUMPING_GROUND\t{folder}\t"
-                f"inline={len(inline_files)}\tsubfolders={len(children_dirs)}"
+                f"misplaced={len(misplaced)}\tinline_total={len(inline_files)}\t"
+                f"subfolders={len(children_dirs)}"
             )
 
     return issues
+
+
+def is_misplaced_inline(filename: str) -> bool:
+    """True if filename matches a pattern indicating it belongs in a typed subfolder.
+
+    Wiki/guide/TODO notes belong inline at folder root per convention. Diary,
+    convo, and design-doc files belong in dated subfolders. Filename patterns
+    distinguish them: date-prefixed names and `-design`/`-convo`/`-diary`
+    suffixes are signals of misplacement.
+    """
+    return any(p.search(filename) for p in MISPLACED_INLINE_PATTERNS)
 
 
 def has_stacked_frontmatter(file: Path) -> bool:

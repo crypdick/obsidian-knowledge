@@ -16,7 +16,25 @@ Plugin (`update-time-on-edit`, `Linter`, etc.) injects `created`/`updated`/`date
 
 ## Fix
 
-For each flagged file:
+The most common case is a **stray duplicate `---`** with no real second
+block — just an extra marker line after the frontmatter close. The
+helper script handles that automatically:
+
+```bash
+# Dry run (reports what would change)
+python3 fix-stacked-frontmatter.py <file> [<file>...]
+
+# Apply the fix
+python3 fix-stacked-frontmatter.py --fix <file> [<file>...]
+```
+
+Output codes:
+
+- `WOULD_FIX` / `FIXED` — stray duplicate `---`, safely auto-collapsed.
+- `NEEDS_MERGE` — second block contains real keys; auto-fix refused.
+  Exit code 1. Merge manually using the steps below.
+
+For `NEEDS_MERGE` cases:
 
 1. Read file. Confirm two `---` blocks.
 2. Merge keys from both blocks into single frontmatter. Newer/auto-injected keys (created/updated) win for timestamps; user-set keys (tags, dg-publish, aliases) win for everything else.

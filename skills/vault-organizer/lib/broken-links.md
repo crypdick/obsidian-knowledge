@@ -2,14 +2,26 @@
 
 ## Unresolved links
 
-Run `obsidian unresolved verbose format=json`.
+Pipe the JSON output of `obsidian unresolved` into the helper script. It
+restricts to links from `ai_managed` zones, drops template placeholders
+(`{{...}}`, `<% ... %>`), and drops link targets whose name matches a
+configured stub pattern:
 
-**Filter before acting** — output almost always noisy, most entries intentional stubs. Blindly acting = busy work.
+```bash
+obsidian unresolved verbose format=json | python3 filter-unresolved-links.py "$VAULT"
+```
 
-Narrow the list:
-- Ignore links from files outside `ai_managed` zones.
-- Recurring pattern across many unrelated files = stub convention, not mass breakage. Skip.
-- Template placeholders (`{{...}}`, `<% ... %>`) — never actionable, skip.
+The script reads `stub_link_patterns:` from the vault's
+`.claude/obsidian-knowledge.yaml` if present; otherwise it uses built-in
+defaults covering the common prefix conventions (`(PAPER) X`, `(VIDEO) X`,
+`(POST) X`, `(PODCAST) X`, `(BOOK) X`, `(RECIPE) X`, `(Vision) X`,
+`(Pillar) X`, `@Person`).
+
+The output is still a list of candidates needing human judgment, not a
+fixable issue list. Many concept-stub names are plain words (e.g.
+`Acne`, `attention head`) and can't be filtered by pattern — these
+survive the filter and have to be triaged on the same lib/broken-links
+rules below.
 
 Focus only on links **from managed-zone files** referencing filenames expected to exist: structural files, files referenced in prose as if existing, one-off links not matching stub patterns.
 

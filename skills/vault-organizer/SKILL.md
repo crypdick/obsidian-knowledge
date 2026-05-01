@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.1.0
+version: 1.2.0
 ---
 
 # Vault Organizer
@@ -40,8 +40,8 @@ Read `$VAULT/Utility/obsidian-knowledge/needs-attention.md` — note known issue
 ### Step 2: Run structural audit
 
 ```bash
-SCRIPT=$(find ~/.claude/plugins -name "vault-audit.py" 2>/dev/null | head -1)
-python3 "$SCRIPT" "$VAULT"
+SCRIPTS=$(dirname $(find ~/.claude/plugins -name "vault-audit.py" 2>/dev/null | head -1))
+python3 "$SCRIPTS/vault-audit.py" "$VAULT"
 ```
 
 Output header tells you which lib/ file to read for each issue type. Fix every line.
@@ -52,28 +52,37 @@ Output header tells you which lib/ file to read for each issue type. Fix every l
 
 **`MISSING_ENTRY <index> missing=<name>`** — add entry. Read `lib/index-format.md`.
 
-**`DUMPING_GROUND <folder> inline=N subfolders=M`** — classify inline files, move to typed subfolders. Read `lib/note-types.md` + `lib/index-format.md`.
+**`DUMPING_GROUND <folder> misplaced=N inline_total=T subfolders=M`** — classify the misplaced inline files (date-prefixed and `*-design`/`-convo`/`-diary`), move them to typed subfolders. Read `lib/note-types.md` + `lib/index-format.md`.
+
+**`STACKED_FRONTMATTER <file>`** — auto-fix stray duplicate `---` markers:
+
+```bash
+python3 "$SCRIPTS/fix-stacked-frontmatter.py" --fix <file1> <file2> ...
+```
+
+Files reported as `NEEDS_MERGE` (real second block with keys) require manual merge — read `lib/stacked-frontmatter.md`.
 
 After structural fixes, rename ambiguous non-markdown files. Read `lib/rename-files.md`.
 
 ### Step 4: Detect + fix broken links
 
 ```bash
-obsidian unresolved verbose format=json
+obsidian unresolved verbose format=json | python3 "$SCRIPTS/filter-unresolved-links.py" "$VAULT"
 obsidian orphans
 ```
 
-Read `lib/broken-links.md` for filtering rules (most unresolved links are intentional stubs — don't act blindly).
+Read `lib/broken-links.md` for triage rules on the surviving candidates.
 
 ### Step 5: Regenerate reports
 
 Rewrite `$VAULT/Utility/obsidian-knowledge/reports/open-questions.md` from scratch:
 
 ```bash
-grep -rn '^> \[!question\]' "$VAULT/wiki" --include='*.md' --exclude-dir=_sources
+python3 "$SCRIPTS/find-open-questions.py" "$VAULT"
 ```
 
-For each hit: read surrounding lines, strip `> ` prefix, build entry:
+Output is `<rel_path>\t<line>\t<question_text>` per hit. Code-block examples
+are filtered automatically. Build one entry per line:
 `- [[wiki/path/to/page]] — line N — "question text"`
 
 Preserve existing file structure (heading, regeneration notice, scope section). Only entry list + `Last run:` timestamp change.
