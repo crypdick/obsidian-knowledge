@@ -104,12 +104,32 @@ conversations.
   assumptions about which password manager you use — agents are told
   to follow your vault's documented secrets-management convention, so
   **document yours somewhere agents can find it** (root `CLAUDE.md` or
-  a wiki note). The first scan walks the entire vault (slow, ~1–2 min
-  on large vaults); subsequent scans are incremental against the
-  baseline at `<vault>/.secrets.baseline`. Mark false positives with:
-  ```
-  detect-secrets audit <vault>/.secrets.baseline
-  ```
+  a wiki note). The first scan walks the entire vault (slow, ~1 min
+  on a few thousand files); subsequent scans are incremental against
+  the baseline at `<vault>/.secrets.baseline`.
+
+  Marks false positives two ways:
+  - **Inline sentinel** (recommended for prose notes) — append on the
+    same line:
+    ```
+    token = "fake"  <!-- pragma: allowlist secret -->     # markdown / xml
+    token = "fake"  # pragma: allowlist secret             # yaml / sh / py
+    token = "fake"  // pragma: allowlist secret            # js / go / c
+    ```
+  - **Baseline audit** (batch-mark existing findings):
+    ```
+    detect-secrets audit <vault>/.secrets.baseline
+    ```
+
+  The hook uses the `detect-secrets` Python API directly with a filter
+  set tuned for prose: it drops the `is_likely_id_string` and
+  `is_indirect_reference` filters that the `detect-secrets scan` CLI
+  applies, because those silently swallow the `token = "..."` pattern
+  exactly as it appears in markdown notes. Lower-entropy passphrases
+  that elude detect-secrets entirely (dictionary-word passwords in
+  narrative prose) can be added one-per-line to
+  `<vault>/.secrets.known-leaked` for verbatim string-match alerting.
+
   Requires [`uv`](https://docs.astral.sh/uv/) on `PATH` (the hook is a
   uv inline script — `detect-secrets` is installed automatically into a
   uv-managed cache, no global pip install needed).
