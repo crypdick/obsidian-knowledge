@@ -8,7 +8,7 @@ description: >-
   by the user saying "file this", "save this conversation", "remember
   this", or at agent discretion when a response deserves to outlive
   chat history.
-version: 0.7.0
+version: 0.8.0
 ---
 
 # Remember Conversations
@@ -27,7 +27,7 @@ Always append to `Utility/obsidian-knowledge/changelog.md` if session produced s
 
 Create session note when convo produced something future agent or user benefit finding later. Two types, **separate folders**:
 
-- **Convo note** — analytical synthesis: option comparisons, decision rationales, research summaries, discoveries, non-obvious connections. Lives in `convos/` subfolder of relevant area.
+- **Convo note** — analytical synthesis: option comparisons, decision rationales, research summaries, discoveries, non-obvious connections. **Always preserve the user's questions verbatim alongside their answers** — the question is half the value (frames the problem, surfaces what user actually wanted to know). Lives in `convos/` subfolder of relevant area.
 - **Diary note** — narrative: what happened, what tried, what worked or not, why. Use for processes, incidents, debug sessions, event sequences worth retell. Lives in `diary/` subfolder of relevant area.
 
 Session can produce both if notable process AND separable analytical insight.
@@ -53,6 +53,17 @@ Every session note follow this structure:
 {The narrative or analysis. Section heading and structure should fit
 the content — "What happened" for diaries, "Analysis" or "Comparison"
 for convos, etc. As long as it needs to be.}
+
+{For convo notes especially: capture the user's actual questions
+verbatim (quoted) followed by the substantive answer. Q&A format
+preserve the framing the user brought, which is often the load-bearing
+part — paraphrasing destroy nuance. Example pattern:
+
+> **Q:** "{exact user question}"
+>
+> **A:** {full answer with reasoning, not just conclusion}
+
+Use this whenever conversation was driven by user asking things.}
 
 ## Key takeaways
 

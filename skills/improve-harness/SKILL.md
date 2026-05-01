@@ -1,6 +1,6 @@
 ---
 name: improve-harness
-description: Use when the harness causes friction or the user expresses frustration. Triggers a multi-phase headless side quest to fix the system. Triggered by /improve-harness slash command, frustration phrases ("fuck", "wtf", "this keeps happening"), or repeated friction patterns.
+description: Use when the harness causes friction or the user expresses frustration. Triggers a multi-phase headless side quest to fix the system. Triggered by /improve-harness slash command, frustration phrases ("fuck", "wtf", "bro", "this keeps happening"), or repeated friction patterns.
 ---
 
 # Improve Harness
@@ -12,7 +12,7 @@ Multi-phase side-quest workflow to fix harness friction.
 ## When to invoke
 
 - User runs `/improve-harness <description>`
-- User expresses frustration with system: "fuck", "wtf", "this keeps happening", "the harness just blocked me"
+- User expresses frustration with system: "fuck", "wtf", "bro", "this keeps happening", "the harness just blocked me"
 - Main agent observes repeated friction (same workaround N times across session)
 
 Do NOT invoke for:
