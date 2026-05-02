@@ -18,8 +18,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import reflect_counter  # noqa: E402
 
 REMINDER = (
-    "Step back: any friction worth feeding back into the harness? "
-    "If yes, invoke `/improve-harness` or describe the friction."
+    "Step back: any friction worth feeding back into the harness, "
+    "or insight worth saving to the knowledge base? "
+    "If friction, invoke `/improve-harness` or describe it. "
+    "If knowledge worth preserving, invoke the `remember-conversations` skill."
 )
 
 
