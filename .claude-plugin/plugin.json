@@ -1,7 +1,7 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.6.1",
-  "description": "Skills, hooks, and conventions for maintaining Obsidian knowledge base vaults",
+  "version": "3.6.2",
+  "description": "Claude Code plugin for Obsidian vaults: captures conversation insights into a growing knowledge base, with a meta-skill that evolves the harness itself",
   "author": {
     "name": "Ricardo Decal"
   },
