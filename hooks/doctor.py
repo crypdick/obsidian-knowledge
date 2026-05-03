@@ -4,13 +4,13 @@ SessionStart hook: the vault doctor.
 
 Runs once at session start when cwd is inside a configured vault.
 Two passes:
-- Pass A: count `- [ ]` entries in .config/obsidian-knowledge/NEEDS_ATTENTION.md
+- Pass A: count `- [ ]` entries in Utility/obsidian-knowledge/needs-attention.md
 - Pass B: walk the vault (skip dotfolders and _sources/) and count
   convention violations using the shared patterns module
 
 Prints a one-line digest if any count is > 0, else silent.
 
-Read-only — never writes to NEEDS_ATTENTION.md. Vault-organizer is
+Read-only — never writes to needs-attention.md. Vault-organizer is
 the sole writer; run it to persist findings.
 """
 
@@ -33,7 +33,7 @@ SKIP_DIRS = {".obsidian", ".config", ".git", ".trash", ".claude", "_sources"}
 
 
 def count_needs_attention(vault_root: str) -> int:
-    path = os.path.join(vault_root, ".config", "obsidian-knowledge", "NEEDS_ATTENTION.md")
+    path = os.path.join(vault_root, "Utility", "obsidian-knowledge", "needs-attention.md")
     if not os.path.exists(path):
         return 0
     with open(path, encoding="utf-8") as f:

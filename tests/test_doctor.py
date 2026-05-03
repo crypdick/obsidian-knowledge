@@ -55,9 +55,9 @@ def test_counts_yaml_errors(subprocess_vault):
 
 def test_counts_needs_attention_entries(subprocess_vault):
     vault, env = subprocess_vault
-    config_dir = vault / ".config" / "obsidian-knowledge"
-    config_dir.mkdir(parents=True)
-    (config_dir / "NEEDS_ATTENTION.md").write_text(
+    state_dir = vault / "Utility" / "obsidian-knowledge"
+    state_dir.mkdir(parents=True)
+    (state_dir / "needs-attention.md").write_text(
         "# Needs Attention\n\n- [ ] foo\n- [ ] bar\n"
     )
     out = run_hook(str(vault), env=env)
