@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.3.0
+version: 1.4.0
 ---
 
 # Vault Organizer
@@ -75,7 +75,25 @@ obsidian orphans
 
 Read `lib/broken-links.md` for triage rules on the surviving candidates. Walk the full list — the script has already removed known stub patterns, so the remainder is the work, not noise. Do not collapse the tail into a "mostly stubs, skip" bucket without checking each.
 
-### Step 5: Regenerate reports
+### Step 5: Convention violations sweep
+
+Vault-wide check for the same patterns enforced at write-time by `enforce-conventions.py` and surfaced at session-start by `doctor.py`. Catches accumulated pre-existing violations the hooks couldn't have seen.
+
+```bash
+python3 "$SCRIPTS/convention-sweep.py" "$VAULT"
+```
+
+Output (tab-separated, one issue per line):
+
+```
+WIKILINK_EXT  <rel_path>:<line>  <match>     # [[foo.md]] → should be [[foo]]
+UNDATED_FILE  <rel_path>                     # in Journal/diary/convos/plans without YYYY-MM-DD prefix
+YAML_ERR      <rel_path>         <error>     # malformed frontmatter
+```
+
+For each issue: rename file (UNDATED_FILE) via `obsidian rename`, fix link (WIKILINK_EXT) by editing the file, fix YAML (YAML_ERR) by editing frontmatter. If unresolvable, add to needs-attention.md (read `lib/state-files.md` for format). Vault-organizer is the sole writer to needs-attention.md — hooks just enforce/surface.
+
+### Step 6: Regenerate reports
 
 Rewrite `$VAULT/Utility/obsidian-knowledge/reports/open-questions.md` from scratch:
 
@@ -89,10 +107,10 @@ are filtered automatically. Build one entry per line:
 
 Preserve existing file structure (heading, regeneration notice, scope section). Only entry list + `Last run:` timestamp change.
 
-### Step 6: Update needs-attention.md
+### Step 7: Update needs-attention.md
 
 Remove resolved entries. Add new unresolvable issues. Read `lib/state-files.md` for format.
 
-### Step 7: Append to changelog.md
+### Step 8: Append to changelog.md
 
 Date-stamped entry at top of `$VAULT/Utility/obsidian-knowledge/changelog.md`. Read `lib/state-files.md` for format. Skip if no actions taken.
