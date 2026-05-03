@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.2.0
+version: 1.3.0
 ---
 
 # Vault Organizer
@@ -15,6 +15,8 @@ version: 1.2.0
 Maintain Obsidian vault structure. Single-pass pipeline. Never edit primary file content — only indexes, links, locations, names.
 
 **Don't read lib/ files upfront. Fetch them only when you hit that step.**
+
+**Pre-existing issues are in scope.** This skill exists to fix accumulated problems, not just ones introduced since the last run. If something was broken before today, it is still broken and still your job to triage. Volume is not an exit condition — a 700-item unresolved-link list is the *most* important pass to actually walk, not the one to dismiss as "mostly stubs." Triage every entry per the lib/ rules; do not bulk-skip on a hunch about the remainder.
 
 ## Prerequisites
 
@@ -71,7 +73,7 @@ obsidian unresolved verbose format=json | python3 "$SCRIPTS/filter-unresolved-li
 obsidian orphans
 ```
 
-Read `lib/broken-links.md` for triage rules on the surviving candidates.
+Read `lib/broken-links.md` for triage rules on the surviving candidates. Walk the full list — the script has already removed known stub patterns, so the remainder is the work, not noise. Do not collapse the tail into a "mostly stubs, skip" bucket without checking each.
 
 ### Step 5: Regenerate reports
 
