@@ -52,7 +52,7 @@ Output header tells you which lib/ file to read for each issue type. Fix every l
 
 **`MISSING_INDEX <folder>`** — create index.md. Read `lib/index-format.md`.
 
-**`MISSING_ENTRY <index> missing=<name>`** — add entry. Read `lib/index-format.md`.
+**`NOT_INDEXED <index> entry=<name>`** — add entry. Read `lib/index-format.md`.
 
 **`DUMPING_GROUND <folder> misplaced=N inline_total=T subfolders=M`** — classify the misplaced inline files (date-prefixed and `*-design`/`-convo`/`-diary`), move them to typed subfolders. Read `lib/note-types.md` + `lib/index-format.md`.
 

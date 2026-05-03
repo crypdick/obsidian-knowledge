@@ -9,7 +9,7 @@ which folders are ai_managed. Falls back to 'wiki' if config missing.
 Exit 0 always. Issues printed to stdout, one per line:
 
   MISSING_INDEX        <folder>
-  MISSING_ENTRY        <index_path>  missing=<name>
+  NOT_INDEXED          <index_path>  entry=<name>
   DUMPING_GROUND       <folder>  inline=<N>  subfolders=<M>
   STACKED_FRONTMATTER  <file>
 
@@ -97,13 +97,13 @@ def audit_folder(folder: Path) -> list[str]:
         if is_skipped(md.name):
             continue
         if md.stem.lower() not in linked_basenames:
-            issues.append(f"MISSING_ENTRY\t{index}\tmissing={md.name}")
+            issues.append(f"NOT_INDEXED\t{index}\tentry={md.name}")
 
     for d in children_dirs:
         if d.name.startswith('.'):
             continue
         if d.name.lower() not in linked_basenames:
-            issues.append(f"MISSING_ENTRY\t{index}\tmissing={d.name}/")
+            issues.append(f"NOT_INDEXED\t{index}\tentry={d.name}/")
 
     has_subfolders = len(children_dirs) > 0
     if has_subfolders and folder.name not in DUMPING_GROUND_SKIP_NAMES:
@@ -198,7 +198,7 @@ def print_header(lib_dir: Path, counts: dict[str, int]) -> None:
     summary = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
     print(f"# vault-audit: {summary}")
     print(f"# Fix guides (read only what you need):")
-    print(f"#   MISSING_INDEX, MISSING_ENTRY → {lib_dir}/index-format.md")
+    print(f"#   MISSING_INDEX, NOT_INDEXED   → {lib_dir}/index-format.md")
     print(f"#   DUMPING_GROUND               → {lib_dir}/note-types.md")
     print(f"#   STACKED_FRONTMATTER          → {lib_dir}/stacked-frontmatter.md")
     print(f"#   State file formats           → {lib_dir}/state-files.md")
@@ -231,7 +231,7 @@ def main() -> None:
 
     counts: dict[str, int] = {
         "MISSING_INDEX": 0,
-        "MISSING_ENTRY": 0,
+        "NOT_INDEXED": 0,
         "DUMPING_GROUND": 0,
         "STACKED_FRONTMATTER": 0,
     }
