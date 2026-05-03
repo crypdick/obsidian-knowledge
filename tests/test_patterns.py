@@ -47,6 +47,43 @@ def test_multiple_violations_on_different_lines():
     assert violations[1][0] == 3
 
 
+def test_skips_violations_inside_fenced_code_block():
+    content = "Real: [[a.md]]\n```\nExample: [[b.md]]\n```\nReal: [[c.md]]\n"
+    violations = patterns.find_wikilink_ext_violations(content)
+    matches = [v[1] for v in violations]
+    assert "[[a.md]]" in matches
+    assert "[[c.md]]" in matches
+    assert "[[b.md]]" not in matches
+
+
+def test_skips_violations_in_tilde_fenced_block():
+    content = "~~~\n[[fenced.md]]\n~~~\n[[real.md]]\n"
+    violations = patterns.find_wikilink_ext_violations(content)
+    matches = [v[1] for v in violations]
+    assert matches == ["[[real.md]]"]
+
+
+def test_handles_nested_long_fences():
+    content = "````\n```\n[[inner.md]]\n```\n````\n[[outer.md]]\n"
+    violations = patterns.find_wikilink_ext_violations(content)
+    matches = [v[1] for v in violations]
+    assert matches == ["[[outer.md]]"]
+
+
+def test_skips_inline_code_spans():
+    content = "Use `[[foo.md]]` as the wrong form, but [[bar.md]] is also wrong.\n"
+    violations = patterns.find_wikilink_ext_violations(content)
+    matches = [v[1] for v in violations]
+    assert matches == ["[[bar.md]]"]
+
+
+def test_indented_fence_still_recognized():
+    content = "   ```\n[[indented.md]]\n   ```\n[[after.md]]\n"
+    violations = patterns.find_wikilink_ext_violations(content)
+    matches = [v[1] for v in violations]
+    assert matches == ["[[after.md]]"]
+
+
 # Dated-folder detection
 
 def test_journal_path_is_dated_folder():
