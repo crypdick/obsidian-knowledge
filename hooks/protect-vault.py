@@ -206,9 +206,42 @@ def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
     )
 
 
+def _find_path_args(segment: str) -> list[str]:
+    """Return the leading PATH args of a `find PATH... [predicates...]` call."""
+    m = re.search(r'\bfind\b\s+(.*)', segment)
+    if not m:
+        return []
+    paths: list[str] = []
+    for tok in m.group(1).split():
+        if tok.startswith(('-', '(', ')', '!')):
+            break
+        paths.append(tok)
+    return paths
+
+
+def _rsync_dest(segment: str) -> str | None:
+    """Return the last positional arg (= destination) of an `rsync ...` call."""
+    m = re.search(r'\brsync\b\s+(.*)', segment)
+    if not m:
+        return None
+    positional = [a for a in m.group(1).split() if not a.startswith('-')]
+    return positional[-1] if positional else None
+
+
+def _shred_path_args(segment: str) -> list[str]:
+    """Return positional path args of `shred ...`."""
+    m = re.search(r'\bshred\b\s+(.*)', segment)
+    if not m:
+        return []
+    return [a for a in m.group(1).split() if not a.startswith('-')]
+
+
 def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
-    """Block recursive rm/mv when the *target* is a vault path (absolute,
+    """Block destructive ops when the *target* is a vault path (absolute,
     or relative when cwd is inside a vault).
+
+    Covers: recursive `rm`, `mv`, `find -delete`, `find -exec rm`,
+    `xargs rm`, `rsync --delete`, `shred`.
 
     Old implementation fired whenever `mv` or recursive `rm` appeared in
     a command and the command "touched the vault" (cwd in vault, or any
@@ -229,31 +262,85 @@ def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
         # Relative paths are vault paths only if cwd is in a vault.
         return cwd_in_vault
 
-    # Walk each rm and mv invocation in its own segment.
-    for m in re.finditer(r'\b(rm|mv)\b([^|;&]*)', command):
-        cmd = m.group(1)
-        tokens = m.group(2).split()
-        flags = [t for t in tokens if t.startswith("-")]
-        paths = [t for t in tokens if not t.startswith("-")]
+    # Split into statements (`;`, `&&`, `||`), then pipeline segments (`|`).
+    statements = re.split(r'&&|\|\||;', command)
+    for stmt in statements:
+        segments = stmt.split('|')
 
-        if cmd == "rm":
-            # Only flag recursive removes (the dangerous variant).
-            if not any(re.search(r"[rR]", f) for f in flags):
-                continue
-            for p in paths:
-                if target_in_vault(p):
+        for seg in segments:
+            # rm / mv
+            for m in re.finditer(r'\b(rm|mv)\b([^|;&]*)', seg):
+                cmd = m.group(1)
+                tokens = m.group(2).split()
+                flags = [t for t in tokens if t.startswith("-")]
+                paths = [t for t in tokens if not t.startswith("-")]
+
+                if cmd == "rm":
+                    if not any(re.search(r"[rR]", f) for f in flags):
+                        continue
+                    for p in paths:
+                        if target_in_vault(p):
+                            return deny(
+                                "destructive-rm",
+                                "Recursive rm on a path that appears to be in an Obsidian vault.",
+                            )
+
+                if cmd == "mv":
+                    for p in paths:
+                        if target_in_vault(p):
+                            return deny(
+                                "destructive-mv",
+                                "mv on a path that appears to be in an Obsidian vault. "
+                                "Use the Obsidian CLI for moves to preserve internal links.",
+                            )
+
+            # find -delete | find -exec rm
+            if re.search(r'\bfind\b', seg) and (
+                re.search(r'-delete\b', seg) or re.search(r'-exec\s+rm\b', seg)
+            ):
+                label = "find -delete" if re.search(r'-delete\b', seg) else "find -exec rm"
+                for p in _find_path_args(seg):
+                    if target_in_vault(p):
+                        return deny(
+                            "destructive-find",
+                            f"{label} on a path that appears to be in an Obsidian vault.",
+                        )
+
+            # rsync --delete
+            if re.search(r'\brsync\b', seg) and re.search(r'--delete\b', seg):
+                dest = _rsync_dest(seg)
+                if dest and target_in_vault(dest):
                     return deny(
-                        "destructive-rm",
-                        "Recursive rm on a path that appears to be in an Obsidian vault.",
+                        "destructive-rsync-delete",
+                        "rsync --delete with a destination in an Obsidian vault.",
                     )
 
-        if cmd == "mv":
-            for p in paths:
-                if target_in_vault(p):
+            # shred
+            if re.search(r'\bshred\b', seg):
+                for p in _shred_path_args(seg):
+                    if target_in_vault(p):
+                        return deny(
+                            "destructive-shred",
+                            "shred on a path that appears to be in an Obsidian vault.",
+                        )
+
+        # xargs rm: cross-segment scan within the statement.
+        # rm gets its targets from stdin, so check upstream pipe segments
+        # (and cwd) for vault-path references.
+        for i, seg in enumerate(segments):
+            if not (re.search(r'\bxargs\b', seg) and re.search(r'\brm\b', seg)):
+                continue
+            if cwd_in_vault:
+                return deny(
+                    "destructive-xargs-rm",
+                    "xargs rm in a pipeline rooted in an Obsidian vault (cwd).",
+                )
+            upstream_tokens = ' '.join(segments[:i]).split()
+            for tok in upstream_tokens:
+                if tok.startswith(('/', '~')) and is_in_vault(tok, VAULT_ROOTS):
                     return deny(
-                        "destructive-mv",
-                        "mv on a path that appears to be in an Obsidian vault. "
-                        "Use the Obsidian CLI for moves to preserve internal links.",
+                        "destructive-xargs-rm",
+                        "xargs rm in a pipeline that references an Obsidian vault path.",
                     )
 
     return None
