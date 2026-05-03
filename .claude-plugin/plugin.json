@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.7.1",
+  "version": "3.8.0",
   "description": "Self-evolving Claude Code plugin that manages an Obsidian knowledge vault: capture, organize, index, garden — plus a meta-skill that improves the harness itself",
   "author": {
     "name": "Ricardo Decal"

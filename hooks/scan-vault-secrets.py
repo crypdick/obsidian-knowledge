@@ -89,6 +89,7 @@ re-introductions of the same string will be flagged immediately.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -335,19 +336,51 @@ def scan_known_leaked(
     return total, len(files_hit), sample
 
 
-def main() -> None:
-    if not is_in_vault(os.getcwd()):
-        sys.exit(0)
-    payload = read_input()
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Scan vault for leaked secrets (Stop hook by default; "
+                    "--manual for slash-command invocation)."
+    )
+    parser.add_argument(
+        "--manual", action="store_true",
+        help="Manual run: skip cooldown + stdin payload; print findings to stdout.",
+    )
+    parser.add_argument(
+        "--full", action="store_true",
+        help="Manual mode: delete the baseline first to force a full rescan.",
+    )
+    return parser.parse_args(argv)
 
-    if in_cooldown(payload, marker_basename="secrets-scan"):
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+
+    if not is_in_vault(os.getcwd()):
+        if args.manual:
+            print(
+                "Not inside a configured vault root. "
+                "Configure ~/.config/obsidian-knowledge/vaults.yaml.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         sys.exit(0)
+
+    if not args.manual:
+        payload = read_input()
+        if in_cooldown(payload, marker_basename="secrets-scan"):
+            sys.exit(0)
 
     vault_root = find_containing_vault(os.getcwd(), load_vault_roots())
     if not vault_root:
+        if args.manual:
+            print("cwd not inside any configured vault.", file=sys.stderr)
+            sys.exit(1)
         sys.exit(0)
 
     baseline_path = Path(vault_root) / BASELINE_FILENAME
+    if args.manual and args.full and baseline_path.exists():
+        baseline_path.unlink()
+
     all_paths = find_files(vault_root)
     # Baseline mtime is the vault-global "last scanned" signal — using
     # the per-session cooldown marker here would force a full scan in
@@ -388,6 +421,16 @@ def main() -> None:
                 sample=leaked_block,
             )
         )
+
+    if args.manual:
+        if not messages:
+            print(
+                f"detect-secrets: clean. Scanned {len(scan_paths)} file(s) "
+                f"out of {len(all_paths)} in vault."
+            )
+            sys.exit(0)
+        print("\n\n".join(messages))
+        sys.exit(0)
 
     if not messages:
         sys.exit(0)
