@@ -1,4 +1,5 @@
 """Shared test fixtures for obsidian-knowledge plugin hooks."""
+import os
 import sys
 from pathlib import Path
 
@@ -28,3 +29,22 @@ def tmp_vaults_yaml(tmp_path, monkeypatch, tmp_vault):
         "lib.vault_config.CONFIG_PATH", config_file
     )
     return config_file
+
+
+@pytest.fixture
+def subprocess_vault(tmp_path):
+    """Set up a vault discoverable by subprocess hooks via HOME override.
+
+    Returns (vault_path, env) where env can be passed to subprocess.run
+    to make the hook resolve `~/.config/obsidian-knowledge/vaults.yaml`
+    against the temp HOME.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    cfg = home / ".config" / "obsidian-knowledge"
+    cfg.mkdir(parents=True)
+    (cfg / "vaults.yaml").write_text(f"vaults:\n  - {vault}\n")
+    env = {**os.environ, "HOME": str(home)}
+    return vault, env
