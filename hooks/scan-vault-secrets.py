@@ -100,9 +100,11 @@ from lib.stop_hook import emit_block, in_cooldown, read_input  # noqa: E402
 from lib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
 from lib.vault_policy import find_containing_vault  # noqa: E402
 
-from detect_secrets.core import baseline as ds_baseline  # noqa: E402
-from detect_secrets.core.secrets_collection import SecretsCollection  # noqa: E402
-from detect_secrets.settings import transient_settings  # noqa: E402
+# detect_secrets is imported lazily inside run_scan() so this module
+# can be imported in environments that don't have it installed (e.g.
+# unit tests that exercise only load_known_leaked / scan_known_leaked).
+# At runtime the script is launched via `uv run --script`, which
+# resolves the inline PEP 723 dep block at the top of the file.
 
 # Hidden dirs (anything starting with '.') are tooling/state, not user
 # content — skipping them avoids torrents of false positives in
@@ -198,6 +200,10 @@ def run_scan(
     audit flags); `merge()` then copies audit flags forward from the
     old baseline where the secret hash still matches.
     """
+    from detect_secrets.core import baseline as ds_baseline
+    from detect_secrets.core.secrets_collection import SecretsCollection
+    from detect_secrets.settings import transient_settings
+
     with transient_settings(DETECT_SECRETS_CFG):
         # `root=vault_root` makes scans behave as-if cwd were the vault
         # root: stored filenames are vault-relative, audit flags survive
