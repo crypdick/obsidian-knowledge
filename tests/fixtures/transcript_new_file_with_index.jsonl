@@ -1,0 +1,2 @@
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Write", "input": {"file_path": "/vault/wiki/foo/bar.md", "content": "hi"}}]}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": "/vault/wiki/foo/index.md", "old_string": "a", "new_string": "b"}}]}}
