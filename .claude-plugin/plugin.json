@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.8.1",
+  "version": "3.9.0",
   "description": "Self-evolving Claude Code plugin that manages an Obsidian knowledge vault: capture, organize, index, garden — plus a meta-skill that improves the harness itself",
   "author": {
     "name": "Ricardo Decal"
@@ -15,6 +15,15 @@
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/protect-vault.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/enforce-conventions.py"
           }
         ]
       }
@@ -33,6 +42,10 @@
           {
             "type": "command",
             "command": "uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/scan-vault-secrets.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/nudge-index-sync.py"
           }
         ]
       }
@@ -43,6 +56,10 @@
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/recall-init.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/doctor.py"
           }
         ]
       }
