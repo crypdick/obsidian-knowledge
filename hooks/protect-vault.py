@@ -259,8 +259,22 @@ def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
     def target_in_vault(token: str) -> bool:
         if token.startswith(("/", "~")):
             return is_in_vault(token, VAULT_ROOTS)
-        # Relative paths are vault paths only if cwd is in a vault.
+        # Only treat as a relative vault path if the token looks like an actual
+        # path — not a shell escape char, quote, or pipe fragment.  This prevents
+        # false positives when 'mv' appears inside a grep pattern like "mv\|foo":
+        # the trailing '\' (before the pipe) would otherwise trigger here.
+        if not token or token[0] in ('"', "'", '\\', '|', '&', ';', '<', '>'):
+            return False
         return cwd_in_vault
+
+    def strip_quoted(s: str) -> str:
+        """Remove double-quoted string content to avoid false positives.
+
+        Prevents 'mv' or 'rm' inside commit messages, grep patterns, etc.
+        from triggering the check.  Paths actually quoted with spaces
+        (mv "vault dir/file" dest) still fire on the unquoted destination.
+        """
+        return re.sub(r'"[^"]*"', '""', s)
 
     # Split into statements (`;`, `&&`, `||`), then pipeline segments (`|`).
     statements = re.split(r'&&|\|\||;', command)
@@ -268,6 +282,9 @@ def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
         segments = stmt.split('|')
 
         for seg in segments:
+            # Strip quoted-string content so 'mv' inside -m "..." args or grep
+            # patterns doesn't trigger the destructive-op check.
+            seg = strip_quoted(seg)
             # rm / mv
             for m in re.finditer(r'\b(rm|mv)\b([^|;&]*)', seg):
                 cmd = m.group(1)
