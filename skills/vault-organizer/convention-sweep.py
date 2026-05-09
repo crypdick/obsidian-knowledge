@@ -32,6 +32,7 @@ sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 
 from lib.patterns import (  # noqa: E402
     DATE_PREFIX_RE,
+    PERIODIC_NOTE_RE,
     find_wikilink_ext_violations,
     is_in_dated_folder,
     parse_frontmatter,
@@ -56,8 +57,10 @@ def sweep(vault_root: Path) -> list[str]:
 
         if is_in_dated_folder(rel_str):
             basename = md.name
+            is_journal = rel_str.startswith("Journal/")
             if basename != "index.md" and not DATE_PREFIX_RE.match(basename):
-                issues.append(f"UNDATED_FILE\t{rel_str}")
+                if not (is_journal and PERIODIC_NOTE_RE.match(basename)):
+                    issues.append(f"UNDATED_FILE\t{rel_str}")
 
         try:
             content = md.read_text(encoding="utf-8", errors="replace")

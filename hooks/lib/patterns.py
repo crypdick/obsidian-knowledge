@@ -26,6 +26,11 @@ DATE_PREFIX_RE = re.compile(
     r"^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])"
 )
 
+# Obsidian periodic note filenames: YYYY-Y.md, YYYY-MNN.md, YYYY-WNN.md.
+# These live in Journal/ and use their own naming convention rather than
+# YYYY-MM-DD prefixes. Also accepts the "All *.md" aggregate rollup files.
+PERIODIC_NOTE_RE = re.compile(r"^\d{4}-(?:Y|M\d{2}|W\d{2})\.md$|^All .+\.md$")
+
 
 def is_in_dated_folder(path: str) -> bool:
     """True if path falls under a folder where dated naming is expected.
