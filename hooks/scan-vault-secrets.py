@@ -239,7 +239,44 @@ def run_scan(
         if old_sc is not None:
             result_sc.merge(old_sc)
 
-        ds_baseline.save_to_file(result_sc, str(baseline_path))
+        _save_if_changed(result_sc, baseline_path, ds_baseline)
+
+
+def _save_if_changed(result_sc, baseline_path: Path, ds_baseline) -> None:
+    """Write baseline only if findings differ from existing on disk.
+
+    detect_secrets stamps `generated_at` on every save_to_file call. With
+    multiple concurrent Claude Code sessions on the same host (and across
+    sync peers), unconditional saves produce timestamp-only diffs that
+    Syncthing flags as `.secrets.sync-conflict-*.baseline` files. Compare
+    the would-be JSON to the on-disk JSON ignoring volatile fields, and
+    skip the write when they match.
+    """
+    import tempfile
+
+    volatile_keys = {"generated_at"}
+
+    def _normalize(d: dict) -> dict:
+        return {k: v for k, v in d.items() if k not in volatile_keys}
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".baseline", delete=False, dir=baseline_path.parent
+    ) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        ds_baseline.save_to_file(result_sc, str(tmp_path))
+        new_data = json.loads(tmp_path.read_text())
+        if baseline_path.exists():
+            try:
+                old_data = json.loads(baseline_path.read_text())
+                if _normalize(old_data) == _normalize(new_data):
+                    return
+            except (OSError, json.JSONDecodeError):
+                pass
+        tmp_path.replace(baseline_path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
 
 
 def count_unaudited(baseline_path: Path) -> tuple[int, list[str]]:
