@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from lib.vault_index.cli import init_vault_index, link_hermes_memories
 
 
@@ -39,6 +41,17 @@ def test_init_vault_index_does_not_clobber_existing_section(tmp_path: Path):
     init_vault_index(yaml_path)
     text = yaml_path.read_text()
     assert "top_k: 99" in text  # preserved
+
+
+def test_init_vault_index_rejects_malformed_yaml(tmp_path: Path, capsys):
+    yaml_path = tmp_path / ".claude" / "obsidian-knowledge.yaml"
+    yaml_path.parent.mkdir()
+    yaml_path.write_text("foo: [\n  - unclosed")
+    with pytest.raises(SystemExit) as exc_info:
+        init_vault_index(yaml_path)
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "malformed YAML" in captured.err
 
 
 # ---------------------------------------------------------------------------

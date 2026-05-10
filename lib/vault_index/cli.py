@@ -49,7 +49,11 @@ def init_vault_index(yaml_path: Path) -> None:
     No-op if the section already exists. Preserves any other sections.
     """
     if yaml_path.exists():
-        existing = yaml.safe_load(yaml_path.read_text()) or {}
+        try:
+            existing = yaml.safe_load(yaml_path.read_text()) or {}
+        except yaml.YAMLError as exc:
+            print(f"error: malformed YAML in {yaml_path}: {exc}", file=sys.stderr)
+            sys.exit(1)
         if "vault_index" in existing:
             print(f"vault_index section already present in {yaml_path}; not modified.")
             return
@@ -125,7 +129,6 @@ def main() -> int:
     if args.cmd == "init-vault-index":
         init_vault_index(args.vault / ".claude" / "obsidian-knowledge.yaml")
     elif args.cmd == "reindex":
-        import asyncio
         import memweave
         from lib.vault_index.config import load_config
         from lib.vault_index.indexer import Indexer
@@ -135,11 +138,6 @@ def main() -> int:
         idx = Indexer(vault_root=args.vault, cache_dir=cache, config=cfg)
         stats = idx.full_reindex(force=args.force)
         print(f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}", flush=True)
-        # Close the store to release DB + watcher, then force-exit to avoid
-        # LiteLLM background threads preventing clean process termination.
-        asyncio.run(idx._store.close())
-        import os
-        os._exit(0)
     elif args.cmd == "link-hermes-memories":
         link_hermes_memories(args.vault, args.hermes_memories_dir)
 
