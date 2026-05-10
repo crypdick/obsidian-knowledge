@@ -35,6 +35,7 @@ memweave API notes (verified against memweave source, 2026-05-09):
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,28 +64,6 @@ def _rescale(raw: float) -> float:
     return round(raw * 100, 1)
 
 
-def _make_config(
-    cache_dir: Path,
-    extra_paths: list[str],
-    *,
-    vector_enabled: bool = False,
-) -> memweave.MemoryConfig:
-    """Build a MemoryConfig for our vault-wrapper use case.
-
-    Key non-defaults:
-    - ``progress=False`` — suppress rich/spinner output.
-    - ``sync.on_search=False`` — prevent auto-reindex on search, which would
-      delete stored chunks when extra_paths differs from the DB state.
-    - ``vector.enabled=False`` (default) — FTS-only mode; no API key needed.
-    """
-    return memweave.MemoryConfig(
-        workspace_dir=str(cache_dir),
-        db_path=str(cache_dir / "index.sqlite"),
-        progress=False,
-        extra_paths=extra_paths,
-        vector=memweave.VectorConfig(enabled=vector_enabled),
-        sync=memweave.SyncConfig(on_search=False),
-    )
 
 
 class Indexer:
@@ -120,7 +99,50 @@ class Indexer:
         # Start with an empty-extra_paths store for read-only queries.
         # full_reindex() will replace this with the full allowed-paths store.
         self._store = memweave.MemWeave(
-            _make_config(cache_dir, [], vector_enabled=vector_enabled)
+            self._make_config(extra_paths=[])
+        )
+
+    def _make_config(
+        self,
+        extra_paths: list[str],
+    ) -> memweave.MemoryConfig:
+        """Build a MemoryConfig for our vault-wrapper use case.
+
+        Key non-defaults:
+        - ``progress=False`` — suppress rich/spinner output.
+        - ``sync.on_search=False`` — prevent auto-reindex on search, which would
+          delete stored chunks when extra_paths differs from the DB state.
+        - ``vector.enabled=False`` (default) — FTS-only mode; no API key needed.
+
+        Embedding model + endpoint are read from environment variables so users
+        can point memweave at a local Ollama (or any LiteLLM-compatible endpoint)
+        without hardcoding:
+        - ``MEMWEAVE_EMBEDDING_MODEL`` — overrides the model name
+          (default: ``text-embedding-3-small``).
+        - ``MEMWEAVE_EMBEDDING_API_BASE`` — sets the API base URL
+          (default: ``None``, i.e. OpenAI public endpoint).
+        - ``MEMWEAVE_EMBEDDING_API_KEY`` — sets the API key
+          (default: ``None``, i.e. read from ``OPENAI_API_KEY`` by LiteLLM).
+        """
+        embedding_kwargs: dict = {}
+        model = os.environ.get("MEMWEAVE_EMBEDDING_MODEL")
+        if model is not None:
+            embedding_kwargs["model"] = model
+        api_base = os.environ.get("MEMWEAVE_EMBEDDING_API_BASE")
+        if api_base is not None:
+            embedding_kwargs["api_base"] = api_base
+        api_key = os.environ.get("MEMWEAVE_EMBEDDING_API_KEY")
+        if api_key is not None:
+            embedding_kwargs["api_key"] = api_key
+
+        return memweave.MemoryConfig(
+            workspace_dir=str(self.cache_dir),
+            db_path=str(self.cache_dir / "index.sqlite"),
+            progress=False,
+            extra_paths=extra_paths,
+            embedding=memweave.EmbeddingConfig(**embedding_kwargs),
+            vector=memweave.VectorConfig(enabled=self._vector_enabled),
+            sync=memweave.SyncConfig(on_search=False),
         )
 
     def _abs_to_rel(self, abs_path: str) -> str:
@@ -163,7 +185,7 @@ class Indexer:
 
         allowed = self._allowed_vault_files()
         self._store = memweave.MemWeave(
-            _make_config(self.cache_dir, allowed, vector_enabled=self._vector_enabled)
+            self._make_config(extra_paths=allowed)
         )
         result = asyncio.run(self._store.index(force=force))
         return SyncStats(

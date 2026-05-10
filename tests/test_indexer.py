@@ -86,3 +86,32 @@ def test_search_override_digest_filter_includes_excluded(vault: Path, cfg, tmp_p
     hits = idx.search("Inbox", override_digest_filter=True)
     paths = [h.path for h in hits]
     assert any("Inbox/" in p for p in paths)
+
+
+import os
+
+
+def test_make_config_respects_embedding_env_vars(monkeypatch, tmp_path):
+    monkeypatch.setenv("MEMWEAVE_EMBEDDING_MODEL", "ollama/mxbai-embed-large")
+    monkeypatch.setenv("MEMWEAVE_EMBEDDING_API_BASE", "http://localhost:11434")
+    monkeypatch.delenv("MEMWEAVE_EMBEDDING_API_KEY", raising=False)
+    from lib.vault_index.config import VaultIndexConfig
+    from lib.vault_index.indexer import Indexer
+    cache = tmp_path / "cache"
+    idx = Indexer(vault_root=tmp_path, cache_dir=cache, config=VaultIndexConfig())
+    cfg = idx._make_config(extra_paths=[])
+    assert cfg.embedding.model == "ollama/mxbai-embed-large"
+    assert cfg.embedding.api_base == "http://localhost:11434"
+
+
+def test_make_config_uses_defaults_when_env_unset(monkeypatch, tmp_path):
+    monkeypatch.delenv("MEMWEAVE_EMBEDDING_MODEL", raising=False)
+    monkeypatch.delenv("MEMWEAVE_EMBEDDING_API_BASE", raising=False)
+    monkeypatch.delenv("MEMWEAVE_EMBEDDING_API_KEY", raising=False)
+    from lib.vault_index.config import VaultIndexConfig
+    from lib.vault_index.indexer import Indexer
+    cache = tmp_path / "cache"
+    idx = Indexer(vault_root=tmp_path, cache_dir=cache, config=VaultIndexConfig())
+    cfg = idx._make_config(extra_paths=[])
+    assert cfg.embedding.model == "text-embedding-3-small"
+    assert cfg.embedding.api_base is None
