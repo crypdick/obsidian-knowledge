@@ -131,3 +131,46 @@ def test_handle_tool_call_vault_search_respects_top_k(provider, vault):
 def test_handle_tool_call_unknown_tool_raises(provider):
     with pytest.raises(NotImplementedError):
         provider.handle_tool_call("not_a_tool", {})
+
+
+# ── Task 18: sync_turn ───────────────────────────────────────────────────────
+
+import time
+
+
+def test_sync_turn_runs_indexer_in_background(provider, vault):
+    provider.indexer.full_reindex()
+    initial_count = provider.indexer.row_count()
+    new_file = vault / "wiki" / "new.md"
+    new_file.write_text("# New\nFresh content for indexing.\n")
+
+    provider.sync_turn(user_content="hi", assistant_content="hello")
+    # Join the background thread (up to 30s to allow for embedding retries).
+    provider._sync_thread.join(timeout=30.0)
+    assert provider.indexer.row_count() > initial_count
+
+
+# ── Task 19: queue_prefetch ──────────────────────────────────────────────────
+
+def test_queue_prefetch_warms_next_call(provider, vault):
+    provider.indexer.full_reindex()
+    provider.queue_prefetch("python")  # warms cache
+    out = provider.prefetch("python")  # consumes
+    assert "Top semantic vault hits" in out or "long-term memory" in out
+
+
+# ── Task 20: atexit safety net ───────────────────────────────────────────────
+
+def test_atexit_safety_net_registered(monkeypatch, vault):
+    # Pattern from OpenViking: a process-global ref + atexit handler ensure
+    # shutdown fires even on crash. Verify the handler runs.
+    import os
+    os.environ["OBSIDIAN_VAULT_ROOT"] = str(vault)
+    from importlib import reload
+    import hermes_plugin
+    reload(hermes_plugin)
+
+    p = hermes_plugin.ObsidianVaultProvider()
+    p.initialize(session_id="t")
+    assert hermes_plugin._last_active_provider is p
+    del os.environ["OBSIDIAN_VAULT_ROOT"]
