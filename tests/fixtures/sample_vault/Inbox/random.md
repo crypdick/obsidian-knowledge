@@ -1,0 +1,2 @@
+# Inbox
+Random unprocessed thought.

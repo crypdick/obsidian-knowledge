@@ -1,0 +1,12 @@
+vault_index:
+  index:
+    deny_regex:
+      - "^Journal/"
+      - "^Inbox/"
+  digest:
+    allow_regex:
+      - "^wiki/"
+  weights:
+    - regex: "^wiki/"
+      multiplier: 1.5
+  top_k: 5
