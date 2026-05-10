@@ -5,9 +5,12 @@ from pathlib import Path
 
 import pytest
 
-# Make hooks importable
+# Make hooks and hermes_plugin importable
 PLUGIN_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
+# hermes_plugin/ lives at the repo root — insert root so `import hermes_plugin` works
+if str(PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 @pytest.fixture

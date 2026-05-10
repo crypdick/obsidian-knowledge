@@ -3,3 +3,5 @@ __pycache__/
 .DS_Store
 .worktrees/
 .improve-harness/
+# Generated index cache (created by reindex CLI and indexer tests)
+tests/fixtures/sample_vault/.config/
