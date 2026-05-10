@@ -70,6 +70,14 @@ def apply_filters(
             weight_applied=w,
         ))
 
+    # Dedup by path — keep highest-scoring chunk per path so a note with
+    # multiple matching paragraphs doesn't crowd out other results.
+    best: dict[str, Hit] = {}
+    for h in weighted:
+        if h.path not in best or best[h.path].score < h.score:
+            best[h.path] = h
+    weighted = list(best.values())
+
     weighted.sort(key=lambda h: h.score, reverse=True)
 
     if config.min_score is not None:

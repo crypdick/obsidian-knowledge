@@ -111,3 +111,19 @@ def test_apply_filters_override_digest_filter_bypasses_digest_rules():
     hits = [_h("wiki/a.md", 9.0), _h("Inbox/b.md", 8.0)]
     out = apply_filters(hits, cfg, override_digest_filter=True)
     assert len(out) == 2  # both kept
+
+
+def test_apply_filters_dedupes_by_path():
+    cfg = VaultIndexConfig(top_k=10)
+    hits = [
+        _h("wiki/foo.md", 9.0),  # high-score chunk of foo
+        _h("wiki/foo.md", 7.0),  # lower-score chunk of same path
+        _h("wiki/foo.md", 5.0),  # even lower
+        _h("wiki/bar.md", 8.0),
+    ]
+    out = apply_filters(hits, cfg)
+    paths = [h.path for h in out]
+    assert paths.count("wiki/foo.md") == 1
+    assert paths.count("wiki/bar.md") == 1
+    foo = [h for h in out if h.path == "wiki/foo.md"][0]
+    assert foo.score == 9.0  # the highest chunk's score is preserved

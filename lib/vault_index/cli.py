@@ -20,6 +20,9 @@ vault_index:
       - "^_sources/"
       - "^\\\\.obsidian/"
       - "^\\\\.config/"
+      - "^\\\\.stversions/"
+      - "^\\\\.trash/"
+      - "^Utility/obsidian-knowledge/cache/"
 
   # What surfaces in default prefetch digest. Subset of indexed.
   digest:
