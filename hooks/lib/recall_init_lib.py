@@ -1,28 +1,34 @@
 """Helpers for the SessionStart recall-init hook.
 
-Builds the harness primer injected into every session.
+Re-exports build_primer from the shared lib so CC and Hermes adapters
+use a single source.
+
+Import strategy: the CC hook runner inserts hooks/ onto sys.path before
+importing this module, which means 'lib' in sys.modules already resolves
+to hooks/lib (not the project root's lib package). To import from the
+project-root lib without a name collision, we locate the shared module by
+absolute path via importlib and extract build_primer from it directly.
+This avoids mutating sys.modules or relying on import-order assumptions.
 """
 from __future__ import annotations
 
+import importlib.util
+import sys
 from pathlib import Path
 
+# Project root: three levels up from this file (hooks/lib/recall_init_lib.py)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_PRIMER_PATH = _PROJECT_ROOT / "lib" / "vault_index" / "primer.py"
 
-def build_primer(vault_root: Path, plugin_root: Path) -> str:
-    """Build the harness primer text injected into every session.
+if "vault_index.primer" in sys.modules:
+    _primer_mod = sys.modules["vault_index.primer"]
+else:
+    _spec = importlib.util.spec_from_file_location("vault_index.primer", _PRIMER_PATH)
+    assert _spec and _spec.loader, f"Cannot load primer from {_PRIMER_PATH}"
+    _primer_mod = importlib.util.module_from_spec(_spec)
+    sys.modules["vault_index.primer"] = _primer_mod
+    _spec.loader.exec_module(_primer_mod)  # type: ignore[union-attr]
 
-    Loaded into every session's context. Must stand alone — agents that
-    read only this primer should know what to do.
-    """
-    wiki = vault_root / "wiki"
-    return (
-        "You are operating under the obsidian-knowledge harness.\n"
-        f"- Knowledge: Obsidian wiki at {wiki}/ is the persistent memory store — "
-        f"search it before answering non-trivial questions (`rg <pattern> {wiki}/`), "
-        "file outcomes at session end (`remember-conversations` skill), and update the changelog. "
-        "Do NOT use Claude's built-in MEMORY.md system; the wiki is the source of truth.\n"
-        "- Reflect on friction: if you struggle with the harness, hit unexpected "
-        "blocks, or repeat the same workaround, invoke `/improve-harness`.\n"
-        "- Reflect on user frustration: if the user expresses frustration "
-        "('fuck', 'wtf', 'this keeps happening'), invoke `/improve-harness`. "
-        "The agent is not the unit of analysis — the system is."
-    )
+build_primer = _primer_mod.build_primer
+
+__all__ = ["build_primer"]
