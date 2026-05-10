@@ -1,19 +1,20 @@
 """Vault indexer — builds and queries the path index.
 
-Stub — implementation deferred to a later task.
+Stub — implementation deferred to a later task (Task 8).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic import BaseModel
 
 from lib.vault_index.config import VaultIndexConfig
 
 
-@dataclass
-class Hit:
+class Hit(BaseModel):
     path: str
     score: float
+    weight_applied: float = 1.0
 
 
 class Indexer:
