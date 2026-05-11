@@ -58,7 +58,7 @@ def main() -> int:
 
     vault_root = Path(vault_roots[0])
     plugin_root = Path(__file__).resolve().parent.parent
-    primer = recall_init_lib.build_primer(vault_root, plugin_root)
+    primer = recall_init_lib.build_primer(vault_root, plugin_root, cwd=os.getcwd())
     emit_message(primer)
 
     return 0

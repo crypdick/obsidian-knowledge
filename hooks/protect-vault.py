@@ -34,6 +34,7 @@ import sys
 # Shared with Stop hooks via lib/vault_config.py; per-vault policy via
 # lib/vault_policy.py.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from hookslib.repo_memory import resolve_target  # noqa: E402
 from hookslib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
 from hookslib.vault_policy import find_containing_vault, load_vault_policy  # noqa: E402
 
@@ -557,21 +558,36 @@ def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
     if not any(basename.startswith(p) for p in blocked_prefixes):
         return None
     if not VAULT_ROOTS:
-        vault_lines = "  (no vaults configured in ~/.config/obsidian-knowledge/vaults.yaml)"
-    elif len(VAULT_ROOTS) == 1:
-        vault_lines = f"  Vault: {VAULT_ROOTS[0]}"
+        target_lines = "  (no vaults configured in ~/.config/obsidian-knowledge/vaults.yaml)"
     else:
-        vault_lines = "  Vaults:\n" + "\n".join(f"    - {r}" for r in VAULT_ROOTS)
+        target = resolve_target(os.getcwd())
+        if target.kind == "repo":
+            scope = f"this repo ({target.owner}/{target.repo})"
+        else:
+            scope = f"this host ({target.hostname}) — no git remote detected from cwd"
+        abs_targets = [
+            f"{root}/wiki/{target.rel_path}/{basename}" for root in VAULT_ROOTS
+        ]
+        if len(abs_targets) == 1:
+            target_lines = (
+                f"  Write '{basename}' here instead (scoped to {scope}):\n"
+                f"    {abs_targets[0]}"
+            )
+        else:
+            target_lines = (
+                f"  Write '{basename}' to one of these (scoped to {scope}):\n"
+                + "\n".join(f"    - {p}" for p in abs_targets)
+            )
     return deny(
         "wiki-policy",
         f"Writing '{basename}' to agent auto-memory is not permitted. "
         "Auto-memory is a per-project silo — invisible to other sessions, other tools, and vault search.",
         hint=(
             "\n\nWhere to write instead:\n"
-            "  - Behavioral rules (how the agent should act) → CLAUDE.md in the Obsidian vault\n"
-            "  - Facts about the world (tools, gotchas, procedures, system state) → wiki/ in the vault\n"
-            "  - MEMORY.md is the only file permitted here — use it only as a pointer to vault locations.\n"
-            f"\n{vault_lines}\n"
+            "  - Behavioral rules + project facts (per-repo or per-host scope) → vault path below\n"
+            "  - User-profile / world-knowledge → wiki/ wherever it semantically fits (or CLAUDE.md)\n"
+            "  - Only MEMORY.md is permitted in ~/.claude/projects/*/memory/; use it as a pointer.\n"
+            f"\n{target_lines}\n"
             "\n(The I_AM_BEING_CAREFUL=1 escape hatch does not apply to this rule — there is no bypass.)"
         ),
         show_escape_hint=False,
