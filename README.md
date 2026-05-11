@@ -246,6 +246,26 @@ A pre-3.16 install with the old in-vault cache (`<vault>/.config/obsidian-knowle
 will trigger one auto-rebuild on first use. The old directory is safe to
 delete once the new cache is populated.
 
+### Keeping the index fresh
+
+There is no built-in file-watcher. Content added or edited between reindexes
+is invisible to `/vault-search` until the next reindex. An hourly cron is
+the recommended baseline:
+
+```cron
+# Linux
+0 * * * * $HOME/.local/bin/uv run --project $HOME/src/PERSONAL/obsidian-knowledge obsidian-knowledge reindex --vault $HOME/Documents/obsidian >> $HOME/.cache/obsidian-knowledge/cron.log 2>&1
+
+# macOS (Apple Silicon)
+0 * * * * /opt/homebrew/bin/uv run --project $HOME/src/PERSONAL/obsidian-knowledge obsidian-knowledge reindex --vault $HOME/Documents/obsidian >> $HOME/Library/Caches/obsidian-knowledge/cron.log 2>&1
+```
+
+Incremental reindex is cheap: ~8s wall on a ~1700-file vault with zero
+edits (all files hash-skip). Only modified files get re-embedded. Overlap
+is guarded by an `fcntl.flock` on `<cache>/.reindex.lock` — a second run
+that fires while the first is still active exits cleanly without
+touching the DB.
+
 ## Usage
 
 Invoke the skill directly:

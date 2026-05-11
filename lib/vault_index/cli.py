@@ -142,15 +142,30 @@ def main() -> int:
     if args.cmd == "init-vault-index":
         init_vault_index(args.vault / ".claude" / "obsidian-knowledge.yaml")
     elif args.cmd == "reindex":
+        import fcntl
         import memweave
         from lib.vault_index.config import load_config
         from lib.vault_index.indexer import Indexer, default_cache_dir
 
         cfg = load_config(args.vault / ".claude" / "obsidian-knowledge.yaml")
         cache = default_cache_dir(args.vault)
-        idx = Indexer(vault_root=args.vault, cache_dir=cache, config=cfg)
-        stats = idx.full_reindex(force=args.force)
-        print(f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}", flush=True)
+        cache.mkdir(parents=True, exist_ok=True)
+        lock_path = cache / ".reindex.lock"
+        with open(lock_path, "w") as lock_f:
+            try:
+                fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                print(
+                    "reindex: another reindex is in progress (lock held); exiting cleanly.",
+                    file=sys.stderr,
+                )
+                return 0
+            idx = Indexer(vault_root=args.vault, cache_dir=cache, config=cfg)
+            stats = idx.full_reindex(force=args.force)
+            print(
+                f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}",
+                flush=True,
+            )
     elif args.cmd == "link-hermes-memories":
         link_hermes_memories(args.vault, args.hermes_memories_dir)
     elif args.cmd == "search":
