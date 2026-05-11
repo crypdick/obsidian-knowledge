@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -91,8 +92,16 @@ def check_ollama(vault_root: str) -> str | None:
     Returns None if Ollama is healthy or the probe is cached as healthy.
     The probe runs at most once per 24h per vault — degraded results bypass
     the cache so the warning resurfaces every session until fixed.
+
+    Cache lives in the per-host XDG cache directory (same place the embedding
+    DB lives) so it is not synced across machines via Syncthing.
     """
-    cache_dir = os.path.join(vault_root, ".config", "obsidian-knowledge", "cache")
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+        from vault_index.indexer import default_cache_dir  # type: ignore
+    except ImportError:
+        return None
+    cache_dir = str(default_cache_dir(Path(vault_root)))
     cache_path = os.path.join(cache_dir, "doctor-ollama.json")
     now = time.time()
     try:

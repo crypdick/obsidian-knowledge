@@ -225,8 +225,26 @@ Override any of the defaults via environment variables:
 
 When the embedding model changes, the next `/vault-search` call detects the
 mismatch and rebuilds the index automatically. The fingerprint
-(`<model>@<chunk-tokens>/<chunk-overlap>`) is stored at
-`<vault>/.config/obsidian-knowledge/cache/embedder-fingerprint.txt`.
+(`<model>@<chunk-tokens>/<chunk-overlap>`) is stored alongside the index.
+
+### Cache location
+
+The embedding DB lives outside the vault, in the per-host XDG cache
+directory:
+
+| OS | Path |
+|---|---|
+| Linux | `${XDG_CACHE_HOME:-~/.cache}/obsidian-knowledge/<vault-key>/` |
+| macOS | `~/Library/Caches/obsidian-knowledge/<vault-key>/` |
+
+`<vault-key>` is `<vault-dir-name>-<sha256(absolute_path)[:8]>`, so two vaults
+named `obsidian/` on different machines (or in different parents) never
+collide. Each host owns its own embeddings DB — Syncthing and other vault
+sync tools never see it, eliminating cross-device write conflicts.
+
+A pre-3.16 install with the old in-vault cache (`<vault>/.config/obsidian-knowledge/cache/`)
+will trigger one auto-rebuild on first use. The old directory is safe to
+delete once the new cache is populated.
 
 ## Usage
 

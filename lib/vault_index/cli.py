@@ -144,10 +144,10 @@ def main() -> int:
     elif args.cmd == "reindex":
         import memweave
         from lib.vault_index.config import load_config
-        from lib.vault_index.indexer import Indexer
+        from lib.vault_index.indexer import Indexer, default_cache_dir
 
         cfg = load_config(args.vault / ".claude" / "obsidian-knowledge.yaml")
-        cache = args.vault / ".config" / "obsidian-knowledge" / "cache"
+        cache = default_cache_dir(args.vault)
         idx = Indexer(vault_root=args.vault, cache_dir=cache, config=cfg)
         stats = idx.full_reindex(force=args.force)
         print(f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}", flush=True)
@@ -155,10 +155,10 @@ def main() -> int:
         link_hermes_memories(args.vault, args.hermes_memories_dir)
     elif args.cmd == "search":
         from lib.vault_index.config import load_config
-        from lib.vault_index.indexer import Indexer
+        from lib.vault_index.indexer import Indexer, default_cache_dir
 
         cfg = load_config(args.vault / ".claude" / "obsidian-knowledge.yaml")
-        cache = args.vault / ".config" / "obsidian-knowledge" / "cache"
+        cache = default_cache_dir(args.vault)
         idx = Indexer(vault_root=args.vault, cache_dir=cache, config=cfg)
         if not idx._vector_enabled:
             print(f"# vector lane off ({idx.vector_status}); FTS-only", file=sys.stderr)

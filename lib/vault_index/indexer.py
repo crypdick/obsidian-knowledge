@@ -42,7 +42,9 @@ the same probe and prints a one-line reminder.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
+import re
 import urllib.error
 import urllib.request
 import json
@@ -50,6 +52,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import memweave
+import platformdirs
 from pydantic import BaseModel
 
 from lib.vault_index.config import VaultIndexConfig
@@ -62,6 +65,25 @@ DEFAULT_CHUNK_TOKENS = 320
 DEFAULT_CHUNK_OVERLAP = 64
 PROBE_TIMEOUT_S = 1.5
 FINGERPRINT_FILENAME = "embedder-fingerprint.txt"
+APP_NAME = "obsidian-knowledge"
+
+
+def default_cache_dir(vault_root: Path) -> Path:
+    """Per-host, per-vault cache directory outside the vault.
+
+    Returns ``<XDG_CACHE_HOME or ~/.cache>/obsidian-knowledge/<vault-key>/``
+    on Linux and ``~/Library/Caches/obsidian-knowledge/<vault-key>/`` on macOS.
+    The vault-key combines the directory's basename with an 8-char hash of its
+    absolute path so two vaults with the same dir name (e.g. ``obsidian/``
+    on different machines or in different parents) never collide.
+
+    Storing the cache outside the vault eliminates the Syncthing-conflict risk
+    entirely: each host owns its own embeddings DB, no replication, no race.
+    """
+    abs_path = str(vault_root.resolve())
+    digest = hashlib.sha256(abs_path.encode()).hexdigest()[:8]
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "-", vault_root.resolve().name) or "vault"
+    return Path(platformdirs.user_cache_dir(APP_NAME)) / f"{safe_name}-{digest}"
 
 
 def _ollama_probe(api_base: str, model: str) -> tuple[bool, str]:
