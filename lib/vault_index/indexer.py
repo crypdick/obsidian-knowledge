@@ -1,9 +1,9 @@
 """memweave wrapper for vault retrieval.
 
-Provides a vault-aware interface over memweave's BM25 + FTS retrieval:
-- Index-time filtering (paths matching config.index.deny_regex are skipped).
-- Score rescaling (BM25 × 100 for readable digest output).
-- FTS keyword search via memweave's SQLite FTS5 backend.
+Hybrid retrieval over a vault: BM25 (FTS5) + dense vectors (Ollama/local
+embeddings via LiteLLM), fused by memweave. Vector lane is on by default;
+the wrapper probes Ollama at construction and degrades to FTS-only if the
+embedding endpoint is unreachable or the chosen model isn't pulled.
 
 memweave API notes (verified against memweave source, 2026-05-09):
 - Main class is ``memweave.MemWeave`` (not ``memweave.Store``).
@@ -12,30 +12,40 @@ memweave API notes (verified against memweave source, 2026-05-09):
   ``workspace_dir/memory/`` empty and drive indexing entirely via
   ``extra_paths`` (set to the filtered vault file list on each reindex).
 - Stored file paths are absolute. We convert to vault-relative on output.
-- ``IndexResult`` fields: ``files_indexed``, ``files_skipped``, ``files_deleted``
-  (not ``.indexed`` / ``.skipped`` as the plan assumed).
-- ``status().files`` gives file count (plan assumed ``count_files()`` method).
-- Deletion of stale files is handled automatically by ``store.index()``
-  comparing ``extra_paths`` to the DB's stored paths.
-- The ``sync.on_search=True`` default triggers an auto-reindex on every search
-  call, which DELETES all stored chunks when extra_paths=[] (as a read-only
-  handle would have). We always set ``sync=SyncConfig(on_search=False)`` to
-  prevent this destructive auto-sync.
-- Vector search requires an embedding API key. We default to
-  ``VectorConfig(enabled=False)`` (FTS-only) so the wrapper works without
-  credentials; production deployments with an API key can pass
-  ``vector_enabled=True`` to the constructor.
-- Search ``min_score`` defaults to ``0.35`` in memweave QueryConfig, which
-  filters out BM25 scores on short documents. We always pass ``min_score=0.0``
-  to memweave and let our own ``apply_filters`` handle thresholding.
-- FTS BM25 scores for short fixture documents are near 0.0 after
-  ``bm25_rank_to_score()``. ``apply_filters`` only applies config.min_score
-  when explicitly set, so these tiny-score hits still surface in tests.
+- ``IndexResult`` fields: ``files_indexed``, ``files_skipped``, ``files_deleted``.
+- ``status().files`` gives file count.
+- Deletion of stale files is handled by ``store.index()`` comparing
+  ``extra_paths`` to the DB's stored paths.
+- ``sync.on_search=True`` (memweave default) triggers an auto-reindex on every
+  search, which DELETES all stored chunks when extra_paths=[]. We always set
+  ``sync=SyncConfig(on_search=False)`` to prevent destructive auto-sync.
+- Search ``min_score`` defaults to 0.35 in memweave QueryConfig. We pass 0.0
+  and let ``apply_filters`` handle thresholding.
+
+Embedding defaults (this wrapper):
+- Model: ``ollama/bge-m3`` (8192-token context, multilingual, ~2.3GB).
+  Picked over mxbai-embed-large because mxbai's 512-token context overran
+  on long uninterrupted paragraphs (logged in changelog 2026-05-09).
+- API base: ``http://127.0.0.1:11434`` (Ollama default).
+- API key: empty placeholder (LiteLLM/Ollama doesn't require one).
+- Chunking: tokens=320, overlap=64 — well under bge-m3's 8192 ceiling, and
+  also safe if a user swaps in a 512-ctx model later.
+- Override any of the above via ``MEMWEAVE_EMBEDDING_MODEL``,
+  ``MEMWEAVE_EMBEDDING_API_BASE``, ``MEMWEAVE_EMBEDDING_API_KEY``.
+
+Fail-soft behavior: ``vector_enabled=True`` by default. On construction we do
+a quick HTTP probe of the Ollama tags endpoint; if it fails or the chosen
+model isn't listed, we silently flip vector off for this process and surface
+the reason via ``self.vector_status``. The doctor SessionStart hook reads
+the same probe and prints a one-line reminder.
 """
 from __future__ import annotations
 
 import asyncio
 import os
+import urllib.error
+import urllib.request
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +54,39 @@ from pydantic import BaseModel
 
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.filters import path_passes
+
+
+DEFAULT_EMBEDDING_MODEL = "ollama/bge-m3"
+DEFAULT_EMBEDDING_API_BASE = "http://127.0.0.1:11434"
+DEFAULT_CHUNK_TOKENS = 320
+DEFAULT_CHUNK_OVERLAP = 64
+PROBE_TIMEOUT_S = 1.5
+
+
+def _ollama_probe(api_base: str, model: str) -> tuple[bool, str]:
+    """Check Ollama is up and the model is pulled. Returns (ok, message).
+
+    Strips the LiteLLM ``ollama/`` prefix from ``model`` before comparison
+    against Ollama's tag list. Tags appear as e.g. ``bge-m3:latest``; we
+    match on the bare name (everything before ``:``).
+    """
+    if not api_base.startswith("http"):
+        return False, f"api_base not http(s): {api_base}"
+    bare = model.split("/", 1)[1] if "/" in model else model
+    bare_name = bare.split(":", 1)[0]
+    url = api_base.rstrip("/") + "/api/tags"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=PROBE_TIMEOUT_S) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return False, f"Ollama unreachable at {api_base}: {exc}"
+    except json.JSONDecodeError as exc:
+        return False, f"Ollama returned non-JSON: {exc}"
+    tags = [t.get("name", "") for t in data.get("models", [])]
+    if not any(name.split(":", 1)[0] == bare_name for name in tags):
+        return False, f"model '{bare_name}' not pulled (have: {tags or 'none'})"
+    return True, f"ok: {bare_name} via {api_base}"
 
 
 class Hit(BaseModel):
@@ -89,18 +132,39 @@ class Indexer:
         cache_dir: Path,
         config: VaultIndexConfig,
         *,
-        vector_enabled: bool = False,
+        vector_enabled: bool = True,
+        skip_probe: bool = False,
     ):
         self.vault_root = vault_root
         self.cache_dir = cache_dir
         self.config = config
+        self._vector_enabled_requested = vector_enabled
         self._vector_enabled = vector_enabled
+        self.vector_status = "disabled-by-caller"
         cache_dir.mkdir(parents=True, exist_ok=True)
+
+        if vector_enabled and not skip_probe:
+            model, api_base, _ = self._embedding_settings()
+            ok, msg = _ollama_probe(api_base, model)
+            self.vector_status = msg
+            if not ok:
+                self._vector_enabled = False
+
         # Start with an empty-extra_paths store for read-only queries.
         # full_reindex() will replace this with the full allowed-paths store.
         self._store = memweave.MemWeave(
             self._make_config(extra_paths=[])
         )
+
+    @staticmethod
+    def _embedding_settings() -> tuple[str, str, str | None]:
+        """Resolve (model, api_base, api_key) from env with bge-m3/Ollama defaults."""
+        model = os.environ.get("MEMWEAVE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+        api_base = os.environ.get(
+            "MEMWEAVE_EMBEDDING_API_BASE", DEFAULT_EMBEDDING_API_BASE
+        )
+        api_key = os.environ.get("MEMWEAVE_EMBEDDING_API_KEY")
+        return model, api_base, api_key
 
     def _make_config(
         self,
@@ -110,28 +174,17 @@ class Indexer:
 
         Key non-defaults:
         - ``progress=False`` — suppress rich/spinner output.
-        - ``sync.on_search=False`` — prevent auto-reindex on search, which would
-          delete stored chunks when extra_paths differs from the DB state.
-        - ``vector.enabled=False`` (default) — FTS-only mode; no API key needed.
-
-        Embedding model + endpoint are read from environment variables so users
-        can point memweave at a local Ollama (or any LiteLLM-compatible endpoint)
-        without hardcoding:
-        - ``MEMWEAVE_EMBEDDING_MODEL`` — overrides the model name
-          (default: ``text-embedding-3-small``).
-        - ``MEMWEAVE_EMBEDDING_API_BASE`` — sets the API base URL
-          (default: ``None``, i.e. OpenAI public endpoint).
-        - ``MEMWEAVE_EMBEDDING_API_KEY`` — sets the API key
-          (default: ``None``, i.e. read from ``OPENAI_API_KEY`` by LiteLLM).
+        - ``sync.on_search=False`` — prevent auto-reindex on search.
+        - ``vector.enabled`` — driven by the constructor-resolved value
+          (probe may have flipped it off).
+        - ``chunking`` — 320/64 (vs memweave default 400/80) so even a
+          512-token-context model can't overrun.
+        - ``embedding`` — defaults to ``ollama/bge-m3`` at
+          ``http://127.0.0.1:11434``. Override via ``MEMWEAVE_EMBEDDING_MODEL``,
+          ``MEMWEAVE_EMBEDDING_API_BASE``, ``MEMWEAVE_EMBEDDING_API_KEY``.
         """
-        embedding_kwargs: dict = {}
-        model = os.environ.get("MEMWEAVE_EMBEDDING_MODEL")
-        if model is not None:
-            embedding_kwargs["model"] = model
-        api_base = os.environ.get("MEMWEAVE_EMBEDDING_API_BASE")
-        if api_base is not None:
-            embedding_kwargs["api_base"] = api_base
-        api_key = os.environ.get("MEMWEAVE_EMBEDDING_API_KEY")
+        model, api_base, api_key = self._embedding_settings()
+        embedding_kwargs: dict = {"model": model, "api_base": api_base}
         if api_key is not None:
             embedding_kwargs["api_key"] = api_key
 
@@ -141,6 +194,9 @@ class Indexer:
             progress=False,
             extra_paths=extra_paths,
             embedding=memweave.EmbeddingConfig(**embedding_kwargs),
+            chunking=memweave.ChunkingConfig(
+                tokens=DEFAULT_CHUNK_TOKENS, overlap=DEFAULT_CHUNK_OVERLAP
+            ),
             vector=memweave.VectorConfig(enabled=self._vector_enabled),
             sync=memweave.SyncConfig(on_search=False),
         )

@@ -13,6 +13,19 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 
+@pytest.fixture(autouse=True)
+def _disable_ollama_probe(monkeypatch):
+    """Force Indexer to skip the live Ollama probe in tests.
+
+    Returns (False, "test-stub: probe disabled") so vector_enabled flips off
+    and tests stay FTS-only without 1.5s timeouts per construction.
+    """
+    monkeypatch.setattr(
+        "lib.vault_index.indexer._ollama_probe",
+        lambda api_base, model: (False, "test-stub: probe disabled"),
+    )
+
+
 @pytest.fixture
 def tmp_vault(tmp_path):
     """Create a fake vault root with required structure."""

@@ -116,6 +116,16 @@ def main() -> int:
     p_reindex.add_argument("--vault", type=Path, default=Path.cwd())
     p_reindex.add_argument("--force", action="store_true")
 
+    p_search = sub.add_parser("search", help="Hybrid (BM25+vector) search the vault index")
+    p_search.add_argument("query", help="Free-text query")
+    p_search.add_argument("--vault", type=Path, default=Path.cwd())
+    p_search.add_argument("--top-k", type=int, default=None)
+    p_search.add_argument(
+        "--all",
+        action="store_true",
+        help="Override digest filter (include paths normally hidden from prefetch).",
+    )
+
     p_link = sub.add_parser(
         "link-hermes-memories",
         help="Symlink Hermes MEMORY.md/USER.md into the vault",
@@ -143,6 +153,21 @@ def main() -> int:
         print(f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}", flush=True)
     elif args.cmd == "link-hermes-memories":
         link_hermes_memories(args.vault, args.hermes_memories_dir)
+    elif args.cmd == "search":
+        from lib.vault_index.config import load_config
+        from lib.vault_index.indexer import Indexer
+
+        cfg = load_config(args.vault / ".claude" / "obsidian-knowledge.yaml")
+        cache = args.vault / ".config" / "obsidian-knowledge" / "cache"
+        idx = Indexer(vault_root=args.vault, cache_dir=cache, config=cfg)
+        if not idx._vector_enabled:
+            print(f"# vector lane off ({idx.vector_status}); FTS-only", file=sys.stderr)
+        hits = idx.search(args.query, top_k=args.top_k, override_digest_filter=args.all)
+        if not hits:
+            print("(no results)")
+            return 0
+        for h in hits:
+            print(f"{h.score:6.1f}  {h.path}")
 
     return 0
 

@@ -14,8 +14,10 @@ def build_primer(vault_root: Path, plugin_root: Path) -> str:
     return (
         "You are operating under the obsidian-knowledge harness.\n"
         f"- Knowledge: Obsidian wiki at {wiki}/ is the persistent memory store — "
-        f"search it before answering non-trivial questions (`rg <pattern> {wiki}/`), "
-        "file outcomes at session end (`remember-conversations` skill), and update the changelog. "
+        "search it before answering non-trivial questions with `/vault-search <query>` "
+        "(hybrid BM25 + dense-embedding retrieval; ranked top-K paths). "
+        f"Fall back to `rg <pattern> {wiki}/` only for exact-string lookups. "
+        "File outcomes at session end (`remember-conversations` skill) and update the changelog. "
         "Do NOT use Claude's built-in MEMORY.md system; the wiki is the source of truth.\n"
         "- Reflect on friction: if you struggle with the harness, hit unexpected "
         "blocks, or repeat the same workaround, invoke `/improve-harness`.\n"

@@ -113,5 +113,40 @@ def test_make_config_uses_defaults_when_env_unset(monkeypatch, tmp_path):
     cache = tmp_path / "cache"
     idx = Indexer(vault_root=tmp_path, cache_dir=cache, config=VaultIndexConfig())
     cfg = idx._make_config(extra_paths=[])
-    assert cfg.embedding.model == "text-embedding-3-small"
-    assert cfg.embedding.api_base is None
+    assert cfg.embedding.model == "ollama/bge-m3"
+    assert cfg.embedding.api_base == "http://127.0.0.1:11434"
+    assert cfg.chunking.tokens == 320
+    assert cfg.chunking.overlap == 64
+
+
+def test_indexer_probe_failure_falls_back_to_fts(monkeypatch, tmp_path):
+    """Failed Ollama probe must flip vector off and surface a status string."""
+    monkeypatch.setattr(
+        "lib.vault_index.indexer._ollama_probe",
+        lambda api_base, model: (False, "Ollama unreachable: stub"),
+    )
+    from lib.vault_index.config import VaultIndexConfig
+    from lib.vault_index.indexer import Indexer
+    cache = tmp_path / "cache"
+    idx = Indexer(vault_root=tmp_path, cache_dir=cache, config=VaultIndexConfig())
+    assert idx._vector_enabled is False
+    assert "unreachable" in idx.vector_status
+    cfg = idx._make_config(extra_paths=[])
+    assert cfg.vector.enabled is False
+
+
+def test_indexer_skip_probe_keeps_caller_choice(tmp_path):
+    """skip_probe=True must trust caller's vector_enabled flag."""
+    from lib.vault_index.config import VaultIndexConfig
+    from lib.vault_index.indexer import Indexer
+    cache = tmp_path / "cache"
+    idx = Indexer(
+        vault_root=tmp_path,
+        cache_dir=cache,
+        config=VaultIndexConfig(),
+        vector_enabled=True,
+        skip_probe=True,
+    )
+    assert idx._vector_enabled is True
+    cfg = idx._make_config(extra_paths=[])
+    assert cfg.vector.enabled is True

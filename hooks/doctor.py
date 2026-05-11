@@ -3,20 +3,26 @@
 SessionStart hook: the vault doctor.
 
 Runs once at session start when cwd is inside a configured vault.
-Two passes:
+Three passes:
 - Pass A: count `- [ ]` entries in Utility/obsidian-knowledge/needs-attention.md
 - Pass B: walk the vault (skip dotfolders and _sources/) and count
   convention violations using the shared patterns module
+- Pass C: probe Ollama for the configured embedding model so the agent knows
+  whether /vault-search is running hybrid (BM25 + vector) or degraded to
+  FTS-only. Cached for 24h in <vault>/.config/obsidian-knowledge/cache/
+  doctor-ollama.json to avoid noise on repeat sessions.
 
-Prints a one-line digest if any count is > 0, else silent.
+Prints a one-line digest if any count is > 0 OR Ollama is degraded, else silent.
 
 Read-only — never writes to needs-attention.md. Vault-organizer is
 the sole writer; run it to persist findings.
 """
 
+import json
 import os
 import re
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -76,6 +82,58 @@ def scan_vault(vault_root: str) -> dict[str, int]:
     }
 
 
+CACHE_TTL_S = 86_400  # 24h
+
+
+def check_ollama(vault_root: str) -> str | None:
+    """Probe Ollama; return a one-line warning if vector search is degraded.
+
+    Returns None if Ollama is healthy or the probe is cached as healthy.
+    The probe runs at most once per 24h per vault — degraded results bypass
+    the cache so the warning resurfaces every session until fixed.
+    """
+    cache_dir = os.path.join(vault_root, ".config", "obsidian-knowledge", "cache")
+    cache_path = os.path.join(cache_dir, "doctor-ollama.json")
+    now = time.time()
+    try:
+        with open(cache_path) as f:
+            cached = json.load(f)
+        if cached.get("ok") and now - cached.get("ts", 0) < CACHE_TTL_S:
+            return None
+    except (OSError, ValueError):
+        pass
+
+    # Defer import so test_doctor.py doesn't need the vault_index package.
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+        from vault_index.indexer import (  # type: ignore
+            DEFAULT_EMBEDDING_API_BASE,
+            DEFAULT_EMBEDDING_MODEL,
+            _ollama_probe,
+        )
+    except ImportError:
+        return None
+
+    model = os.environ.get("MEMWEAVE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+    api_base = os.environ.get("MEMWEAVE_EMBEDDING_API_BASE", DEFAULT_EMBEDDING_API_BASE)
+    ok, msg = _ollama_probe(api_base, model)
+
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(cache_path, "w") as f:
+            json.dump({"ok": ok, "msg": msg, "ts": now}, f)
+    except OSError:
+        pass
+
+    if ok:
+        return None
+    bare = model.split("/", 1)[1] if "/" in model else model
+    return (
+        f"vault-search degraded to FTS — {msg}. "
+        f"Fix: `ollama serve` + `ollama pull {bare}` for semantic search."
+    )
+
+
 def main() -> None:
     try:
         sys.stdin.read()
@@ -88,14 +146,20 @@ def main() -> None:
 
     needs_attention = count_needs_attention(vault_root)
     scan = scan_vault(vault_root)
+    ollama_msg = check_ollama(vault_root)
+
     total = needs_attention + sum(scan.values())
-    if total == 0:
+    if total == 0 and not ollama_msg:
         sys.exit(0)
 
-    parts = [f"{needs_attention} needs-attention"]
-    parts += [f"{v} {k}" for k, v in scan.items()]
-    digest = "vault: " + " + ".join(parts) + " — run vault-organizer to review"
-    print(digest)
+    parts = []
+    if total:
+        parts.append(f"{needs_attention} needs-attention")
+        parts += [f"{v} {k}" for k, v in scan.items()]
+    if parts:
+        print("vault: " + " + ".join(parts) + " — run vault-organizer to review")
+    if ollama_msg:
+        print(ollama_msg)
 
 
 if __name__ == "__main__":
