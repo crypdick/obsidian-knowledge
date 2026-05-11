@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-obsidian-knowledge = "lib.vault_index.cli:main"
+obsidian-knowledge = "lib.vault_index.cli:cli_main"
 
 [build-system]
 requires = ["hatchling"]

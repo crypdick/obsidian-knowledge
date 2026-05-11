@@ -193,15 +193,25 @@ def _exit_hard(code: int) -> None:
 
     memweave/litellm/aiohttp leave non-daemon threads or pending tasks alive
     after `idx.full_reindex()` and `idx.search()` finish, which makes the
-    interpreter hang on shutdown — confirmed on mac mini (Apple Silicon
-    Python 3.13) where the hourly cron piled up 7 zombie `reindex` processes
-    overnight. Force-exit is the same workaround used in `hermes_plugin` for
-    the asyncio-daemon-thread mismatch.
+    interpreter hang on shutdown — confirmed on both dream-machine (Linux
+    Python 3.13) and mac mini (Apple Silicon Python 3.13), where the hourly
+    cron piled up zombie `reindex` processes overnight. Force-exit is the
+    same workaround used in `hermes_plugin` for the asyncio-daemon-thread
+    mismatch.
+
+    Called from `cli_main()` (the console-script entry point) so it applies
+    whether the CLI is invoked via `python -m lib.vault_index.cli` or via
+    the `obsidian-knowledge` entry point.
     """
     sys.stdout.flush()
     sys.stderr.flush()
     os._exit(code)
 
 
-if __name__ == "__main__":
+def cli_main() -> None:
+    """Console-script entry point. See [project.scripts] in pyproject.toml."""
     _exit_hard(main())
+
+
+if __name__ == "__main__":
+    cli_main()
