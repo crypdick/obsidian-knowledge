@@ -1,4 +1,5 @@
 """Tests for the obsidian-knowledge CLI."""
+import os
 import shutil
 import subprocess
 import sys
@@ -64,12 +65,17 @@ FIXTURE = Path(__file__).parent / "fixtures" / "sample_vault"
 def test_cli_reindex_smoke(tmp_path: Path):
     vault = tmp_path / "vault"
     shutil.copytree(FIXTURE, vault)
+    env = {
+        **os.environ,
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+    }
     result = subprocess.run(
         [sys.executable, "-m", "lib.vault_index.cli", "reindex", "--vault", str(vault)],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,  # discard LiteLLM stderr noise to avoid pipe-buffer deadlock
         text=True,
         cwd=Path(__file__).parents[1],  # repo root
+        env=env,
     )
     assert result.returncode == 0, "reindex subprocess exited non-zero"
     assert "Indexed:" in result.stdout

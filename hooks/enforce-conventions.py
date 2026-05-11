@@ -18,14 +18,14 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib.patterns import (  # noqa: E402
+from hookslib.patterns import (  # noqa: E402
     DATE_PREFIX_RE,
     find_wikilink_ext_violations,
     is_in_dated_folder,
     parse_frontmatter,
 )
-from lib.vault_config import load_vault_roots  # noqa: E402
-from lib.vault_policy import find_containing_vault  # noqa: E402
+from hookslib.vault_config import load_vault_roots  # noqa: E402
+from hookslib.vault_policy import find_containing_vault  # noqa: E402
 
 
 def deny(reason: str) -> None:

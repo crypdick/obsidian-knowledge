@@ -26,6 +26,23 @@ def _disable_ollama_probe(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_user_cache(tmp_path_factory, monkeypatch):
+    """Redirect `platformdirs.user_cache_dir` into a per-session tmp dir.
+
+    Without this, any test that calls `default_cache_dir(vault_root)` writes
+    into the real user cache (`~/.cache/obsidian-knowledge/` on Linux,
+    `~/Library/Caches/obsidian-knowledge/` on macOS), leaking pytest tmp
+    paths into production state. Discovered 2026-05-11 after finding an
+    orphan `vault-a34e8ad8/` dir from `tmp_path/"vault"` fixtures.
+    """
+    fake_cache = tmp_path_factory.mktemp("user_cache")
+    monkeypatch.setattr(
+        "lib.vault_index.indexer.platformdirs.user_cache_dir",
+        lambda app_name: str(fake_cache / app_name),
+    )
+
+
 @pytest.fixture
 def tmp_vault(tmp_path):
     """Create a fake vault root with required structure."""

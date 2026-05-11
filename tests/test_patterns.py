@@ -2,7 +2,7 @@
 
 import datetime
 
-from lib import patterns
+from hookslib import patterns
 
 
 # Wikilink violations

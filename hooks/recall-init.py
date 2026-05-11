@@ -16,8 +16,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import recall_init_lib  # noqa: E402
-from lib import vault_config  # noqa: E402
+from hookslib import recall_init_lib  # noqa: E402
+from hookslib import vault_config  # noqa: E402
 
 
 def resolve_vaults_config() -> Path:

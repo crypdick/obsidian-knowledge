@@ -20,9 +20,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib.stop_hook import in_cooldown, read_input  # noqa: E402
-from lib.transcript import iter_tool_uses  # noqa: E402
-from lib.vault_config import is_in_vault  # noqa: E402
+from hookslib.stop_hook import in_cooldown, read_input  # noqa: E402
+from hookslib.transcript import iter_tool_uses  # noqa: E402
+from hookslib.vault_config import is_in_vault  # noqa: E402
 
 MOVE_RE = re.compile(r'obsidian\s+(?:move|rename)\b[^\n]*?(?:to|name)=["\']?wiki/([^/\s"\']+)/')
 

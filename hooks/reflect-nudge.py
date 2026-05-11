@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import reflect_counter  # noqa: E402
+from hookslib import reflect_counter  # noqa: E402
 
 REMINDER = (
     "Step back: any friction worth feeding back into the harness, "

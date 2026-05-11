@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -187,5 +188,20 @@ def main() -> int:
     return 0
 
 
+def _exit_hard(code: int) -> None:
+    """Flush stdio then `os._exit` to skip Python's atexit/asyncio shutdown.
+
+    memweave/litellm/aiohttp leave non-daemon threads or pending tasks alive
+    after `idx.full_reindex()` and `idx.search()` finish, which makes the
+    interpreter hang on shutdown — confirmed on mac mini (Apple Silicon
+    Python 3.13) where the hourly cron piled up 7 zombie `reindex` processes
+    overnight. Force-exit is the same workaround used in `hermes_plugin` for
+    the asyncio-daemon-thread mismatch.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    _exit_hard(main())

@@ -96,9 +96,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib.stop_hook import emit_block, in_cooldown, read_input  # noqa: E402
-from lib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
-from lib.vault_policy import find_containing_vault  # noqa: E402
+from hookslib.stop_hook import emit_block, in_cooldown, read_input  # noqa: E402
+from hookslib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
+from hookslib.vault_policy import find_containing_vault  # noqa: E402
 
 # detect_secrets is imported lazily inside run_scan() so this module
 # can be imported in environments that don't have it installed (e.g.

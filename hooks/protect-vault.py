@@ -34,8 +34,8 @@ import sys
 # Shared with Stop hooks via lib/vault_config.py; per-vault policy via
 # lib/vault_policy.py.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
-from lib.vault_policy import find_containing_vault, load_vault_policy  # noqa: E402
+from hookslib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
+from hookslib.vault_policy import find_containing_vault, load_vault_policy  # noqa: E402
 
 ESCAPE_HATCH = "I_AM_BEING_CAREFUL=1"
 PROTECTED_DIRS = ["_sources"]

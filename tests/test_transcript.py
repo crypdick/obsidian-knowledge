@@ -2,7 +2,7 @@
 
 import json
 
-from lib.transcript import iter_tool_uses
+from hookslib.transcript import iter_tool_uses
 
 
 def test_missing_file_yields_nothing(tmp_path):

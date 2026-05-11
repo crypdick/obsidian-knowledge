@@ -1,5 +1,5 @@
 """Tests for the per-session bash-call counter."""
-from lib import reflect_counter
+from hookslib import reflect_counter
 
 
 class TestCounter:
