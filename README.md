@@ -156,6 +156,19 @@ Triggers the meta-improvement workflow. The argument is the friction
 description — main agent uses it to seed the incident report and
 generate a slug.
 
+### /vault-search <query>
+
+Hybrid (BM25 + dense vector) retrieval over the indexed `wiki/` tree.
+Returns ranked `score  path` lines. Pass `--all` to override the digest
+filter and include normally-hidden zones (`Inbox/`, `Journal/`).
+
+Backed by the [`obsidian-knowledge`](https://pypi.org/project/obsidian-knowledge/)
+package. Vector lane uses [Ollama](https://ollama.com/) with
+[`bge-m3`](https://ollama.com/library/bge-m3) by default (8192-token context,
+multilingual, ~2.3GB). If Ollama is unreachable or the model is not pulled,
+the command silently degrades to FTS-only and prints a single
+`# vector lane off (...)` notice on stderr.
+
 ## Requirements
 
 - [Obsidian](https://obsidian.md/) with CLI enabled
@@ -166,29 +179,54 @@ generate a slug.
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with plugin
   support
 - [`uv`](https://docs.astral.sh/uv/) on `PATH` — required by
-  `scan-vault-secrets.py`, which is a uv inline script and resolves
-  its `detect-secrets` dependency through uv's cache
+  `scan-vault-secrets.py` and the `obsidian-knowledge` CLI
+- [Ollama](https://ollama.com/) installed and running locally, with the
+  `bge-m3` embedding model pulled. Required for `/vault-search`'s vector
+  lane; optional otherwise (the command will fall back to FTS-only).
 
 ## Installation
 
 ```bash
-# Add the marketplace
+# 1. Add the marketplace and install the plugin
 claude plugin marketplace add crypdick/obsidian-knowledge
-
-# Install the plugin
 claude plugin install obsidian-knowledge@obsidian-knowledge
-```
 
-After installing, create `~/.config/obsidian-knowledge/vaults.yaml` listing
-your vault root paths:
+# 2. Install Ollama and pull the default embedding model
+#    (skip if you don't want vector search)
+brew install ollama          # macOS; or see ollama.com/download
+brew services start ollama   # macOS; on Linux: `ollama serve` (systemd)
+ollama pull bge-m3
 
-```yaml
+# 3. Tell the plugin which vaults to manage
+mkdir -p ~/.config/obsidian-knowledge
+cat > ~/.config/obsidian-knowledge/vaults.yaml <<'EOF'
 vaults:
   - /path/to/your/obsidian/vault
+EOF
+
+# 4. Build the initial index (first run takes minutes for a large vault)
+uv run --project ~/.claude/plugins/cache/obsidian-knowledge/obsidian-knowledge \
+  obsidian-knowledge reindex --vault /path/to/your/obsidian/vault
 ```
 
-The protection hooks use this file to know which directories to guard. Without
-it, the `_sources/`, published-file, and destructive-ops rules will not fire.
+The protection hooks use `vaults.yaml` to know which directories to guard.
+Without it, the `_sources/`, published-file, and destructive-ops rules will
+not fire.
+
+### Switching embedding models
+
+Override any of the defaults via environment variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MEMWEAVE_EMBEDDING_MODEL` | `ollama/bge-m3` | LiteLLM model identifier |
+| `MEMWEAVE_EMBEDDING_API_BASE` | `http://127.0.0.1:11434` | Ollama / LiteLLM endpoint |
+| `MEMWEAVE_EMBEDDING_API_KEY` | unset | API key (leave unset for Ollama) |
+
+When the embedding model changes, the next `/vault-search` call detects the
+mismatch and rebuilds the index automatically. The fingerprint
+(`<model>@<chunk-tokens>/<chunk-overlap>`) is stored at
+`<vault>/.config/obsidian-knowledge/cache/embedder-fingerprint.txt`.
 
 ## Usage
 

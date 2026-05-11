@@ -135,6 +135,67 @@ def test_indexer_probe_failure_falls_back_to_fts(monkeypatch, tmp_path):
     assert cfg.vector.enabled is False
 
 
+def test_full_reindex_writes_fingerprint(monkeypatch, vault: Path, cfg, tmp_path: Path):
+    """Successful reindex must persist the embedder fingerprint."""
+    monkeypatch.setattr(
+        "lib.vault_index.indexer._ollama_probe",
+        lambda api_base, model: (True, "test-stub: probe ok"),
+    )
+    cache_dir = tmp_path / "cache"
+    idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
+    idx.full_reindex()
+    fp = (cache_dir / "embedder-fingerprint.txt").read_text().strip()
+    assert fp.startswith("ollama/bge-m3@")
+    assert "320/64" in fp
+
+
+def test_init_auto_rebuilds_on_embedder_change(monkeypatch, vault: Path, cfg, tmp_path: Path):
+    """Stale fingerprint + populated index → search() triggers rebuild before returning."""
+    monkeypatch.setattr(
+        "lib.vault_index.indexer._ollama_probe",
+        lambda api_base, model: (True, "test-stub: probe ok"),
+    )
+    cache_dir = tmp_path / "cache"
+    # First pass: build index with current embedder.
+    idx1 = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
+    idx1.full_reindex()
+    asyncio_close(idx1)
+
+    # Tamper with the stored fingerprint to simulate a model swap.
+    (cache_dir / "embedder-fingerprint.txt").write_text("ollama/old-model@320/64")
+
+    idx2 = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
+    assert idx2._needs_rebuild is True
+
+    # Stub the rebuild so the test doesn't actually re-run memweave.index().
+    rebuilt = {"n": 0}
+
+    def fake_rebuild(reason: str) -> None:
+        rebuilt["n"] += 1
+        idx2._needs_rebuild = False
+
+    monkeypatch.setattr(idx2, "_auto_rebuild", fake_rebuild)
+    idx2.search("python")
+    assert rebuilt["n"] == 1
+
+
+def test_init_no_rebuild_on_fresh_install(monkeypatch, tmp_path: Path):
+    """Empty cache must not trigger a rebuild — that's a fresh install, not a swap."""
+    monkeypatch.setattr(
+        "lib.vault_index.indexer._ollama_probe",
+        lambda api_base, model: (True, "test-stub: probe ok"),
+    )
+    from lib.vault_index.config import VaultIndexConfig
+    cache_dir = tmp_path / "cache"
+    idx = Indexer(vault_root=tmp_path, cache_dir=cache_dir, config=VaultIndexConfig())
+    assert idx._needs_rebuild is False
+
+
+def asyncio_close(idx: Indexer) -> None:
+    import asyncio as _a
+    _a.run(idx._store.close())
+
+
 def test_indexer_skip_probe_keeps_caller_choice(tmp_path):
     """skip_probe=True must trust caller's vector_enabled flag."""
     from lib.vault_index.config import VaultIndexConfig

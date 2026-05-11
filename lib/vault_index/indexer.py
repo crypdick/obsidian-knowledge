@@ -61,6 +61,7 @@ DEFAULT_EMBEDDING_API_BASE = "http://127.0.0.1:11434"
 DEFAULT_CHUNK_TOKENS = 320
 DEFAULT_CHUNK_OVERLAP = 64
 PROBE_TIMEOUT_S = 1.5
+FINGERPRINT_FILENAME = "embedder-fingerprint.txt"
 
 
 def _ollama_probe(api_base: str, model: str) -> tuple[bool, str]:
@@ -150,11 +151,58 @@ class Indexer:
             if not ok:
                 self._vector_enabled = False
 
+        # Lazy auto-rebuild flag: set to True if the stored embedder fingerprint
+        # differs from the current one. The next .search() or .full_reindex()
+        # call will trigger a force-rebuild before serving results.
+        self._needs_rebuild = self._stale_fingerprint() if self._vector_enabled else False
+
         # Start with an empty-extra_paths store for read-only queries.
         # full_reindex() will replace this with the full allowed-paths store.
         self._store = memweave.MemWeave(
             self._make_config(extra_paths=[])
         )
+
+    def _embedder_fingerprint(self) -> str:
+        """Stable string identifying the current embedding setup.
+
+        Format: ``<model>@<chunk_tokens>/<chunk_overlap>``. Any change to
+        model name or chunking parameters invalidates the existing index
+        because chunk boundaries and vector dimensions may both shift.
+        """
+        model, _api_base, _ = self._embedding_settings()
+        return f"{model}@{DEFAULT_CHUNK_TOKENS}/{DEFAULT_CHUNK_OVERLAP}"
+
+    def _fingerprint_path(self) -> Path:
+        return self.cache_dir / FINGERPRINT_FILENAME
+
+    def _read_stored_fingerprint(self) -> str | None:
+        try:
+            return self._fingerprint_path().read_text().strip()
+        except OSError:
+            return None
+
+    def _write_fingerprint(self) -> None:
+        try:
+            self._fingerprint_path().write_text(self._embedder_fingerprint())
+        except OSError:
+            pass
+
+    def _stale_fingerprint(self) -> bool:
+        """True iff a populated index exists but was built with a different embedder.
+
+        We only consider the fingerprint stale when there is *something* to
+        invalidate — an empty cache or a never-indexed vault is a fresh install,
+        not a model swap, so we don't auto-rebuild on first run.
+        """
+        db = self.cache_dir / "index.sqlite"
+        if not db.exists():
+            return False
+        stored = self._read_stored_fingerprint()
+        if stored is None:
+            # Pre-3.15 cache: built FTS-only, no fingerprint. If vectors are
+            # enabled now, we need a rebuild to populate chunks_vec.
+            return True
+        return stored != self._embedder_fingerprint()
 
     @staticmethod
     def _embedding_settings() -> tuple[str, str, str | None]:
@@ -235,6 +283,9 @@ class Indexer:
         handles hash-skip logic (unchanged files are skipped unless
         ``force=True``) and automatic deletion of stale DB entries (paths
         previously in the DB that are no longer in ``extra_paths``).
+
+        Writes the embedder fingerprint after a successful run so the next
+        Indexer init can detect a model change and auto-rebuild.
         """
         # Close the current store before opening a new one on the same DB.
         asyncio.run(self._store.close())
@@ -244,11 +295,25 @@ class Indexer:
             self._make_config(extra_paths=allowed)
         )
         result = asyncio.run(self._store.index(force=force))
+        self._write_fingerprint()
+        self._needs_rebuild = False
         return SyncStats(
             indexed=result.files_indexed,
             skipped=result.files_skipped,
             deleted=result.files_deleted,
         )
+
+    def _auto_rebuild(self, reason: str) -> None:
+        """Force-rebuild the index, printing a notice. Used for embedder swaps."""
+        import sys
+        stored = self._read_stored_fingerprint() or "none"
+        current = self._embedder_fingerprint()
+        print(
+            f"# vault-index: rebuilding ({reason}; was {stored}, now {current})",
+            file=sys.stderr,
+            flush=True,
+        )
+        self.full_reindex(force=True)
 
     def sync(self) -> SyncStats:
         """Incremental re-index. Same as full_reindex without force."""
@@ -275,9 +340,28 @@ class Indexer:
         # Request more candidates than needed so apply_filters has room to filter.
         candidate_count = max(50, effective_top_k * 5)
 
-        raw = asyncio.run(
-            self._store.search(query, max_results=candidate_count, min_score=0.0)
-        )
+        # Auto-rebuild when the embedder fingerprint changed since the last
+        # successful index. This keeps "swap MEMWEAVE_EMBEDDING_MODEL and run
+        # /vault-search" from blowing up on a stale chunks_vec.
+        if self._needs_rebuild:
+            self._auto_rebuild(reason="embedder changed")
+
+        try:
+            raw = asyncio.run(
+                self._store.search(query, max_results=candidate_count, min_score=0.0)
+            )
+        except memweave.SearchError as exc:
+            # Defensive net: reindex didn't run for some reason but the index
+            # is missing chunks_vec. Trigger a rebuild and retry once.
+            if "chunks_vec" in str(exc) and self._vector_enabled:
+                self._auto_rebuild(reason="chunks_vec missing")
+                raw = asyncio.run(
+                    self._store.search(
+                        query, max_results=candidate_count, min_score=0.0
+                    )
+                )
+            else:
+                raise
         hits = [
             Hit(path=self._abs_to_rel(r.path), score=_rescale(r.score), weight_applied=1.0)
             for r in raw
