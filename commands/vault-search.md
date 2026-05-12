@@ -19,14 +19,16 @@ For exact-string lookups (a known function name, a specific token, a literal phr
 1. Run the search. If `$ARGUMENTS` is empty, ask the user what they want to search for and stop.
 
    ```bash
-   uv run --project "${CLAUDE_PLUGIN_ROOT}" obsidian-knowledge search "$ARGUMENTS"
+   obsidian-knowledge search "$ARGUMENTS"
    ```
 
    To include normally-hidden paths (Inbox, Journal, sources), append `--all`:
 
    ```bash
-   uv run --project "${CLAUDE_PLUGIN_ROOT}" obsidian-knowledge search "$ARGUMENTS" --all
+   obsidian-knowledge search "$ARGUMENTS" --all
    ```
+
+   If `obsidian-knowledge` is not found, install it first: `uv tool install obsidian-knowledge`
 
 2. Surface the printed `score  path` lines verbatim.
 
