@@ -211,29 +211,19 @@ the command silently degrades to FTS-only and prints a single
 ## Installation
 
 ```bash
-# 1. Add the marketplace and install the plugin
-claude plugin marketplace add crypdick/obsidian-knowledge
-claude plugin install obsidian-knowledge@obsidian-knowledge
+# 1. Install the CLI
+uv tool install obsidian-knowledge
 
-# 2. Install Ollama and pull the default embedding model
-#    (skip if you don't want vector search)
+# 2. Run setup (registers vault, installs claude plugin if available, initial reindex)
+obsidian-knowledge setup --vault /path/to/your/obsidian/vault
+
+# 3. Install Ollama and pull the default embedding model (optional — enables vector search)
 brew install ollama          # macOS; or see ollama.com/download
 brew services start ollama   # macOS; on Linux: `ollama serve` (systemd)
 ollama pull bge-m3
-
-# 3. Tell the plugin which vaults to manage
-mkdir -p ~/.config/obsidian-knowledge
-cat > ~/.config/obsidian-knowledge/vaults.yaml <<'EOF'
-vaults:
-  - /path/to/your/obsidian/vault
-EOF
-
-# 4. Install the obsidian-knowledge CLI
-uv tool install obsidian-knowledge
-
-# 5. Build the initial index (first run takes minutes for a large vault)
-obsidian-knowledge reindex --vault /path/to/your/obsidian/vault
 ```
+
+`setup` is idempotent — safe to re-run. If `claude` is not on `PATH`, the plugin install step is skipped automatically.
 
 The protection hooks use `vaults.yaml` to know which directories to guard.
 Without it, the `_sources/`, published-file, and destructive-ops rules will

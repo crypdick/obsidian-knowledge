@@ -103,9 +103,74 @@ def link_hermes_memories(vault_root: Path, hermes_memories_dir: Path) -> None:
     )
 
 
+def setup(vault: Path) -> None:
+    """First-time setup: register vault, install claude plugin, initial reindex."""
+    import shutil
+    import subprocess
+
+    # 1. Write/update vaults.yaml
+    config_dir = Path.home() / ".config" / "obsidian-knowledge"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    vaults_yaml = config_dir / "vaults.yaml"
+    vault_str = str(vault.resolve())
+
+    if vaults_yaml.exists():
+        existing = vaults_yaml.read_text()
+        if vault_str in existing:
+            print(f"vaults.yaml: {vault_str} already registered")
+        else:
+            with vaults_yaml.open("a") as f:
+                f.write(f"  - {vault_str}\n")
+            print(f"vaults.yaml: added {vault_str}")
+    else:
+        vaults_yaml.write_text(f"vaults:\n  - {vault_str}\n")
+        print(f"vaults.yaml: created at {vaults_yaml}")
+
+    # 2. Claude plugin install (skip if claude not on PATH)
+    if shutil.which("claude") is None:
+        print("claude: not found on PATH — skipping plugin install")
+    else:
+        for cmd in [
+            ["claude", "plugin", "marketplace", "add", "crypdick/obsidian-knowledge"],
+            ["claude", "plugin", "install", "obsidian-knowledge@obsidian-knowledge"],
+        ]:
+            print(f"running: {' '.join(cmd)}")
+            result = subprocess.run(cmd, check=False)
+            if result.returncode != 0:
+                print(f"  warning: exited {result.returncode} — continuing")
+
+    # 3. Initial reindex
+    print(f"\nreindexing {vault_str} (may take a minute on first run)…")
+    import fcntl
+    from lib.vault_index.config import load_config
+    from lib.vault_index.indexer import Indexer, default_cache_dir
+
+    cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+    cache = default_cache_dir(vault)
+    cache.mkdir(parents=True, exist_ok=True)
+    lock_path = cache / ".reindex.lock"
+    with open(lock_path, "w") as lock_f:
+        try:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("reindex: another reindex in progress; skipping")
+            return
+        idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+        stats = idx.full_reindex(force=False)
+        print(f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}")
+
+    print("\nSetup complete.")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="obsidian-knowledge")
     sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_setup = sub.add_parser(
+        "setup",
+        help="First-time setup: register vault, install claude plugin, initial reindex",
+    )
+    p_setup.add_argument("--vault", type=Path, required=True, help="Vault root path")
 
     p_init = sub.add_parser(
         "init-vault-index",
@@ -140,7 +205,9 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    if args.cmd == "init-vault-index":
+    if args.cmd == "setup":
+        setup(args.vault)
+    elif args.cmd == "init-vault-index":
         init_vault_index(args.vault / ".claude" / "obsidian-knowledge.yaml")
     elif args.cmd == "reindex":
         import fcntl
