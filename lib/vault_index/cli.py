@@ -38,7 +38,7 @@ vault_index:
       multiplier: 1.5
     - regex: "^.+/convos/"
       multiplier: 1.3
-    - regex: "^.+/changelog\\\\.md$"
+    - regex: "^Utility/obsidian-knowledge/changelog/"
       multiplier: 0.6
 
   default_weight: 1.0
