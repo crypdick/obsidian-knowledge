@@ -21,7 +21,7 @@ Each session up to two outputs. Pick combo by what happened.
 
 ### Changelog entry
 
-Append to `Utility/obsidian-knowledge/changelog.md` if session produced substance — edits, decisions, discoveries, dead ends. One line per action. Link to session notes for detail, not inline doc. Follow format from vault-organizer skill. Skip if nothing meaningful or already logged.
+Create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` if session produced substance — edits, decisions, discoveries, dead ends. Filename example: `2026-05-12-143022-vault-organizer.md`. Contents: one terse line per significant action, format `YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]`. No narrative, no code blocks — pointers only. Skip if nothing meaningful or already logged.
 
 ### Session notes
 
@@ -188,4 +188,4 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
 
 ### Always
 
-**Update changelog** — append dated entry to `Utility/obsidian-knowledge/changelog.md` summarizing actions. Link to session notes (or learning pages enriched), not inline detail.
+**Update changelog** — create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` summarizing actions as terse 1-liners. Link to session notes, not inline detail. No narrative in changelog itself.
