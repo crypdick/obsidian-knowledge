@@ -20,7 +20,9 @@ from hookslib.vault_config import is_in_vault  # noqa: E402
 REASON = (
     "Reminder: before wrapping up, consider what's worth preserving from this "
     "session. Options: (1) Changelog entry — always, if anything substantive "
-    "happened. (2) Learning page — if the session was Q&A or you explained "
+    "happened: create Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md, "
+    "one terse line per action ('YYYY-MM-DD HH:MM — what happened [→ [[wikilink]]]'). "
+    "(2) Learning page — if the session was Q&A or you explained "
     "a concept. Default for educational exchanges. Route by topic: consult "
     "the wiki's top-level index and a vault search to pick the subtree where "
     "neighboring notes already live; a dedicated learning subtree is the "
