@@ -19,9 +19,13 @@ from hookslib.vault_config import is_in_vault  # noqa: E402
 
 REASON = (
     "Reminder: if this session produced anything valuable for future agents to "
-    "know (edits, decisions, discoveries, context, dead ends), append a dated "
-    "entry to CHANGELOG.md. If nothing substantive happened or you already "
-    "logged, carry on."
+    "know (edits, decisions, discoveries, context, dead ends), create a new file "
+    "in Utility/obsidian-knowledge/changelog/ named YYYY-MM-DD-HHMMSS-<slug>.md "
+    "(e.g. 2026-05-12-143022-vault-organizer.md). "
+    "Write one terse line per significant action: "
+    "'YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]'. "
+    "No narrative, no code blocks — pointers only. "
+    "If nothing substantive happened or you already logged, carry on."
 )
 
 
