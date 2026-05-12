@@ -42,7 +42,7 @@ def build_primer(
         "search it before answering non-trivial questions with `/vault-search <query>` "
         "(hybrid BM25 + dense-embedding retrieval; ranked top-K paths). "
         f"Fall back to `rg <pattern> {wiki}/` only for exact-string lookups. "
-        "File outcomes at session end (`remember-conversations` skill) and update the changelog. "
+        "File outcomes at session end (`remember-conversations` skill) — this creates a terse changelog entry and any diary/convo notes. "
         "Do NOT use Claude's built-in MEMORY.md system; the wiki is the source of truth.\n"
         f"- Per-session agent memory ({scope_desc}) lives at "
         f"{memory_dir}/. Use the same MEMORY.md + per-fact .md file layout as "
