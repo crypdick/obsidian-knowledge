@@ -2,25 +2,30 @@
 
 State lives at `<vault_root>/Utility/obsidian-knowledge/`. Create dir on first run if missing.
 
-## changelog.md
+## changelog/
 
-Append-only log. Add date-stamped section at top after each run. One line per action.
+Per-session files. Create one new file per agent session, never append to an existing file.
+
+**Filename:** `YYYY-MM-DD-HHMMSS-<slug>.md`
+- Timestamp ensures no collision across concurrent sessions
+- Slug is human-readable glance (e.g. `2026-05-12-143022-vault-organizer.md`)
+
+**Contents:** one terse line per significant action. No H2 headers. No narrative. No code blocks.
 
 ```
-# Changelog
-
-## YYYY-MM-DD
-
-- Created `folder/index.md` (N entries)
-- Moved `old/path.md` → `new/path.md` via `obsidian move`
-- Renamed `old/scan.pdf.pdf` → `2020-02-15-dispute-timesheet.pdf`
-- Fixed N stale links found during move/rename sanity check
-- Added `path/to/file.md:15` to needs-attention.md — unresolved link, no match found
-- Resolved `path/to/old-issue.md` from needs-attention.md — renamed to `descriptive-name.md`
-- See [[2026-04-06-vault-reorg-diary]] for details
+YYYY-MM-DD HH:MM — Created folder/index.md (N entries)
+YYYY-MM-DD HH:MM — Moved old/path.md → new/path.md
+YYYY-MM-DD HH:MM — Fixed N stale links during move/rename sanity check
+YYYY-MM-DD HH:MM — diary: vault reorg pass → [[wiki/systems/knowledge-base/diary/2026-05-12-reorg]]
 ```
 
-Skip entry entirely if no actions taken.
+Skip file entirely if no actions taken.
+
+**Agent usage:**
+```bash
+ls -t Utility/obsidian-knowledge/changelog/ | head -10   # recent sessions
+rg -l "syncthing" Utility/obsidian-knowledge/changelog/  # sessions touching X
+```
 
 ## needs-attention.md
 

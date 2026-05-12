@@ -111,6 +111,6 @@ Preserve existing file structure (heading, regeneration notice, scope section). 
 
 Remove resolved entries. Add new unresolvable issues. Read `lib/state-files.md` for format.
 
-### Step 8: Append to changelog.md
+### Step 8: Create changelog entry
 
-Date-stamped entry at top of `$VAULT/Utility/obsidian-knowledge/changelog.md`. Read `lib/state-files.md` for format. Skip if no actions taken.
+Create `$VAULT/Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`. Read `lib/state-files.md` for format. Skip if no actions taken.
