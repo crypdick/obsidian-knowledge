@@ -155,6 +155,28 @@ class TestMigration:
         assert "2026-05-09" in lines[0]
         assert "Syncthing conflict cleanup" in lines[0]
 
+    def test_entry_with_multiple_diary_links_is_single_line(self, tmp_path):
+        from migrate_changelog import migrate
+
+        vault = tmp_path / "vault"
+        (vault / "Utility" / "obsidian-knowledge").mkdir(parents=True)
+        cl = vault / "Utility" / "obsidian-knowledge" / "changelog.md"
+        cl.write_text(
+            "# Changelog\n\n"
+            "## 2026-05-09 — Multi-link session\n\n"
+            "Filed diary and convo:\n"
+            "- [[wiki/systems/diary/2026-05-09-thing]]\n"
+            "- [[wiki/research/convos/2026-05-09-other]]\n"
+        )
+
+        migrate(vault, apply=True)
+
+        files = list((vault / "Utility" / "obsidian-knowledge" / "changelog").glob("*.md"))
+        lines = [l for l in files[0].read_text().strip().splitlines() if l.strip()]
+        assert len(lines) == 1
+        assert "→ [[wiki/systems/diary/2026-05-09-thing]]" in lines[0]
+        assert "→ [[wiki/research/convos/2026-05-09-other]]" in lines[0]
+
     def test_idempotent_dry_run_does_not_fail_if_dir_exists(self, tmp_path):
         from migrate_changelog import migrate
 
@@ -183,5 +205,5 @@ class TestMigration:
 
         assert result.skipped == 1
         assert result.created == 0
-        # original file preserved when nothing to do (all skipped)
-        assert not cl.exists()
+        # changelog.md preserved — rename only fires when at least one file was created
+        assert cl.exists()

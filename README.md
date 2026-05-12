@@ -119,9 +119,9 @@ whether the working directory is inside a configured vault root. They
 have a 5-minute cooldown per session to avoid being noisy in long
 conversations.
 
-- **update-changelog.sh** — reminds the agent to create a per-session file in
+- **update-changelog.py** — reminds the agent to create a per-session file in
   `changelog/` if the session produced edits, decisions, or discoveries
-- **remind-convos.sh** — reminds the agent to preserve session outputs
+- **remind-convos.py** — reminds the agent to preserve session outputs
   (diary notes, convo notes, guides, changelog entries, gotchas)
 - **scan-vault-secrets.py** — runs `detect-secrets` against the vault
   and surfaces unaudited findings to the agent. The plugin makes no

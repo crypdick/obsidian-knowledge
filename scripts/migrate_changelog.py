@@ -70,11 +70,11 @@ def parse_entries(content: str) -> list[Entry]:
 
 
 def _format_entry_content(entry: Entry) -> str:
-    lines = [f"{entry.date} 00:00 — {entry.title}"]
+    line = f"{entry.date} 00:00 — {entry.title}"
     diary_links = extract_diary_links(entry.body)
-    for link in diary_links:
-        lines.append(f"  → {link}")
-    return "\n".join(lines) + "\n"
+    if diary_links:
+        line += " " + " ".join(f"→ {lnk}" for lnk in diary_links)
+    return line + "\n"
 
 
 def migrate(vault_root: Path, apply: bool = False) -> MigrateResult:
@@ -112,8 +112,9 @@ def migrate(vault_root: Path, apply: bool = False) -> MigrateResult:
             print(f"  would create: {filename}")
 
     if apply:
-        changelog_md.rename(archive)
-        print(f"\nRenamed changelog.md → changelog-archive.md")
+        if result.created > 0:
+            changelog_md.rename(archive)
+            print(f"\nRenamed changelog.md → changelog-archive.md")
         print(f"Done: {result.created} created, {result.skipped} skipped.")
     else:
         print(f"\nDry run: {result.would_create} entries would be created. Pass --apply to execute.")
