@@ -31,7 +31,7 @@ history:
 - **Session notes** — two types: `-diary` for narrative accounts (what
   happened, what was tried) and `-convo` for analytical synthesis
   (comparisons, decision rationales, research summaries)
-- **Changelog updates** — appends a dated entry to `changelog.md`
+- **Changelog updates** — creates a terse per-session file in `changelog/`
   summarizing actions taken
 - **Automatic placement** — notes filed in `sessions/` subfolders within
   the relevant subtree, preserving progressive disclosure
@@ -119,8 +119,8 @@ whether the working directory is inside a configured vault root. They
 have a 5-minute cooldown per session to avoid being noisy in long
 conversations.
 
-- **update-changelog.sh** — reminds the agent to append a dated entry to
-  `changelog.md` if the session produced edits, decisions, or discoveries
+- **update-changelog.sh** — reminds the agent to create a per-session file in
+  `changelog/` if the session produced edits, decisions, or discoveries
 - **remind-convos.sh** — reminds the agent to preserve session outputs
   (diary notes, convo notes, guides, changelog entries, gotchas)
 - **scan-vault-secrets.py** — runs `detect-secrets` against the vault
@@ -302,7 +302,7 @@ Or set up a scheduled run for routine maintenance.
 The skill stores its state in your vault at
 `Utility/obsidian-knowledge/`:
 
-- `changelog.md` — append-only log of vault changes
+- `changelog/` — per-session terse logs (one file per agent session, 1-liners only)
 - `needs-attention.md` — human-resolved worklist
 - `reports/open-questions.md` — regenerated dashboard of `> [!question]` callouts
 
