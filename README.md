@@ -228,9 +228,11 @@ vaults:
   - /path/to/your/obsidian/vault
 EOF
 
-# 4. Build the initial index (first run takes minutes for a large vault)
-uv run --project ~/.claude/plugins/cache/obsidian-knowledge/obsidian-knowledge \
-  obsidian-knowledge reindex --vault /path/to/your/obsidian/vault
+# 4. Install the obsidian-knowledge CLI
+uv tool install obsidian-knowledge
+
+# 5. Build the initial index (first run takes minutes for a large vault)
+obsidian-knowledge reindex --vault /path/to/your/obsidian/vault
 ```
 
 The protection hooks use `vaults.yaml` to know which directories to guard.
@@ -278,10 +280,10 @@ the recommended baseline:
 
 ```cron
 # Linux
-0 * * * * $HOME/.local/bin/uv run --project $HOME/src/PERSONAL/obsidian-knowledge obsidian-knowledge reindex --vault $HOME/Documents/obsidian >> $HOME/.cache/obsidian-knowledge/cron.log 2>&1
+0 * * * * $HOME/.local/bin/obsidian-knowledge reindex --vault $HOME/Documents/obsidian >> $HOME/.cache/obsidian-knowledge/cron.log 2>&1
 
 # macOS (Apple Silicon)
-0 * * * * /opt/homebrew/bin/uv run --project $HOME/src/PERSONAL/obsidian-knowledge obsidian-knowledge reindex --vault $HOME/Documents/obsidian >> $HOME/Library/Caches/obsidian-knowledge/cron.log 2>&1
+0 * * * * $HOME/.local/bin/obsidian-knowledge reindex --vault $HOME/Documents/obsidian >> $HOME/Library/Caches/obsidian-knowledge/cron.log 2>&1
 ```
 
 Incremental reindex is cheap: ~8s wall on a ~1700-file vault with zero
