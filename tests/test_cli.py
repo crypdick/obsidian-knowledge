@@ -157,7 +157,7 @@ def test_codex_marketplace_uses_structured_local_source():
     plugin = marketplace["plugins"][0]
 
     assert plugin["name"] == "obsidian-knowledge"
-    assert plugin["source"] == {"source": "local", "path": "."}
+    assert plugin["source"] == {"source": "local", "path": "./"}
     assert plugin["policy"] == {
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL",
@@ -171,7 +171,7 @@ def test_legacy_marketplace_uses_codex_compatible_source():
     )
     plugin = marketplace["plugins"][0]
 
-    assert plugin["source"] == {"source": "local", "path": "."}
+    assert plugin["source"] == {"source": "local", "path": "./"}
     assert plugin["version"] == "3.21.2"
 
 
