@@ -56,7 +56,7 @@ Example:
 
 - **Changelog**: 1-liner per action, pointer to diary if one exists. Never the narrative itself.
 - **Diary**: full narrative for complex investigations, incidents, debug sessions.
-- Diary notes are now discoverable via semantic search (`/vault-search`) — changelog doesn't need to duplicate their content.
+- Diary notes are now discoverable via semantic search (`obsidian-knowledge search`) — changelog doesn't need to duplicate their content.
 
 ### Agent usage patterns
 

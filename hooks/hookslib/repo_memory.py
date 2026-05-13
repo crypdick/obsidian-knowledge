@@ -3,7 +3,7 @@
 The agent's "auto-memory" facts (feedback/project/reference rules) used to
 land in `~/.claude/projects/<slugified-abs-path>/memory/`. That is:
   - invisible to other sessions started outside that exact path
-  - invisible to other tools and to vault-search
+  - invisible to other tools and to obsidian-knowledge search
   - not portable across hosts (the slug embeds the absolute cwd)
 
 This module computes a stable, host-agnostic vault-relative path keyed on

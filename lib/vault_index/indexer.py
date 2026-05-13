@@ -364,7 +364,7 @@ class Indexer:
 
         # Auto-rebuild when the embedder fingerprint changed since the last
         # successful index. This keeps "swap MEMWEAVE_EMBEDDING_MODEL and run
-        # /vault-search" from blowing up on a stale chunks_vec.
+        # search" from blowing up on a stale chunks_vec.
         if self._needs_rebuild:
             self._auto_rebuild(reason="embedder changed")
 

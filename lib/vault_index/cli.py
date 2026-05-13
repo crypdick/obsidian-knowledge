@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -45,6 +46,116 @@ vault_index:
   top_k: 5
   # min_score: null  # uncomment to set a hard cutoff
 """
+
+VAULTS_CONFIG_ENV = "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG"
+
+
+def vaults_config_path() -> Path:
+    """Return the global vault registry path, with a test override."""
+    override = os.environ.get(VAULTS_CONFIG_ENV)
+    if override:
+        return Path(override)
+    return Path.home() / ".config" / "obsidian-knowledge" / "vaults.yaml"
+
+
+def load_configured_vaults(config_path: Path | None = None) -> list[Path]:
+    """Return configured vault roots in order."""
+    path = config_path or vaults_config_path()
+    if not path.exists():
+        return []
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    roots = data.get("vaults") or []
+    if not isinstance(roots, list):
+        return []
+    return [Path(str(root)).expanduser().resolve() for root in roots if str(root).strip()]
+
+
+def resolve_vault(vault: Path | None, cwd: Path | None = None) -> Path:
+    """Resolve the vault for a command.
+
+    Precedence:
+    1. explicit --vault
+    2. configured vault containing cwd
+    3. first configured vault
+    4. cwd, preserving legacy behavior when no registry exists
+    """
+    if vault is not None:
+        return vault.expanduser().resolve()
+
+    cwd = (cwd or Path.cwd()).expanduser().resolve()
+    configured = load_configured_vaults()
+    for root in configured:
+        try:
+            cwd.relative_to(root)
+        except ValueError:
+            continue
+        return root
+    if configured:
+        return configured[0]
+    return cwd
+
+
+def format_remember_candidates(hits: list) -> str:
+    """Format scored candidate homes for a memory."""
+    if not hits:
+        return "Potential homes:\n(no candidates)"
+    lines = ["Potential homes:"]
+    lines.extend(f"{hit.score:6.1f}  {hit.path}" for hit in hits)
+    return "\n".join(lines)
+
+
+def hook_script_path(name: str) -> Path:
+    """Return the packaged path for an existing hook script."""
+    package_root = Path(__file__).resolve().parents[2]
+    script = package_root / "hooks" / name
+    if not script.exists():
+        raise FileNotFoundError(f"hook script not found: {script}")
+    return script
+
+
+def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claude") -> int:
+    """Dispatch private hook entry points to the existing hook scripts."""
+    scripts = {
+        ("pre-tool-use", "protect-vault"): "protect-vault.py",
+        ("post-tool-use", "reflect-nudge"): "reflect-nudge.py",
+        ("session-start", "recall-init"): "recall-init.py",
+        ("stop", "update-changelog"): "update-changelog.py",
+        ("stop", "remind-convos"): "remind-convos.py",
+        ("stop", "nudge-index-sync"): "nudge-index-sync.py",
+    }
+    effective_kind = kind
+    if effective_kind is None:
+        defaults = {
+            "pre-tool-use": "protect-vault",
+            "post-tool-use": "reflect-nudge",
+            "session-start": "recall-init",
+        }
+        effective_kind = defaults.get(event)
+    script_name = scripts.get((event, effective_kind))
+    if script_name is None:
+        print(f"error: unsupported hook event/kind: {event}/{kind}", file=sys.stderr)
+        return 2
+    script = hook_script_path(script_name)
+    payload = sys.stdin.read()
+    env = os.environ.copy()
+    env["OBSIDIAN_KNOWLEDGE_HOOK_AGENT"] = agent
+    proc = subprocess.run(
+        [sys.executable, str(script)],
+        input=payload,
+        text=True,
+        capture_output=True,
+        cwd=Path.cwd(),
+        env=env,
+        check=False,
+    )
+    if proc.stdout:
+        sys.stdout.write(proc.stdout)
+    if proc.stderr:
+        sys.stderr.write(proc.stderr)
+    return proc.returncode
 
 
 def init_vault_index(yaml_path: Path) -> None:
@@ -176,15 +287,15 @@ def main() -> int:
         "init-vault-index",
         help="Add vault_index template to .claude/obsidian-knowledge.yaml",
     )
-    p_init.add_argument("--vault", type=Path, default=Path.cwd(), help="Vault root (default: cwd)")
+    p_init.add_argument("--vault", type=Path, default=None, help="Vault root")
 
     p_reindex = sub.add_parser("reindex", help="Run a full re-index of the vault")
-    p_reindex.add_argument("--vault", type=Path, default=Path.cwd())
+    p_reindex.add_argument("--vault", type=Path, default=None)
     p_reindex.add_argument("--force", action="store_true")
 
-    p_search = sub.add_parser("search", help="Hybrid (BM25+vector) search the vault index")
+    p_search = sub.add_parser("search", help="Search the vault index")
     p_search.add_argument("query", help="Free-text query")
-    p_search.add_argument("--vault", type=Path, default=Path.cwd())
+    p_search.add_argument("--vault", type=Path, default=None)
     p_search.add_argument("--top-k", type=int, default=None)
     p_search.add_argument(
         "--all",
@@ -192,11 +303,31 @@ def main() -> int:
         help="Override digest filter (include paths normally hidden from prefetch).",
     )
 
+    p_remember = sub.add_parser(
+        "remember",
+        help="Print scored candidate homes for a memory; does not write files",
+    )
+    p_remember.add_argument("memory", help="Memory text to place")
+    p_remember.add_argument("--vault", type=Path, default=None)
+    p_remember.add_argument("--top-k", type=int, default=None)
+    p_remember.add_argument(
+        "--all",
+        action="store_true",
+        help="Override digest filter (include paths normally hidden from prefetch).",
+    )
+
+    p_hook = sub.add_parser("_hook", help=argparse.SUPPRESS)
+    hook_sub = p_hook.add_subparsers(dest="hook_event", required=True)
+    for name in ("pre-tool-use", "post-tool-use", "session-start", "stop"):
+        p = hook_sub.add_parser(name, help=argparse.SUPPRESS)
+        p.add_argument("--kind", default=None)
+        p.add_argument("--agent", choices=("claude", "codex"), default="claude")
+
     p_link = sub.add_parser(
         "link-hermes-memories",
         help="Symlink Hermes MEMORY.md/USER.md into the vault",
     )
-    p_link.add_argument("--vault", type=Path, default=Path.cwd())
+    p_link.add_argument("--vault", type=Path, default=None)
     p_link.add_argument(
         "--hermes-memories-dir",
         type=Path,
@@ -207,16 +338,20 @@ def main() -> int:
 
     if args.cmd == "setup":
         setup(args.vault)
+    elif args.cmd == "_hook":
+        return run_hook_entrypoint(args.hook_event, kind=args.kind, agent=args.agent)
     elif args.cmd == "init-vault-index":
-        init_vault_index(args.vault / ".claude" / "obsidian-knowledge.yaml")
+        vault = resolve_vault(args.vault)
+        init_vault_index(vault / ".claude" / "obsidian-knowledge.yaml")
     elif args.cmd == "reindex":
         import fcntl
         import memweave
         from lib.vault_index.config import load_config
         from lib.vault_index.indexer import Indexer, default_cache_dir
 
-        cfg = load_config(args.vault / ".claude" / "obsidian-knowledge.yaml")
-        cache = default_cache_dir(args.vault)
+        vault = resolve_vault(args.vault)
+        cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+        cache = default_cache_dir(vault)
         cache.mkdir(parents=True, exist_ok=True)
         lock_path = cache / ".reindex.lock"
         with open(lock_path, "w") as lock_f:
@@ -228,26 +363,32 @@ def main() -> int:
                     file=sys.stderr,
                 )
                 return 0
-            idx = Indexer(vault_root=args.vault, cache_dir=cache, config=cfg)
+            idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
             stats = idx.full_reindex(force=args.force)
             print(
                 f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}",
                 flush=True,
             )
     elif args.cmd == "link-hermes-memories":
-        link_hermes_memories(args.vault, args.hermes_memories_dir)
-    elif args.cmd == "search":
+        vault = resolve_vault(args.vault)
+        link_hermes_memories(vault, args.hermes_memories_dir)
+    elif args.cmd in {"search", "remember"}:
         from lib.vault_index.config import load_config
         from lib.vault_index.indexer import Indexer, default_cache_dir
 
-        cfg = load_config(args.vault / ".claude" / "obsidian-knowledge.yaml")
-        cache = default_cache_dir(args.vault)
-        idx = Indexer(vault_root=args.vault, cache_dir=cache, config=cfg)
+        vault = resolve_vault(args.vault)
+        cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+        cache = default_cache_dir(vault)
+        idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
         if not idx._vector_enabled:
-            print(f"# vector lane off ({idx.vector_status}); FTS-only", file=sys.stderr)
-        hits = idx.search(args.query, top_k=args.top_k, override_digest_filter=args.all)
+            print(f"# search ranking degraded ({idx.vector_status})", file=sys.stderr)
+        query = args.query if args.cmd == "search" else args.memory
+        hits = idx.search(query, top_k=args.top_k, override_digest_filter=args.all)
         if not hits:
-            print("(no results)")
+            print("(no results)" if args.cmd == "search" else format_remember_candidates([]))
+            return 0
+        if args.cmd == "remember":
+            print(format_remember_candidates(hits))
             return 0
         for h in hits:
             print(f"{h.score:6.1f}  {h.path}")

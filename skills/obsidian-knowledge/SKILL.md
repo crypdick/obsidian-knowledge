@@ -7,7 +7,7 @@ description: Read, search, and create notes in the Obsidian vault/wiki memory st
 
 **Primary memory store:** `/Users/ricardo/Documents/obsidian/wiki/`
 
-Use the Obsidian wiki as the durable memory/source-of-truth for non-trivial context, project knowledge, and conversation outcomes. Use `vault_search` for semantic search when available.
+Use the Obsidian wiki as the durable memory/source-of-truth for non-trivial context, project knowledge, and conversation outcomes. Use `obsidian-knowledge search "<query>"` to find relevant notes.
 
 **Location:** Set via `OBSIDIAN_VAULT_PATH` environment variable (e.g. in `~/.hermes/.env`).
 

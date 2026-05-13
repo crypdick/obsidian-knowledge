@@ -1,4 +1,5 @@
 """Tests for the obsidian-knowledge CLI."""
+import json
 import os
 import shutil
 import subprocess
@@ -7,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from lib.vault_index.cli import init_vault_index, link_hermes_memories
+from lib.vault_index.cli import (
+    format_remember_candidates,
+    init_vault_index,
+    link_hermes_memories,
+    resolve_vault,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +59,94 @@ def test_init_vault_index_rejects_malformed_yaml(tmp_path: Path, capsys):
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
     assert "malformed YAML" in captured.err
+
+
+def test_resolve_vault_defaults_to_first_configured_vault(tmp_path: Path, monkeypatch):
+    """Commands default to the first configured vault when no --vault is supplied."""
+    first = tmp_path / "first-vault"
+    second = tmp_path / "second-vault"
+    first.mkdir()
+    second.mkdir()
+    config = tmp_path / "vaults.yaml"
+    config.write_text(f"vaults:\n  - {first}\n  - {second}\n")
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(config))
+
+    assert resolve_vault(None, cwd=tmp_path / "outside") == first.resolve()
+
+
+def test_resolve_vault_prefers_containing_configured_vault(tmp_path: Path, monkeypatch):
+    """A cwd inside a configured vault wins over the first configured vault."""
+    first = tmp_path / "first-vault"
+    second = tmp_path / "second-vault"
+    cwd = second / "wiki" / "topic"
+    first.mkdir()
+    cwd.mkdir(parents=True)
+    config = tmp_path / "vaults.yaml"
+    config.write_text(f"vaults:\n  - {first}\n  - {second}\n")
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(config))
+
+    assert resolve_vault(None, cwd=cwd) == second.resolve()
+
+
+def test_format_remember_candidates_prints_scored_paths():
+    """remember reports potential homes with scores and does not write anything."""
+
+    class Hit:
+        def __init__(self, score, path):
+            self.score = score
+            self.path = path
+
+    text = format_remember_candidates([
+        Hit(42.25, "wiki/repos/acme/app/memory/project_codex.md"),
+        Hit(9.5, "wiki/codex.md"),
+    ])
+
+    assert "Potential homes:" in text
+    assert "42.2  wiki/repos/acme/app/memory/project_codex.md" in text
+    assert " 9.5  wiki/codex.md" in text
+
+
+def test_private_hook_entrypoint_runs_existing_hook(tmp_path: Path):
+    """_hook dispatches through the installed CLI surface to existing hook code."""
+    payload = {
+        "session_id": "abc",
+        "tool_name": "Bash",
+        "tool_input": {"command": "true"},
+    }
+    env = {
+        **os.environ,
+        "OBSIDIAN_KNOWLEDGE_CACHE_ROOT": str(tmp_path / "cache"),
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "lib.vault_index.cli",
+            "_hook",
+            "post-tool-use",
+            "--kind",
+            "reflect-nudge",
+            "--agent",
+            "codex",
+        ],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parents[1],
+        env=env,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+
+
+def test_codex_hooks_template_uses_installed_cli():
+    """Codex hooks should use the uv-tool-installed CLI, not repo-local paths."""
+    template = json.loads((Path(__file__).parents[1] / "hooks" / "codex-hooks.json").read_text())
+    rendered = json.dumps(template)
+    assert "obsidian-knowledge _hook pre-tool-use" in rendered
+    assert "${CLAUDE_PLUGIN_ROOT}" not in rendered
+    assert "/home/" not in rendered
 
 
 # ---------------------------------------------------------------------------

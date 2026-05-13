@@ -35,7 +35,7 @@ REASON = (
     "failure modes, things that cost time to figure out. File these in the "
     "vault's wiki/ tree — NOT in ~/.claude/projects/.../memory/. The "
     "auto-memory directory is deprecated; knowledge belongs in the wiki, "
-    "behavior rules belong in CLAUDE.md. Use the vault-search skill to "
+    "behavior rules belong in CLAUDE.md. Use `obsidian-knowledge search` to "
     "find relevant existing notes before filing. Use the remember-conversations "
     "skill to file. If nothing worth preserving or you already filed, "
     "carry on."

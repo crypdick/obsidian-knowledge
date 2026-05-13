@@ -143,7 +143,7 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
 
 2. **Find the right home** — route by topic, not by default location. Run all three checks before deciding:
    1. **Read wiki's top-level `index.md`** — scan for domain that fits concept.
-   2. **Vault search** — if semantic/vector search tool available (e.g. Obsidian-vault MCP server's search), query concept + inspect top hits' paths to see where neighboring notes live. Fall back to keyword/grep search if no vector search available.
+   2. **Vault search** — run `obsidian-knowledge search "<concept>"` and inspect top hit paths to see where neighboring notes live. Use exact-string search only when looking for a literal name, phrase, or token.
    3. **Fallback** — no existing subtree clearly fits → file under dedicated learning subtree (e.g. `wiki/learning/<subtopic>/`) per vault's convention. Create subtopic folder (with `index.md`) if needed.
 
 3. **Search for existing page** — within chosen subtree, look for page already covering concept. Check by concept name (`find <subtree> -iname '*concept*'`) + via search from step 2. Found → step 5 (append). Not found → step 4 (create).

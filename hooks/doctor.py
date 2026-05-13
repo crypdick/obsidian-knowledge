@@ -7,9 +7,9 @@ Three passes:
 - Pass A: count `- [ ]` entries in Utility/obsidian-knowledge/needs-attention.md
 - Pass B: walk the vault (skip dotfolders and _sources/) and count
   convention violations using the shared patterns module
-- Pass C: probe Ollama for the configured embedding model so the agent knows
-  whether /vault-search is running hybrid (BM25 + vector) or degraded to
-  FTS-only. Cached for 24h in <vault>/.config/obsidian-knowledge/cache/
+- Pass C: probe the local search model so the agent knows whether
+  obsidian-knowledge search is degraded. Cached for 24h in
+  <vault>/.config/obsidian-knowledge/cache/
   doctor-ollama.json to avoid noise on repeat sessions.
 
 Prints a one-line digest if any count is > 0 OR Ollama is degraded, else silent.
@@ -138,8 +138,8 @@ def check_ollama(vault_root: str) -> str | None:
         return None
     bare = model.split("/", 1)[1] if "/" in model else model
     return (
-        f"vault-search degraded to FTS — {msg}. "
-        f"Fix: `ollama serve` + `ollama pull {bare}` for semantic search."
+        f"obsidian-knowledge search is using basic ranking — {msg}. "
+        f"Fix: `ollama serve` + `ollama pull {bare}` for better ranking."
     )
 
 

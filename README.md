@@ -162,7 +162,7 @@ conversations.
 
 `recall-init.py` runs at every session start. Injects the harness
 primer: a 5-directive context block covering memory location, recall
-via `rg`, capture at session end, friction reflection, and
+via `obsidian-knowledge search`, capture at session end, friction reflection, and
 user-frustration reflection. The primer stands alone — agents that
 read only this know how to operate within the harness.
 
@@ -180,18 +180,16 @@ Triggers the meta-improvement workflow. The argument is the friction
 description — main agent uses it to seed the incident report and
 generate a slug.
 
-### /vault-search <query>
+### obsidian-knowledge search "<query>"
 
-Hybrid (BM25 + dense vector) retrieval over the indexed `wiki/` tree.
-Returns ranked `score  path` lines. Pass `--all` to override the digest
-filter and include normally-hidden zones (`Inbox/`, `Journal/`).
+Searches the indexed `wiki/` tree and returns ranked `score  path` lines.
+Pass `--all` to include normally-hidden zones (`Inbox/`, `Journal/`).
 
-Backed by the [`obsidian-knowledge`](https://pypi.org/project/obsidian-knowledge/)
-package. Vector lane uses [Ollama](https://ollama.com/) with
-[`bge-m3`](https://ollama.com/library/bge-m3) by default (8192-token context,
-multilingual, ~2.3GB). If Ollama is unreachable or the model is not pulled,
-the command silently degrades to FTS-only and prints a single
-`# vector lane off (...)` notice on stderr.
+### obsidian-knowledge remember "<memory>"
+
+Deterministic placement helper for durable facts. It does not write files or
+invoke an agent. It searches the vault and prints scored candidate homes so a
+human or agent can choose where to store the memory.
 
 ## Requirements
 
@@ -205,8 +203,7 @@ the command silently degrades to FTS-only and prints a single
 - [`uv`](https://docs.astral.sh/uv/) on `PATH` — required by
   `scan-vault-secrets.py` and the `obsidian-knowledge` CLI
 - [Ollama](https://ollama.com/) installed and running locally, with the
-  `bge-m3` embedding model pulled. Required for `/vault-search`'s vector
-  lane; optional otherwise (the command will fall back to FTS-only).
+  `bge-m3` embedding model pulled. Optional; enables better search ranking.
 
 ## Installation
 
@@ -217,7 +214,7 @@ uv tool install obsidian-knowledge
 # 2. Run setup (registers vault, installs claude plugin if available, initial reindex)
 obsidian-knowledge setup --vault /path/to/your/obsidian/vault
 
-# 3. Install Ollama and pull the default embedding model (optional — enables vector search)
+# 3. Install Ollama and pull the default embedding model (optional — improves search ranking)
 brew install ollama          # macOS; or see ollama.com/download
 brew services start ollama   # macOS; on Linux: `ollama serve` (systemd)
 ollama pull bge-m3
@@ -239,7 +236,7 @@ Override any of the defaults via environment variables:
 | `MEMWEAVE_EMBEDDING_API_BASE` | `http://127.0.0.1:11434` | Ollama / LiteLLM endpoint |
 | `MEMWEAVE_EMBEDDING_API_KEY` | unset | API key (leave unset for Ollama) |
 
-When the embedding model changes, the next `/vault-search` call detects the
+When the embedding model changes, the next `obsidian-knowledge search` call detects the
 mismatch and rebuilds the index automatically. The fingerprint
 (`<model>@<chunk-tokens>/<chunk-overlap>`) is stored alongside the index.
 
@@ -265,7 +262,7 @@ delete once the new cache is populated.
 ### Keeping the index fresh
 
 There is no built-in file-watcher. Content added or edited between reindexes
-is invisible to `/vault-search` until the next reindex. An hourly cron is
+is invisible to `obsidian-knowledge search` until the next reindex. An hourly cron is
 the recommended baseline:
 
 ```cron
