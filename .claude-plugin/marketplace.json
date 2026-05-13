@@ -9,9 +9,12 @@
   "plugins": [
     {
       "name": "obsidian-knowledge",
-      "source": "./",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
       "description": "Skills, hooks, and conventions for maintaining Obsidian knowledge base vaults",
-      "version": "3.17.1"
+      "version": "3.21.2"
     }
   ]
 }

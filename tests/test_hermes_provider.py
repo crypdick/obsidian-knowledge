@@ -7,6 +7,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from lib.vault_index.config import load_config
+from lib.vault_index.indexer import Indexer
+
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_vault"
 
@@ -38,6 +41,18 @@ def provider(vault: Path, tmp_path: Path):
     del os.environ["OBSIDIAN_VAULT_ROOT"]
 
 
+def make_indexer(vault: Path) -> Indexer:
+    cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+    cache = vault / ".config" / "obsidian-knowledge" / "cache"
+    return Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+
+
+def build_index(vault: Path) -> Indexer:
+    indexer = make_indexer(vault)
+    indexer.full_reindex()
+    return indexer
+
+
 # ── Task 14: system_prompt_block ─────────────────────────────────────────────
 
 def test_system_prompt_block_includes_primer(provider, vault):
@@ -55,7 +70,7 @@ def test_system_prompt_block_includes_skill_view_directive(provider):
 # ── Task 15: prefetch + path-dedup ───────────────────────────────────────────
 
 def test_prefetch_returns_report_format(provider, vault):
-    provider.indexer.full_reindex()
+    build_index(vault)
     out = provider.prefetch("python")
     assert "Top semantic vault hits:" in out
     assert "long-term memory" in out
@@ -63,7 +78,7 @@ def test_prefetch_returns_report_format(provider, vault):
 
 
 def test_prefetch_dedups_across_calls(provider, vault):
-    provider.indexer.full_reindex()
+    build_index(vault)
     first = provider.prefetch("python")
     second = provider.prefetch("python")
     # Paths surfaced in first call should not appear in second call's path lines.
@@ -83,7 +98,7 @@ def test_prefetch_dedups_across_calls(provider, vault):
 
 
 def test_prefetch_returns_only_nudge_when_no_fresh_hits(provider, vault):
-    provider.indexer.full_reindex()
+    build_index(vault)
     provider.prefetch("python")  # populate dedup set
     out = provider.prefetch("python")
     # Should still contain the nudge boilerplate; no header expected
@@ -93,7 +108,7 @@ def test_prefetch_returns_only_nudge_when_no_fresh_hits(provider, vault):
 # ── Task 16: on_pre_compress ─────────────────────────────────────────────────
 
 def test_on_pre_compress_clears_dedup_set(provider, vault):
-    provider.indexer.full_reindex()
+    build_index(vault)
     provider.prefetch("python")
     assert len(provider.injected_paths_this_session) > 0
     result = provider.on_pre_compress(messages=[])
@@ -111,7 +126,7 @@ def test_get_tool_schemas_returns_vault_search(provider):
 
 
 def test_handle_tool_call_vault_search_returns_json(provider, vault):
-    provider.indexer.full_reindex()
+    build_index(vault)
     result_json = provider.handle_tool_call("vault_search", {"query": "python"})
     result = json.loads(result_json)
     assert isinstance(result, list)
@@ -121,7 +136,7 @@ def test_handle_tool_call_vault_search_returns_json(provider, vault):
 
 
 def test_handle_tool_call_vault_search_respects_top_k(provider, vault):
-    provider.indexer.full_reindex()
+    build_index(vault)
     result = json.loads(
         provider.handle_tool_call("vault_search", {"query": "python", "top_k": 1})
     )
@@ -139,21 +154,22 @@ import time
 
 
 def test_sync_turn_runs_indexer_in_background(provider, vault):
-    provider.indexer.full_reindex()
-    initial_count = provider.indexer.row_count()
+    indexer = build_index(vault)
+    initial_count = indexer.row_count()
     new_file = vault / "wiki" / "new.md"
     new_file.write_text("# New\nFresh content for indexing.\n")
 
     provider.sync_turn(user_content="hi", assistant_content="hello")
     # Join the background thread (up to 30s to allow for embedding retries).
     provider._sync_thread.join(timeout=30.0)
-    assert provider.indexer.row_count() > initial_count
+    refreshed = make_indexer(vault)
+    assert refreshed.row_count() > initial_count
 
 
 # ── Task 19: queue_prefetch ──────────────────────────────────────────────────
 
 def test_queue_prefetch_warms_next_call(provider, vault):
-    provider.indexer.full_reindex()
+    build_index(vault)
     provider.queue_prefetch("python")  # warms cache
     out = provider.prefetch("python")  # consumes
     assert "Top semantic vault hits" in out or "long-term memory" in out

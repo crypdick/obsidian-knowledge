@@ -149,6 +149,32 @@ def test_codex_hooks_template_uses_installed_cli():
     assert "/home/" not in rendered
 
 
+def test_codex_marketplace_uses_structured_local_source():
+    """Codex rejects Claude-style string sources such as './' as an empty path."""
+    marketplace = json.loads(
+        (Path(__file__).parents[1] / ".agents" / "plugins" / "marketplace.json").read_text()
+    )
+    plugin = marketplace["plugins"][0]
+
+    assert plugin["name"] == "obsidian-knowledge"
+    assert plugin["source"] == {"source": "local", "path": "."}
+    assert plugin["policy"] == {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL",
+    }
+
+
+def test_legacy_marketplace_uses_codex_compatible_source():
+    """Codex also reads this marketplace path when no .agents marketplace exists."""
+    marketplace = json.loads(
+        (Path(__file__).parents[1] / ".claude-plugin" / "marketplace.json").read_text()
+    )
+    plugin = marketplace["plugins"][0]
+
+    assert plugin["source"] == {"source": "local", "path": "."}
+    assert plugin["version"] == "3.21.2"
+
+
 # ---------------------------------------------------------------------------
 # Task 11 — reindex subprocess smoke test
 # ---------------------------------------------------------------------------
