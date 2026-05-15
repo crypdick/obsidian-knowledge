@@ -172,7 +172,8 @@ def test_codex_marketplace_points_to_packaged_plugin():
     manifest = json.loads((plugin_root / ".codex-plugin" / "plugin.json").read_text())
 
     assert manifest["name"] == "obsidian-knowledge"
-    assert manifest["version"] == "3.21.4"
+    assert manifest["version"] == "3.21.5"
+    assert manifest["hooks"] == "./hooks/codex-hooks.json"
     assert (plugin_root / "skills" / "obsidian-knowledge" / "SKILL.md").exists()
     assert (plugin_root / "hooks" / "codex-hooks.json").exists()
 
@@ -185,7 +186,7 @@ def test_legacy_marketplace_uses_codex_compatible_source():
     plugin = marketplace["plugins"][0]
 
     assert plugin["source"] == {"source": "local", "path": "./."}
-    assert plugin["version"] == "3.21.4"
+    assert plugin["version"] == "3.21.5"
 
 
 # ---------------------------------------------------------------------------
