@@ -157,11 +157,24 @@ def test_codex_marketplace_uses_structured_local_source():
     plugin = marketplace["plugins"][0]
 
     assert plugin["name"] == "obsidian-knowledge"
-    assert plugin["source"] == {"source": "local", "path": "./."}
+    assert plugin["source"] == {"source": "local", "path": "./plugins/obsidian-knowledge"}
     assert plugin["policy"] == {
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL",
     }
+
+
+def test_codex_marketplace_points_to_packaged_plugin():
+    """The Git marketplace must point at a plugin directory below the marketplace root."""
+    root = Path(__file__).parents[1]
+    plugin_root = root / "plugins" / "obsidian-knowledge"
+
+    manifest = json.loads((plugin_root / ".codex-plugin" / "plugin.json").read_text())
+
+    assert manifest["name"] == "obsidian-knowledge"
+    assert manifest["version"] == "3.21.4"
+    assert (plugin_root / "skills" / "obsidian-knowledge" / "SKILL.md").exists()
+    assert (plugin_root / "hooks" / "codex-hooks.json").exists()
 
 
 def test_legacy_marketplace_uses_codex_compatible_source():
@@ -172,7 +185,7 @@ def test_legacy_marketplace_uses_codex_compatible_source():
     plugin = marketplace["plugins"][0]
 
     assert plugin["source"] == {"source": "local", "path": "./."}
-    assert plugin["version"] == "3.21.3"
+    assert plugin["version"] == "3.21.4"
 
 
 # ---------------------------------------------------------------------------

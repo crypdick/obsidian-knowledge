@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "obsidian-knowledge _hook pre-tool-use --kind protect-vault --agent codex"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "obsidian-knowledge _hook session-start --kind recall-init --agent codex"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "obsidian-knowledge _hook post-tool-use --kind reflect-nudge --agent codex"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "obsidian-knowledge _hook stop --kind update-changelog --agent codex"
+          },
+          {
+            "type": "command",
+            "command": "obsidian-knowledge _hook stop --kind remind-convos --agent codex"
+          },
+          {
+            "type": "command",
+            "command": "obsidian-knowledge _hook stop --kind nudge-index-sync --agent codex"
+          }
+        ]
+      }
+    ]
+  }
+}
