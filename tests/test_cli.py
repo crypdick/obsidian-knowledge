@@ -142,7 +142,7 @@ def test_private_hook_entrypoint_runs_existing_hook(tmp_path: Path):
 
 def test_codex_hooks_template_uses_installed_cli():
     """Codex hooks should use the uv-tool-installed CLI, not repo-local paths."""
-    template = json.loads((Path(__file__).parents[1] / "hooks" / "codex-hooks.json").read_text())
+    template = json.loads((Path(__file__).parents[1] / "hooks" / "hooks.json").read_text())
     rendered = json.dumps(template)
     assert "obsidian-knowledge _hook pre-tool-use" in rendered
     assert "${CLAUDE_PLUGIN_ROOT}" not in rendered
@@ -172,10 +172,10 @@ def test_codex_marketplace_points_to_packaged_plugin():
     manifest = json.loads((plugin_root / ".codex-plugin" / "plugin.json").read_text())
 
     assert manifest["name"] == "obsidian-knowledge"
-    assert manifest["version"] == "3.21.5"
-    assert manifest["hooks"] == "./hooks/codex-hooks.json"
+    assert manifest["version"] == "3.21.6"
+    assert "hooks" not in manifest
     assert (plugin_root / "skills" / "obsidian-knowledge" / "SKILL.md").exists()
-    assert (plugin_root / "hooks" / "codex-hooks.json").exists()
+    assert (plugin_root / "hooks" / "hooks.json").exists()
 
 
 def test_legacy_marketplace_uses_codex_compatible_source():
@@ -186,7 +186,7 @@ def test_legacy_marketplace_uses_codex_compatible_source():
     plugin = marketplace["plugins"][0]
 
     assert plugin["source"] == {"source": "local", "path": "./."}
-    assert plugin["version"] == "3.21.5"
+    assert plugin["version"] == "3.21.6"
 
 
 # ---------------------------------------------------------------------------

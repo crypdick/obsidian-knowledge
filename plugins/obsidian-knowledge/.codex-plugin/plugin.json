@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.21.5",
+  "version": "3.21.6",
   "description": "Self-evolving plugin that manages an Obsidian knowledge vault: capture, organize, index, garden, and improve its own harness.",
   "author": {
     "name": "Ricardo Decal"
@@ -13,7 +13,6 @@
     "organization"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks/codex-hooks.json",
   "interface": {
     "displayName": "Obsidian Knowledge",
     "shortDescription": "Manage and improve an Obsidian knowledge vault",
