@@ -172,7 +172,7 @@ def test_legacy_marketplace_uses_codex_compatible_source():
     plugin = marketplace["plugins"][0]
 
     assert plugin["source"] == {"source": "local", "path": "./."}
-    assert plugin["version"] == "3.21.2"
+    assert plugin["version"] == "3.21.3"
 
 
 # ---------------------------------------------------------------------------
