@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.21.6",
+  "version": "3.21.7",
   "description": "Self-evolving plugin that manages an Obsidian knowledge vault: capture, organize, index, garden, and improve its own harness.",
   "author": {
     "name": "Ricardo Decal"

@@ -29,7 +29,7 @@ def run_hook(stdin_payload: dict, env_overrides: dict | None = None) -> tuple[in
 
 class TestRecallInit:
     def test_emits_primer_when_vault_configured(self, tmp_vault, tmp_path):
-        """Vault configured; hook injects systemMessage with primer."""
+        """Vault configured; hook injects SessionStart additionalContext."""
         config_dir = tmp_path / "obsidian-knowledge"
         config_dir.mkdir()
         (config_dir / "vaults.yaml").write_text(f"vaults:\n  - {tmp_vault}\n")
@@ -40,9 +40,10 @@ class TestRecallInit:
         code, out = run_hook({"session_id": "abc"}, env)
 
         assert code == 0
-        assert "systemMessage" in out
-        assert "harness" in out["systemMessage"].lower()
-        assert "/improve-harness" in out["systemMessage"]
+        context = out["hookSpecificOutput"]["additionalContext"]
+        assert out["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+        assert "harness" in context.lower()
+        assert "/improve-harness" in context
 
     def test_no_output_when_no_vault_config(self, tmp_path):
         """No vaults.yaml; hook emits nothing."""
@@ -66,5 +67,5 @@ class TestRecallInit:
         }
         code, out = run_hook({"session_id": "abc"}, env)
         assert code == 0  # non-blocking warning, not hard error
-        assert "multi-vault" in out.get("systemMessage", "").lower() or \
-               "not supported" in out.get("systemMessage", "").lower()
+        context = out["hookSpecificOutput"]["additionalContext"]
+        assert "multi-vault" in context.lower() or "not supported" in context.lower()

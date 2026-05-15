@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """SessionStart hook: inject harness primer.
 
-Runs at every session start. Injects the harness primer (5 directives:
-memory location, recall via rg, capture via remember-conversations,
-friction reflection, user-frustration reflection) as the SessionStart
-systemMessage.
+Runs at every session start. Injects the harness primer as SessionStart
+additionalContext so it becomes model context immediately.
 
 Multi-vault config not supported.
 """
@@ -65,8 +63,16 @@ def main() -> int:
 
 
 def emit_message(message: str) -> None:
-    """Emit a SessionStart systemMessage."""
-    json.dump({"systemMessage": message}, sys.stdout)
+    """Emit SessionStart context in the shape Claude Code consumes."""
+    json.dump(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": message,
+            }
+        },
+        sys.stdout,
+    )
 
 
 if __name__ == "__main__":
