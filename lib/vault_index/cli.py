@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
+import platformdirs
 import yaml
 
 DEFAULT_VAULT_INDEX_TEMPLATE = """
@@ -48,6 +51,15 @@ vault_index:
 """
 
 VAULTS_CONFIG_ENV = "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG"
+APP_NAME = "obsidian-knowledge"
+
+
+def default_cache_dir_for_vault(vault_root: Path) -> Path:
+    """Return the cache dir without importing the memweave-backed indexer."""
+    resolved = vault_root.resolve()
+    digest = hashlib.sha256(str(resolved).encode()).hexdigest()[:8]
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "-", resolved.name) or "vault"
+    return Path(platformdirs.user_cache_dir(APP_NAME)) / f"{safe_name}-{digest}"
 
 
 def vaults_config_path() -> Path:
@@ -345,13 +357,9 @@ def main() -> int:
         init_vault_index(vault / ".claude" / "obsidian-knowledge.yaml")
     elif args.cmd == "reindex":
         import fcntl
-        import memweave
-        from lib.vault_index.config import load_config
-        from lib.vault_index.indexer import Indexer, default_cache_dir
 
         vault = resolve_vault(args.vault)
-        cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
-        cache = default_cache_dir(vault)
+        cache = default_cache_dir_for_vault(vault)
         cache.mkdir(parents=True, exist_ok=True)
         lock_path = cache / ".reindex.lock"
         with open(lock_path, "w") as lock_f:
@@ -363,6 +371,11 @@ def main() -> int:
                     file=sys.stderr,
                 )
                 return 0
+
+            from lib.vault_index.config import load_config
+            from lib.vault_index.indexer import Indexer
+
+            cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
             idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
             stats = idx.full_reindex(force=args.force)
             print(
