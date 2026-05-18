@@ -42,9 +42,12 @@ the same probe and prints a one-line reminder.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import fcntl
 import hashlib
 import os
 import re
+import sqlite3
 import urllib.error
 import urllib.request
 import json
@@ -123,6 +126,35 @@ class SyncStats:
     indexed: int
     skipped: int
     deleted: int
+
+
+class IndexBusyError(RuntimeError):
+    """Raised when another process is using this vault index."""
+
+
+@contextlib.contextmanager
+def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
+    """Hold the per-vault SQLite access lock.
+
+    memweave uses one SQLite DB per vault cache. Reindex/sync are writers and
+    must be exclusive; search is a reader and takes a shared lock so writers do
+    not collide with an in-flight query. The lock is deliberately nonblocking by
+    default because Hermes memory retrieval should degrade, not stall a turn.
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = cache_dir / ".index.sqlite.lock"
+    mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+    if not blocking:
+        mode |= fcntl.LOCK_NB
+    with open(lock_path, "w") as lock_f:
+        try:
+            fcntl.flock(lock_f.fileno(), mode)
+        except BlockingIOError as exc:
+            raise IndexBusyError("vault index is busy") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
 
 
 def _rescale(raw: float) -> float:
@@ -309,6 +341,11 @@ class Indexer:
         Writes the embedder fingerprint after a successful run so the next
         Indexer init can detect a model change and auto-rebuild.
         """
+        with index_lock(self.cache_dir, exclusive=True):
+            return self._full_reindex_unlocked(force=force)
+
+    def _full_reindex_unlocked(self, force: bool = False) -> SyncStats:
+        """Run memweave index assuming the caller owns the exclusive lock."""
         # Close the current store before opening a new one on the same DB.
         asyncio.run(self._store.close())
 
@@ -339,7 +376,10 @@ class Indexer:
 
     def sync(self) -> SyncStats:
         """Incremental re-index. Same as full_reindex without force."""
-        return self.full_reindex(force=False)
+        try:
+            return self.full_reindex(force=False)
+        except IndexBusyError:
+            return SyncStats(indexed=0, skipped=0, deleted=0)
 
     def search(
         self,
@@ -366,24 +406,38 @@ class Indexer:
         # successful index. This keeps "swap MEMWEAVE_EMBEDDING_MODEL and run
         # search" from blowing up on a stale chunks_vec.
         if self._needs_rebuild:
-            self._auto_rebuild(reason="embedder changed")
+            try:
+                self._auto_rebuild(reason="embedder changed")
+            except IndexBusyError:
+                pass
 
         try:
-            raw = asyncio.run(
-                self._store.search(query, max_results=candidate_count, min_score=0.0)
-            )
+            with index_lock(self.cache_dir, exclusive=False):
+                raw = asyncio.run(
+                    self._store.search(query, max_results=candidate_count, min_score=0.0)
+                )
         except memweave.SearchError as exc:
             # Defensive net: reindex didn't run for some reason but the index
             # is missing chunks_vec. Trigger a rebuild and retry once.
             if "chunks_vec" in str(exc) and self._vector_enabled:
-                self._auto_rebuild(reason="chunks_vec missing")
-                raw = asyncio.run(
-                    self._store.search(
-                        query, max_results=candidate_count, min_score=0.0
-                    )
-                )
+                try:
+                    self._auto_rebuild(reason="chunks_vec missing")
+                    with index_lock(self.cache_dir, exclusive=False):
+                        raw = asyncio.run(
+                            self._store.search(
+                                query, max_results=candidate_count, min_score=0.0
+                            )
+                        )
+                except IndexBusyError:
+                    return []
             else:
                 raise
+        except IndexBusyError:
+            return []
+        except (sqlite3.OperationalError, memweave.StorageError) as exc:
+            if "database is locked" in str(exc).lower():
+                return []
+            raise
         hits = [
             Hit(path=self._abs_to_rel(r.path), score=_rescale(r.score), weight_applied=1.0)
             for r in raw

@@ -1,11 +1,12 @@
 """Integration tests for Indexer against fixture vault."""
+import fcntl
 import shutil
 from pathlib import Path
 
 import pytest
 
 from lib.vault_index.config import load_config
-from lib.vault_index.indexer import Indexer
+from lib.vault_index.indexer import IndexBusyError, Indexer
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_vault"
 
@@ -35,6 +36,51 @@ def test_full_reindex_indexes_wiki_files(vault: Path, cfg, tmp_path: Path):
     stats = idx.full_reindex()
     assert stats.indexed >= 2  # python.md + rust.md
     assert idx.row_count() >= 2
+
+
+def test_full_reindex_refuses_when_index_lock_is_held(
+    vault: Path, cfg, tmp_path: Path
+):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    lock_file = open(cache_dir / ".index.sqlite.lock", "w")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
+        with pytest.raises(IndexBusyError):
+            idx.full_reindex()
+    finally:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        lock_file.close()
+
+
+def test_sync_degrades_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    lock_file = open(cache_dir / ".index.sqlite.lock", "w")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
+        stats = idx.sync()
+        assert stats.indexed == 0
+        assert stats.skipped == 0
+        assert stats.deleted == 0
+    finally:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        lock_file.close()
+
+
+def test_search_degrades_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
+    idx.full_reindex()
+    lock_file = open(cache_dir / ".index.sqlite.lock", "w")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert idx.search("python") == []
+    finally:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        lock_file.close()
 
 
 def test_full_reindex_skips_denied_paths(vault: Path, cfg, tmp_path: Path):

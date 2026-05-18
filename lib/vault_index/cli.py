@@ -264,23 +264,19 @@ def setup(vault: Path) -> None:
 
     # 3. Initial reindex
     print(f"\nreindexing {vault_str} (may take a minute on first run)…")
-    import fcntl
     from lib.vault_index.config import load_config
-    from lib.vault_index.indexer import Indexer, default_cache_dir
+    from lib.vault_index.indexer import IndexBusyError, Indexer, default_cache_dir
 
     cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
     cache = default_cache_dir(vault)
     cache.mkdir(parents=True, exist_ok=True)
-    lock_path = cache / ".reindex.lock"
-    with open(lock_path, "w") as lock_f:
-        try:
-            fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print("reindex: another reindex in progress; skipping")
-            return
-        idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+    idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+    try:
         stats = idx.full_reindex(force=False)
-        print(f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}")
+    except IndexBusyError:
+        print("reindex: another index operation in progress; skipping")
+        return
+    print(f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}")
 
     print("\nSetup complete.")
 
@@ -356,32 +352,27 @@ def main() -> int:
         vault = resolve_vault(args.vault)
         init_vault_index(vault / ".claude" / "obsidian-knowledge.yaml")
     elif args.cmd == "reindex":
-        import fcntl
-
         vault = resolve_vault(args.vault)
         cache = default_cache_dir_for_vault(vault)
         cache.mkdir(parents=True, exist_ok=True)
-        lock_path = cache / ".reindex.lock"
-        with open(lock_path, "w") as lock_f:
-            try:
-                fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                print(
-                    "reindex: another reindex is in progress (lock held); exiting cleanly.",
-                    file=sys.stderr,
-                )
-                return 0
 
-            from lib.vault_index.config import load_config
-            from lib.vault_index.indexer import Indexer
+        from lib.vault_index.config import load_config
+        from lib.vault_index.indexer import IndexBusyError, Indexer
 
-            cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
-            idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+        cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+        idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+        try:
             stats = idx.full_reindex(force=args.force)
+        except IndexBusyError:
             print(
-                f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}",
-                flush=True,
+                "reindex: another index operation is in progress (lock held); exiting cleanly.",
+                file=sys.stderr,
             )
+            return 0
+        print(
+            f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}",
+            flush=True,
+        )
     elif args.cmd == "link-hermes-memories":
         vault = resolve_vault(args.vault)
         link_hermes_memories(vault, args.hermes_memories_dir)
