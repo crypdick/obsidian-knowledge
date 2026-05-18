@@ -19,6 +19,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+
+_VAULT_SEARCH_TIMEOUT_SECONDS = 60.0
+
 from agent.memory_provider import MemoryProvider  # type: ignore
 
 
@@ -39,11 +42,11 @@ def _run_vault_search(query: str, top_k: int | None = None,
         f"sys.path.insert(0, {str(_PLUGIN_REPO)!r})\n"
         "from pathlib import Path\n"
         "from lib.vault_index.config import load_config\n"
-        "from lib.vault_index.indexer import Indexer\n"
+        "from lib.vault_index.indexer import Indexer, default_cache_dir\n"
         "vault = Path(os.environ['OBSIDIAN_VAULT_ROOT'])\n"
         "cfg_path = vault / '.claude' / 'obsidian-knowledge.yaml'\n"
         "cfg = load_config(cfg_path)\n"
-        "cache = vault / '.config' / 'obsidian-knowledge' / 'cache'\n"
+        "cache = default_cache_dir(vault)\n"
         "idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)\n"
         f"hits = idx.search({query!r}, top_k={top_k!r}, min_score={min_score!r}, override_digest_filter={override_digest_filter!r})\n"
         "print(json.dumps([{'score': h.score, 'path': h.path} for h in hits]))\n"
@@ -57,6 +60,7 @@ def _run_vault_search(query: str, top_k: int | None = None,
         env=os.environ.copy(),
         cwd=str(_PLUGIN_REPO),
         stdin=subprocess.DEVNULL,  # prevent watchfiles from blocking on stdin
+        timeout=_VAULT_SEARCH_TIMEOUT_SECONDS,
     )
     if result.returncode != 0:
         raise RuntimeError(f"vault_search failed: {result.stderr}")
@@ -255,7 +259,7 @@ class ObsidianVaultProvider(MemoryProvider):
             with self._prefetch_lock:
                 self._prefetch_cache = hits
 
-        self._prefetch_thread = threading.Thread(target=_run, daemon=True)
+        self._prefetch_thread = threading.Thread(target=_run, daemon=False)
         self._prefetch_thread.start()
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
@@ -276,12 +280,13 @@ class ObsidianVaultProvider(MemoryProvider):
                     f"sys.path.insert(0, {plugin_root!r})\n"
                     "from pathlib import Path\n"
                     "from lib.vault_index.config import load_config\n"
-                    "from lib.vault_index.indexer import Indexer\n"
+                    "from lib.vault_index.indexer import Indexer, default_cache_dir\n"
                     f"vault = Path({vault_root!r})\n"
                     "cfg = load_config(vault / '.claude' / 'obsidian-knowledge.yaml')\n"
-                    "cache = vault / '.config' / 'obsidian-knowledge' / 'cache'\n"
+                    "cache = default_cache_dir(vault)\n"
                     "idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)\n"
                     "idx.sync()\n"
+                    "idx.row_count()\n"
                     "os._exit(0)\n"  # bypass asyncio daemon thread cleanup hang
                 )
                 subprocess.run(
@@ -290,6 +295,7 @@ class ObsidianVaultProvider(MemoryProvider):
                     env=os.environ.copy(),
                     cwd=plugin_root,
                     stdin=subprocess.DEVNULL,  # prevent watchfiles blocking on stdin
+                    timeout=_VAULT_SEARCH_TIMEOUT_SECONDS,
                 )
             except Exception as exc:
                 import logging
@@ -298,5 +304,5 @@ class ObsidianVaultProvider(MemoryProvider):
                 if self._sync_pending:
                     self._sync_pending = False
 
-        self._sync_thread = threading.Thread(target=_run, daemon=True)
+        self._sync_thread = threading.Thread(target=_run, daemon=False)
         self._sync_thread.start()

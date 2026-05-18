@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from lib.vault_index.config import load_config
-from lib.vault_index.indexer import Indexer
+from lib.vault_index.indexer import Indexer, default_cache_dir
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_vault"
@@ -43,7 +43,7 @@ def provider(vault: Path, tmp_path: Path):
 
 def make_indexer(vault: Path) -> Indexer:
     cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
-    cache = vault / ".config" / "obsidian-knowledge" / "cache"
+    cache = default_cache_dir(vault)
     return Indexer(vault_root=vault, cache_dir=cache, config=cfg)
 
 
@@ -125,6 +125,29 @@ def test_get_tool_schemas_returns_vault_search(provider):
     assert "query" in schemas[0]["parameters"]["properties"]
 
 
+def test_vault_search_subprocess_uses_default_cache_and_timeout(monkeypatch, provider):
+    import hermes_plugin
+
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = "[]"
+        stderr = ""
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return Result()
+
+    monkeypatch.setattr(hermes_plugin.subprocess, "run", fake_run)
+    assert hermes_plugin._run_vault_search("python") == []
+
+    script = calls[0][0][0][2]
+    assert "default_cache_dir" in script
+    assert "vault / '.config' / 'obsidian-knowledge' / 'cache'" not in script
+    assert calls[0][1]["timeout"] == hermes_plugin._VAULT_SEARCH_TIMEOUT_SECONDS
+
+
 def test_handle_tool_call_vault_search_returns_json(provider, vault):
     build_index(vault)
     result_json = provider.handle_tool_call("vault_search", {"query": "python"})
@@ -150,20 +173,32 @@ def test_handle_tool_call_unknown_tool_raises(provider):
 
 # ── Task 18: sync_turn ───────────────────────────────────────────────────────
 
-import time
 
+def test_sync_turn_runs_indexer_in_background(monkeypatch, provider):
+    import hermes_plugin
 
-def test_sync_turn_runs_indexer_in_background(provider, vault):
-    indexer = build_index(vault)
-    initial_count = indexer.row_count()
-    new_file = vault / "wiki" / "new.md"
-    new_file.write_text("# New\nFresh content for indexing.\n")
+    calls = []
 
+    class Result:
+        returncode = 0
+        stdout = b""
+        stderr = b""
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return Result()
+
+    monkeypatch.setattr(hermes_plugin.subprocess, "run", fake_run)
     provider.sync_turn(user_content="hi", assistant_content="hello")
-    # Join the background thread (up to 30s to allow for embedding retries).
-    provider._sync_thread.join(timeout=30.0)
-    refreshed = make_indexer(vault)
-    assert refreshed.row_count() > initial_count
+    provider._sync_thread.join(timeout=5.0)
+
+    assert not provider._sync_thread.is_alive()
+    assert provider._sync_thread.daemon is False
+    assert calls[0][1]["timeout"] == hermes_plugin._VAULT_SEARCH_TIMEOUT_SECONDS
+    script = calls[0][0][0][2]
+    assert "default_cache_dir" in script
+    assert "idx.sync()" in script
+    assert "idx.row_count()" in script
 
 
 # ── Task 19: queue_prefetch ──────────────────────────────────────────────────
@@ -171,6 +206,7 @@ def test_sync_turn_runs_indexer_in_background(provider, vault):
 def test_queue_prefetch_warms_next_call(provider, vault):
     build_index(vault)
     provider.queue_prefetch("python")  # warms cache
+    assert provider._prefetch_thread.daemon is False
     out = provider.prefetch("python")  # consumes
     assert "Top semantic vault hits" in out or "long-term memory" in out
 
