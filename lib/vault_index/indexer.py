@@ -69,6 +69,21 @@ DEFAULT_CHUNK_OVERLAP = 64
 PROBE_TIMEOUT_S = 1.5
 FINGERPRINT_FILENAME = "embedder-fingerprint.txt"
 APP_NAME = "obsidian-knowledge"
+CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
+SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
+
+
+def _cache_base_dir() -> Path:
+    """Return a writable cache base, falling back for restricted sandboxes."""
+    cache_root = os.environ.get(CACHE_ROOT_ENV)
+    if cache_root:
+        return Path(cache_root).expanduser() / APP_NAME
+
+    base = Path(platformdirs.user_cache_dir(APP_NAME))
+    parent = base if base.exists() else base.parent
+    if parent.exists() and not os.access(parent, os.W_OK):
+        return SANDBOX_CACHE_ROOT / APP_NAME
+    return base
 
 
 def default_cache_dir(vault_root: Path) -> Path:
@@ -86,7 +101,7 @@ def default_cache_dir(vault_root: Path) -> Path:
     abs_path = str(vault_root.resolve())
     digest = hashlib.sha256(abs_path.encode()).hexdigest()[:8]
     safe_name = re.sub(r"[^a-zA-Z0-9._-]", "-", vault_root.resolve().name) or "vault"
-    return Path(platformdirs.user_cache_dir(APP_NAME)) / f"{safe_name}-{digest}"
+    return _cache_base_dir() / f"{safe_name}-{digest}"
 
 
 def _ollama_probe(api_base: str, model: str) -> tuple[bool, str]:

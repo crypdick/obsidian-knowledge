@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import os
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -52,6 +54,62 @@ vault_index:
 
 VAULTS_CONFIG_ENV = "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG"
 APP_NAME = "obsidian-knowledge"
+CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
+SEARCH_TTL_ENV = "OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS"
+DEFAULT_SEARCH_TTL_SECONDS = 30
+SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
+
+
+class SearchTimeoutError(TimeoutError):
+    """Raised when a CLI search exceeds its process-level TTL."""
+
+
+@contextlib.contextmanager
+def search_ttl(seconds: int | None):
+    """Bound CLI searches so stuck retrieval cannot leave orphaned processes."""
+    if not seconds or seconds <= 0 or not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_alarm = signal.alarm(0)
+
+    def _raise_timeout(_signum, _frame):
+        raise SearchTimeoutError(f"search exceeded {seconds}s TTL")
+
+    signal.signal(signal.SIGALRM, _raise_timeout)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_alarm:
+            signal.alarm(previous_alarm)
+
+
+def search_ttl_seconds() -> int:
+    """Return configured search TTL, defaulting to a conservative bound."""
+    raw = os.environ.get(SEARCH_TTL_ENV)
+    if raw is None:
+        return DEFAULT_SEARCH_TTL_SECONDS
+    try:
+        return int(raw)
+    except ValueError:
+        return DEFAULT_SEARCH_TTL_SECONDS
+
+
+def _cache_base_dir() -> Path:
+    """Return a writable cache base, falling back for restricted sandboxes."""
+    cache_root = os.environ.get(CACHE_ROOT_ENV)
+    if cache_root:
+        return Path(cache_root).expanduser() / APP_NAME
+
+    base = Path(platformdirs.user_cache_dir(APP_NAME))
+    parent = base if base.exists() else base.parent
+    if parent.exists() and not os.access(parent, os.W_OK):
+        return SANDBOX_CACHE_ROOT / APP_NAME
+    return base
 
 
 def default_cache_dir_for_vault(vault_root: Path) -> Path:
@@ -59,7 +117,7 @@ def default_cache_dir_for_vault(vault_root: Path) -> Path:
     resolved = vault_root.resolve()
     digest = hashlib.sha256(str(resolved).encode()).hexdigest()[:8]
     safe_name = re.sub(r"[^a-zA-Z0-9._-]", "-", resolved.name) or "vault"
-    return Path(platformdirs.user_cache_dir(APP_NAME)) / f"{safe_name}-{digest}"
+    return _cache_base_dir() / f"{safe_name}-{digest}"
 
 
 def vaults_config_path() -> Path:
@@ -387,7 +445,12 @@ def main() -> int:
         if not idx._vector_enabled:
             print(f"# search ranking degraded ({idx.vector_status})", file=sys.stderr)
         query = args.query if args.cmd == "search" else args.memory
-        hits = idx.search(query, top_k=args.top_k, override_digest_filter=args.all)
+        try:
+            with search_ttl(search_ttl_seconds()):
+                hits = idx.search(query, top_k=args.top_k, override_digest_filter=args.all)
+        except SearchTimeoutError as exc:
+            print(f"# search timed out ({exc})", file=sys.stderr)
+            return 124
         if not hits:
             print("(no results)" if args.cmd == "search" else format_remember_candidates([]))
             return 0

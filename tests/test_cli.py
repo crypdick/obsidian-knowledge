@@ -4,15 +4,19 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from lib.vault_index.cli import (
+    default_cache_dir_for_vault,
     format_remember_candidates,
     init_vault_index,
     link_hermes_memories,
     resolve_vault,
+    search_ttl,
+    SearchTimeoutError,
 )
 
 
@@ -106,6 +110,44 @@ def test_format_remember_candidates_prints_scored_paths():
     assert " 9.5  wiki/codex.md" in text
 
 
+def test_default_cache_dir_for_vault_honors_cache_root_env(tmp_path: Path, monkeypatch):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    cache_root = tmp_path / "cache-root"
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(cache_root))
+
+    cache_dir = default_cache_dir_for_vault(vault)
+
+    assert cache_dir.parent == cache_root / "obsidian-knowledge"
+    assert cache_dir.name.startswith("vault-")
+
+
+def test_default_cache_dir_for_vault_falls_back_when_cache_unwritable(
+    tmp_path: Path, monkeypatch
+):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", raising=False)
+    monkeypatch.setattr("lib.vault_index.cli.os.access", lambda _path, _mode: False)
+
+    cache_dir = default_cache_dir_for_vault(vault)
+
+    assert cache_dir.parent == Path("/tmp/obsidian-knowledge-cache/obsidian-knowledge")
+    assert cache_dir.name.startswith("vault-")
+
+
+def test_search_ttl_raises_for_stuck_work():
+    with pytest.raises(SearchTimeoutError):
+        with search_ttl(1):
+            signal_pause()
+
+
+def signal_pause() -> None:
+    import signal
+
+    signal.pause()
+
+
 def test_private_hook_entrypoint_runs_existing_hook(tmp_path: Path):
     """_hook dispatches through the installed CLI surface to existing hook code."""
     payload = {
@@ -170,9 +212,10 @@ def test_codex_marketplace_points_to_packaged_plugin():
     plugin_root = root / "plugins" / "obsidian-knowledge"
 
     manifest = json.loads((plugin_root / ".codex-plugin" / "plugin.json").read_text())
+    package = tomllib.loads((root / "pyproject.toml").read_text())["project"]
 
     assert manifest["name"] == "obsidian-knowledge"
-    assert manifest["version"] == "3.21.11"
+    assert manifest["version"] == package["version"]
     assert "hooks" not in manifest
     assert (plugin_root / "skills" / "obsidian-knowledge" / "SKILL.md").exists()
     assert (plugin_root / "hooks" / "hooks.json").exists()
@@ -186,7 +229,10 @@ def test_legacy_marketplace_uses_codex_compatible_source():
     plugin = marketplace["plugins"][0]
 
     assert plugin["source"] == {"source": "local", "path": "./."}
-    assert plugin["version"] == "3.21.11"
+    package = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())[
+        "project"
+    ]
+    assert plugin["version"] == package["version"]
 
 
 # ---------------------------------------------------------------------------

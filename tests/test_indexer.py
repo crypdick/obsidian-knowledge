@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from lib.vault_index.config import load_config
-from lib.vault_index.indexer import IndexBusyError, Indexer
+from lib.vault_index.indexer import IndexBusyError, Indexer, default_cache_dir
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_vault"
 
@@ -133,10 +133,6 @@ def test_search_override_digest_filter_includes_excluded(vault: Path, cfg, tmp_p
     paths = [h.path for h in hits]
     assert any("Inbox/" in p for p in paths)
 
-
-import os
-
-
 def test_make_config_respects_embedding_env_vars(monkeypatch, tmp_path):
     monkeypatch.setenv("MEMWEAVE_EMBEDDING_MODEL", "ollama/mxbai-embed-large")
     monkeypatch.setenv("MEMWEAVE_EMBEDDING_API_BASE", "http://localhost:11434")
@@ -257,3 +253,27 @@ def test_indexer_skip_probe_keeps_caller_choice(tmp_path):
     assert idx._vector_enabled is True
     cfg = idx._make_config(extra_paths=[])
     assert cfg.vector.enabled is True
+
+
+def test_default_cache_dir_honors_cache_root_env(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    cache_root = tmp_path / "cache-root"
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(cache_root))
+
+    cache_dir = default_cache_dir(vault)
+
+    assert cache_dir.parent == cache_root / "obsidian-knowledge"
+    assert cache_dir.name.startswith("vault-")
+
+
+def test_default_cache_dir_falls_back_when_cache_unwritable(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", raising=False)
+    monkeypatch.setattr("lib.vault_index.indexer.os.access", lambda _path, _mode: False)
+
+    cache_dir = default_cache_dir(vault)
+
+    assert cache_dir.parent == Path("/tmp/obsidian-knowledge-cache/obsidian-knowledge")
+    assert cache_dir.name.startswith("vault-")
