@@ -194,25 +194,18 @@ class ObsidianVaultProvider(MemoryProvider):
         return primer + directive
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
-        """Consume queued result if available; else search synchronously."""
+        """Consume a ready queued result without blocking agent startup."""
         if not query:
             return ""
 
         hits: list[Any] = []
         if self._prefetch_thread is not None:
-            self._prefetch_thread.join(timeout=3.0)
-            with self._prefetch_lock:
-                hits = self._prefetch_cache
-                self._prefetch_cache = []
-            self._prefetch_thread = None
-
-        if not hits:
-            try:
-                hits = _run_vault_search(query)
-            except Exception as exc:
-                import logging
-                logging.getLogger(__name__).warning("prefetch failed: %s", exc)
-                hits = []
+            self._prefetch_thread.join(timeout=0.0)
+            if not self._prefetch_thread.is_alive():
+                with self._prefetch_lock:
+                    hits = self._prefetch_cache
+                    self._prefetch_cache = []
+                self._prefetch_thread = None
 
         fresh = [h for h in hits if h["path"] not in self.injected_paths_this_session]
         for h in fresh:
@@ -250,6 +243,8 @@ class ObsidianVaultProvider(MemoryProvider):
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         """Run search in background; result cached for next prefetch() call."""
         import threading
+        if self._prefetch_thread is not None and self._prefetch_thread.is_alive():
+            return
 
         def _run() -> None:
             try:

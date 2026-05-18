@@ -944,7 +944,7 @@ wheels = [
 
 [[package]]
 name = "obsidian-knowledge"
-version = "3.21.10"
+version = "3.21.11"
 source = { editable = "." }
 dependencies = [
     { name = "memweave" },

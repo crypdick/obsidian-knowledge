@@ -69,17 +69,39 @@ def test_system_prompt_block_includes_skill_view_directive(provider):
 
 # ── Task 15: prefetch + path-dedup ───────────────────────────────────────────
 
-def test_prefetch_returns_report_format(provider, vault):
-    build_index(vault)
+def test_prefetch_returns_report_format(provider, vault, monkeypatch):
+    monkeypatch.setattr(
+        provider,
+        "_prefetch_cache",
+        [{"score": 100.0, "path": "wiki/python.md"}],
+    )
+    provider._prefetch_thread = MagicMock()
+    provider._prefetch_thread.is_alive.return_value = False
+
     out = provider.prefetch("python")
     assert "Top semantic vault hits:" in out
+    assert "wiki/python.md" in out
     assert "long-term memory" in out
     assert "vault_search" in out
 
 
-def test_prefetch_dedups_across_calls(provider, vault):
-    build_index(vault)
+def test_prefetch_dedups_across_calls(provider, vault, monkeypatch):
+    monkeypatch.setattr(
+        provider,
+        "_prefetch_cache",
+        [{"score": 100.0, "path": "wiki/python.md"}],
+    )
+    provider._prefetch_thread = MagicMock()
+    provider._prefetch_thread.is_alive.return_value = False
     first = provider.prefetch("python")
+
+    monkeypatch.setattr(
+        provider,
+        "_prefetch_cache",
+        [{"score": 100.0, "path": "wiki/python.md"}],
+    )
+    provider._prefetch_thread = MagicMock()
+    provider._prefetch_thread.is_alive.return_value = False
     second = provider.prefetch("python")
     # Paths surfaced in first call should not appear in second call's path lines.
     # Path lines start with leading whitespace + a digit (score).
@@ -98,18 +120,31 @@ def test_prefetch_dedups_across_calls(provider, vault):
 
 
 def test_prefetch_returns_only_nudge_when_no_fresh_hits(provider, vault):
-    build_index(vault)
-    provider.prefetch("python")  # populate dedup set
     out = provider.prefetch("python")
     # Should still contain the nudge boilerplate; no header expected
+    assert "long-term memory" in out
+
+
+def test_prefetch_does_not_block_on_running_background_search(provider, monkeypatch):
+    import hermes_plugin
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("prefetch must not run a synchronous vault search")
+
+    monkeypatch.setattr(hermes_plugin, "_run_vault_search", fail_if_called)
+    provider._prefetch_thread = MagicMock()
+    provider._prefetch_thread.is_alive.return_value = True
+
+    out = provider.prefetch("python")
+
+    provider._prefetch_thread.join.assert_called_once_with(timeout=0.0)
     assert "long-term memory" in out
 
 
 # ── Task 16: on_pre_compress ─────────────────────────────────────────────────
 
 def test_on_pre_compress_clears_dedup_set(provider, vault):
-    build_index(vault)
-    provider.prefetch("python")
+    provider.injected_paths_this_session.add("wiki/python.md")
     assert len(provider.injected_paths_this_session) > 0
     result = provider.on_pre_compress(messages=[])
     assert result == ""
@@ -209,6 +244,19 @@ def test_queue_prefetch_warms_next_call(provider, vault):
     assert provider._prefetch_thread.daemon is False
     out = provider.prefetch("python")  # consumes
     assert "Top semantic vault hits" in out or "long-term memory" in out
+
+
+def test_queue_prefetch_skips_when_search_already_running(provider, monkeypatch):
+    import hermes_plugin
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("queue_prefetch must not start overlapping searches")
+
+    monkeypatch.setattr(hermes_plugin, "_run_vault_search", fail_if_called)
+    provider._prefetch_thread = MagicMock()
+    provider._prefetch_thread.is_alive.return_value = True
+
+    provider.queue_prefetch("python")
 
 
 # ── Task 20: atexit safety net ───────────────────────────────────────────────
