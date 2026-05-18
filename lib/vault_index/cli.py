@@ -186,6 +186,11 @@ def hook_script_path(name: str) -> Path:
     return script
 
 
+def package_root() -> Path:
+    """Return the installed package root that contains bundled assets."""
+    return Path(__file__).resolve().parents[2]
+
+
 def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claude") -> int:
     """Dispatch private hook entry points to the existing hook scripts."""
     scripts = {
@@ -287,7 +292,6 @@ def link_hermes_memories(vault_root: Path, hermes_memories_dir: Path) -> None:
 def setup(vault: Path) -> None:
     """First-time setup: register vault, install claude plugin, initial reindex."""
     import shutil
-    import subprocess
 
     # 1. Write/update vaults.yaml
     config_dir = Path.home() / ".config" / "obsidian-knowledge"
@@ -399,6 +403,7 @@ def main() -> int:
         type=Path,
         default=Path.home() / ".hermes" / "memories",
     )
+
 
     args = parser.parse_args()
 

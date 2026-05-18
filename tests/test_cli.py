@@ -295,3 +295,12 @@ def test_link_hermes_memories_idempotent(tmp_path: Path):
 
     link_dir = vault / "Utility" / "obsidian-knowledge" / "hermes"
     assert (link_dir / "MEMORY.md").is_symlink()
+
+
+def test_repo_root_is_hermes_plugin():
+    root = Path(__file__).parents[1]
+    assert (root / "plugin.yaml").exists()
+    assert (root / "__init__.py").exists()
+    manifest = (root / "plugin.yaml").read_text()
+    assert "name: obsidian-vault" in manifest
+    assert "pre_tool_call" in manifest

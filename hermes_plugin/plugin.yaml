@@ -1,8 +1,0 @@
-name: obsidian-vault
-version: 0.1.0
-description: "Per-turn semantic retrieval over an Obsidian vault. Powered by memweave (BM25 + dense embeddings)."
-pip_dependencies:
-  - "obsidian-knowledge @ file:///${HOME}/src/PERSONAL/obsidian-knowledge"
-requires_env: []
-hooks:
-  - on_pre_compress

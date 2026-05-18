@@ -12,10 +12,12 @@ to avoid the version mismatch.
 from __future__ import annotations
 
 import atexit
+import importlib.util
 import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +33,26 @@ _PLUGIN_REPO = Path(os.environ.get(
     str(Path.home() / "src" / "PERSONAL" / "obsidian-knowledge"),
 ))
 _UV_PYTHON = _PLUGIN_REPO / ".venv" / "bin" / "python"
+_HOOKS_DIR = _PLUGIN_REPO / "hooks"
+
+_REMINDER_LOCK = threading.Lock()
+_PENDING_REMINDERS: dict[str, list[str]] = {}
+_SESSION_WIKI_NEW_FOLDERS: dict[str, set[str]] = {}
+_SESSION_WIKI_INDEX_FOLDERS: dict[str, set[str]] = {}
+
+_REFLECT_REMINDER = (
+    "Step back: any friction worth feeding back into the harness, or insight "
+    "worth saving to the knowledge base? If friction, invoke `/improve-harness` "
+    "or describe it. If knowledge worth preserving, use the "
+    "`remember-conversations` skill."
+)
+
+_STOP_REMINDER = (
+    "Previous turn ended under the obsidian-knowledge harness. If it produced "
+    "edits, decisions, discoveries, or durable context, file a terse changelog "
+    "entry and any useful diary/convo/guide note in the vault wiki. If nothing "
+    "worth preserving happened, carry on."
+)
 
 
 def _run_vault_search(query: str, top_k: int | None = None,
@@ -86,6 +108,263 @@ def _run_build_primer(vault_root: str, plugin_root: str) -> str:
     if result.returncode != 0:
         return "You are operating under the obsidian-knowledge harness."
     return result.stdout.strip()
+
+
+def _import_hookslib() -> None:
+    """Make the repo hook helpers importable inside Hermes's plugin process."""
+    hooks_dir = str(_HOOKS_DIR)
+    if hooks_dir not in sys.path:
+        sys.path.insert(0, hooks_dir)
+
+
+def _session_key(session_id: str = "", task_id: str = "") -> str:
+    return session_id or task_id or "default"
+
+
+def _queue_reminder(key: str, message: str) -> None:
+    with _REMINDER_LOCK:
+        bucket = _PENDING_REMINDERS.setdefault(key, [])
+        if message not in bucket:
+            bucket.append(message)
+
+
+def _drain_reminders(key: str) -> list[str]:
+    with _REMINDER_LOCK:
+        reminders = _PENDING_REMINDERS.pop(key, [])
+        if key != "default":
+            reminders.extend(_PENDING_REMINDERS.pop("default", []))
+        return reminders
+
+
+def _with_workdir(workdir: str | None):
+    """Temporarily switch cwd for rules that interpret relative paths."""
+    class _Workdir:
+        def __enter__(self) -> None:
+            self.old_cwd = os.getcwd()
+            if workdir:
+                os.chdir(os.path.expanduser(workdir))
+
+        def __exit__(self, *_exc: object) -> None:
+            os.chdir(self.old_cwd)
+
+    return _Workdir()
+
+
+def _extract_patch_files(patch_text: str) -> list[tuple[str, str, str]]:
+    """Return (operation, path, added_text) tuples from Hermes V4A patch text."""
+    files: list[tuple[str, str, str]] = []
+    current_op = ""
+    current_path = ""
+    added: list[str] = []
+
+    def flush() -> None:
+        nonlocal current_op, current_path, added
+        if current_path:
+            files.append((current_op, current_path, "\n".join(added)))
+        current_op = ""
+        current_path = ""
+        added = []
+
+    for line in patch_text.splitlines():
+        if line.startswith("*** Add File: "):
+            flush()
+            current_op = "add"
+            current_path = line.removeprefix("*** Add File: ").strip()
+            continue
+        if line.startswith("*** Update File: "):
+            flush()
+            current_op = "update"
+            current_path = line.removeprefix("*** Update File: ").strip()
+            continue
+        if line.startswith("*** Delete File: "):
+            flush()
+            current_op = "delete"
+            current_path = line.removeprefix("*** Delete File: ").strip()
+            continue
+        if current_path and line.startswith("+") and not line.startswith("+++"):
+            added.append(line[1:])
+    flush()
+    return files
+
+
+def _run_protect_rules(tool_name: str, tool_input: dict[str, Any], workdir: str | None = None) -> str | None:
+    """Run the existing Claude/Codex vault-protection rules in-process."""
+    _import_hookslib()
+    module_path = _HOOKS_DIR / "protect-vault.py"
+    spec = importlib.util.spec_from_file_location("obsidian_knowledge_protect_vault", module_path)
+    if spec is None or spec.loader is None:
+        return None
+    protect_vault = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = protect_vault
+    spec.loader.exec_module(protect_vault)
+    vault_root = os.environ.get("OBSIDIAN_VAULT_ROOT")
+    if vault_root:
+        protect_vault.VAULT_ROOTS = [os.path.abspath(os.path.expanduser(vault_root))]
+
+    if tool_name == "Bash" and protect_vault.ESCAPE_HATCH in tool_input.get("command", ""):
+        return None
+
+    with _with_workdir(workdir):
+        for rule in protect_vault.RULES:
+            reason = rule(tool_name, tool_input)
+            if reason:
+                return reason
+    return None
+
+
+def _hermes_tool_as_protect_inputs(
+    tool_name: str,
+    args: dict[str, Any],
+) -> list[tuple[str, dict[str, Any], str | None]]:
+    """Translate Hermes tool calls into the existing hook input shape."""
+    if tool_name == "terminal":
+        return [("Bash", {"command": args.get("command", "")}, args.get("workdir"))]
+    if tool_name == "write_file":
+        return [("Write", {"file_path": args.get("path", ""), "content": args.get("content", "")}, None)]
+    if tool_name != "patch":
+        return []
+
+    if args.get("mode", "replace") == "patch":
+        translated = []
+        for op, path, added_text in _extract_patch_files(str(args.get("patch") or "")):
+            if op == "add":
+                translated.append(("Write", {"file_path": path, "content": added_text}, None))
+            else:
+                translated.append(("Edit", {"file_path": path, "new_string": added_text}, None))
+        return translated
+
+    return [(
+        "Edit",
+        {"file_path": args.get("path", ""), "new_string": args.get("new_string", "")},
+        None,
+    )]
+
+
+def _on_pre_tool_call(
+    tool_name: str = "",
+    args: dict[str, Any] | None = None,
+    **_: Any,
+) -> dict[str, str] | None:
+    """Hermes pre_tool_call bridge for the existing vault protection rules."""
+    if not isinstance(args, dict):
+        return None
+    for compat_name, compat_input, workdir in _hermes_tool_as_protect_inputs(tool_name, args):
+        reason = _run_protect_rules(compat_name, compat_input, workdir=workdir)
+        if reason:
+            return {"action": "block", "message": reason}
+    return None
+
+
+def _cache_root() -> Path:
+    override = os.environ.get("OBSIDIAN_KNOWLEDGE_CACHE_ROOT")
+    return Path(override) if override else Path.home() / ".cache" / "obsidian-knowledge"
+
+
+def _track_wiki_index_state(
+    key: str,
+    tool_name: str,
+    args: dict[str, Any],
+    result: Any,
+) -> None:
+    """Track wiki file edits so Hermes can emit the index-sync nudge."""
+    if tool_name not in {"write_file", "patch"}:
+        return
+    if isinstance(result, str) and '"error"' in result[:200].lower():
+        return
+
+    paths: list[str] = []
+    if tool_name == "write_file":
+        paths = [str(args.get("path") or "")]
+    elif args.get("mode", "replace") == "patch":
+        paths = [path for _, path, _ in _extract_patch_files(str(args.get("patch") or ""))]
+    else:
+        paths = [str(args.get("path") or "")]
+
+    with _REMINDER_LOCK:
+        new_folders = _SESSION_WIKI_NEW_FOLDERS.setdefault(key, set())
+        index_folders = _SESSION_WIKI_INDEX_FOLDERS.setdefault(key, set())
+        for path in paths:
+            parts = Path(path).parts
+            if "wiki" not in parts:
+                continue
+            wiki_i = parts.index("wiki")
+            if len(parts) <= wiki_i + 2:
+                continue
+            folder = parts[wiki_i + 1]
+            basename = parts[-1]
+            if basename == "index.md":
+                index_folders.add(folder)
+            elif basename.endswith(".md"):
+                new_folders.add(folder)
+
+
+def _on_post_tool_call(
+    tool_name: str = "",
+    args: dict[str, Any] | None = None,
+    task_id: str = "",
+    session_id: str = "",
+    result: Any = None,
+    **_: Any,
+) -> None:
+    """Hermes post_tool_call bridge for reflection and index-sync tracking."""
+    if not isinstance(args, dict):
+        args = {}
+    key = _session_key(session_id, task_id)
+    _track_wiki_index_state(key, tool_name, args, result)
+
+    if tool_name != "terminal":
+        return
+    try:
+        _import_hookslib()
+        from hookslib import reflect_counter  # type: ignore  # noqa: WPS433
+
+        count = reflect_counter.increment(_cache_root() / key)
+        if reflect_counter.should_fire(count):
+            _queue_reminder(key, _REFLECT_REMINDER)
+    except Exception:
+        return
+
+
+def _on_session_end(
+    session_id: str = "",
+    task_id: str = "",
+    completed: bool = True,
+    interrupted: bool = False,
+    **_: Any,
+) -> None:
+    """Queue Stop-hook style reminders for the next Hermes turn."""
+    key = _session_key(session_id, task_id)
+    if completed and not interrupted:
+        _queue_reminder(key, _STOP_REMINDER)
+
+    with _REMINDER_LOCK:
+        new_folders = _SESSION_WIKI_NEW_FOLDERS.pop(key, set())
+        index_folders = _SESSION_WIKI_INDEX_FOLDERS.pop(key, set())
+    unsynced = sorted(new_folders - index_folders)
+    if unsynced:
+        folders = ", ".join(f"wiki/{folder}/" for folder in unsynced)
+        _queue_reminder(
+            key,
+            "Previous turn created or moved files under "
+            f"{folders} without updating the parent index.md. Run "
+            "vault-organizer, or update the index(es) manually.",
+        )
+
+
+def _on_pre_llm_call(session_id: str = "", task_id: str = "", **_: Any) -> dict[str, str] | None:
+    """Inject queued Hermes hook reminders into the next active turn."""
+    reminders = _drain_reminders(_session_key(session_id, task_id))
+    if not reminders:
+        return None
+    return {"context": "\n\n".join(reminders)}
+
+
+def register(ctx: Any) -> None:
+    """Register Hermes plugin hooks that bridge Claude/Codex hook behavior."""
+    ctx.register_hook("pre_tool_call", _on_pre_tool_call)
+    ctx.register_hook("post_tool_call", _on_post_tool_call)
+    ctx.register_hook("on_session_end", _on_session_end)
+    ctx.register_hook("pre_llm_call", _on_pre_llm_call)
 
 
 # Module-level ref so atexit handler can call shutdown() even on crash.

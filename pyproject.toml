@@ -23,6 +23,7 @@ packages = ["lib"]
 
 [tool.hatch.build.targets.wheel.force-include]
 hooks = "hooks"
+hermes_plugin = "hermes_plugin"
 
 [dependency-groups]
 dev = [

@@ -274,3 +274,124 @@ def test_atexit_safety_net_registered(monkeypatch, vault):
     p.initialize(session_id="t")
     assert hermes_plugin._last_active_provider is p
     del os.environ["OBSIDIAN_VAULT_ROOT"]
+
+
+# ── Hermes plugin hook bridge ───────────────────────────────────────────────
+
+
+def test_register_adds_hermes_hook_bridge(provider):
+    import hermes_plugin
+
+    class Ctx:
+        def __init__(self):
+            self.hooks = []
+
+        def register_hook(self, name, callback):
+            self.hooks.append((name, callback))
+
+    ctx = Ctx()
+    hermes_plugin.register(ctx)
+
+    assert {name for name, _ in ctx.hooks} >= {
+        "pre_tool_call",
+        "post_tool_call",
+        "on_session_end",
+        "pre_llm_call",
+    }
+
+
+def test_pre_tool_call_blocks_terminal_protected_dir(provider, vault):
+    import hermes_plugin
+
+    protected = vault / "_sources" / "original.pdf"
+    protected.parent.mkdir()
+    protected.write_text("original")
+
+    result = hermes_plugin._on_pre_tool_call(
+        tool_name="terminal",
+        args={"command": f"rm {protected}"},
+    )
+
+    assert result["action"] == "block"
+    assert "protected" in result["message"]
+
+
+def test_pre_tool_call_blocks_write_file_generic_name(provider, vault):
+    import hermes_plugin
+
+    (vault / ".claude" / "obsidian-knowledge.yaml").write_text(
+        "generic_filenames:\n  - notes.md\n"
+    )
+
+    result = hermes_plugin._on_pre_tool_call(
+        tool_name="write_file",
+        args={"path": str(vault / "wiki" / "topic" / "notes.md"), "content": "x"},
+    )
+
+    assert result["action"] == "block"
+    assert "generic" in result["message"].lower()
+
+
+def test_pre_tool_call_blocks_patch_mode_publish_guard(provider, vault):
+    import hermes_plugin
+
+    (vault / ".claude" / "obsidian-knowledge.yaml").write_text(
+        "publish_allowlist:\n  - wiki/allowed/\n"
+    )
+
+    result = hermes_plugin._on_pre_tool_call(
+        tool_name="patch",
+        args={
+            "mode": "patch",
+            "patch": (
+                "*** Begin Patch\n"
+                f"*** Add File: {vault}/wiki/python/published.md\n"
+                "+---\n"
+                "+dg-publish: true\n"
+                "+---\n"
+                "+body\n"
+                "*** End Patch\n"
+            ),
+        },
+    )
+
+    assert result["action"] == "block"
+    assert "dg-publish" in result["message"]
+
+
+def test_post_tool_call_reflection_queues_next_pre_llm(monkeypatch, provider, tmp_path):
+    import hermes_plugin
+
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path))
+    key = "session-reflect"
+
+    for _ in range(10):
+        hermes_plugin._on_post_tool_call(
+            tool_name="terminal",
+            args={"command": "pwd"},
+            session_id=key,
+            result='{"exit_code": 0}',
+        )
+
+    injected = hermes_plugin._on_pre_llm_call(session_id=key)
+
+    assert injected is not None
+    assert "friction" in injected["context"]
+
+
+def test_session_end_queues_index_sync_nudge(provider):
+    import hermes_plugin
+
+    key = "session-index"
+    hermes_plugin._on_post_tool_call(
+        tool_name="write_file",
+        args={"path": "/vault/wiki/python/new-note.md", "content": "x"},
+        session_id=key,
+        result='{"status": "success"}',
+    )
+    hermes_plugin._on_session_end(session_id=key)
+
+    injected = hermes_plugin._on_pre_llm_call(session_id=key)
+
+    assert injected is not None
+    assert "parent index.md" in injected["context"]

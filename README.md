@@ -185,6 +185,20 @@ generate a slug.
 Searches the indexed `wiki/` tree and returns ranked `score  path` lines.
 Pass `--all` to include normally-hidden zones (`Inbox/`, `Journal/`).
 
+### Hermes plugin install
+
+Install the repo with Hermes's native plugin manager:
+
+```bash
+hermes plugins install crypdick/obsidian-knowledge --enable
+hermes config set memory.provider obsidian-vault
+```
+
+The installed checkout is both a general Hermes plugin (vault-protection and
+reminder hooks) and a memory provider (`obsidian-vault`) for primer, prefetch,
+and `vault_search`. Use `hermes plugins update obsidian-vault` after pushing
+repo updates.
+
 ### obsidian-knowledge remember "<memory>"
 
 Deterministic placement helper for durable facts. It does not write files or

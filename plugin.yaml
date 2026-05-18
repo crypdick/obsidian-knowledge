@@ -1,0 +1,9 @@
+name: obsidian-vault
+version: 0.1.0
+description: "Obsidian knowledge-base memory provider plus vault-protection lifecycle hooks."
+kind: standalone
+hooks:
+  - pre_tool_call
+  - post_tool_call
+  - on_session_end
+  - pre_llm_call
