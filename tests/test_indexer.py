@@ -70,14 +70,16 @@ def test_sync_degrades_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path)
         lock_file.close()
 
 
-def test_search_degrades_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path):
+def test_degraded_search_reads_fts_when_index_lock_is_held(
+    vault: Path, cfg, tmp_path: Path
+):
     cache_dir = tmp_path / "cache"
     idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
     idx.full_reindex()
     lock_file = open(cache_dir / ".index.sqlite.lock", "w")
     try:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        assert idx.search("python") == []
+        assert any("python" in h.path.lower() for h in idx.search("python"))
     finally:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         lock_file.close()
@@ -177,6 +179,27 @@ def test_indexer_probe_failure_falls_back_to_fts(monkeypatch, tmp_path):
     assert cfg.vector.enabled is False
 
 
+def test_vector_degraded_search_uses_sqlite_fts(vault: Path, cfg, tmp_path: Path):
+    """When vectors are disabled, search should avoid memweave and return FTS hits."""
+    cache_dir = tmp_path / "cache"
+    idx = Indexer(
+        vault_root=vault,
+        cache_dir=cache_dir,
+        config=cfg,
+        vector_enabled=False,
+    )
+    idx.full_reindex()
+
+    async def fail_search(*_args, **_kwargs):
+        raise AssertionError("memweave search should not run in degraded mode")
+
+    idx._store.search = fail_search
+    hits = idx.search("python programming language")
+
+    assert hits
+    assert any("python" in h.path.lower() for h in hits)
+
+
 def test_full_reindex_writes_fingerprint(monkeypatch, vault: Path, cfg, tmp_path: Path):
     """Successful reindex must persist the embedder fingerprint."""
     monkeypatch.setattr(
@@ -267,7 +290,9 @@ def test_default_cache_dir_honors_cache_root_env(tmp_path, monkeypatch):
     assert cache_dir.name.startswith("vault-")
 
 
-def test_default_cache_dir_falls_back_when_cache_unwritable(tmp_path, monkeypatch):
+def test_default_cache_dir_prefers_existing_user_cache_even_when_unwritable(
+    tmp_path, monkeypatch
+):
     vault = tmp_path / "vault"
     vault.mkdir()
     monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", raising=False)
@@ -275,5 +300,6 @@ def test_default_cache_dir_falls_back_when_cache_unwritable(tmp_path, monkeypatc
 
     cache_dir = default_cache_dir(vault)
 
-    assert cache_dir.parent == Path("/tmp/obsidian-knowledge-cache/obsidian-knowledge")
+    assert cache_dir.parent.name == "obsidian-knowledge"
+    assert cache_dir.parent.parent.name.startswith("user_cache")
     assert cache_dir.name.startswith("vault-")

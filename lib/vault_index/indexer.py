@@ -74,16 +74,12 @@ SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
 
 
 def _cache_base_dir() -> Path:
-    """Return a writable cache base, falling back for restricted sandboxes."""
+    """Return the preferred cache base; Indexer falls back only if creation fails."""
     cache_root = os.environ.get(CACHE_ROOT_ENV)
     if cache_root:
         return Path(cache_root).expanduser() / APP_NAME
 
-    base = Path(platformdirs.user_cache_dir(APP_NAME))
-    parent = base if base.exists() else base.parent
-    if parent.exists() and not os.access(parent, os.W_OK):
-        return SANDBOX_CACHE_ROOT / APP_NAME
-    return base
+    return Path(platformdirs.user_cache_dir(APP_NAME))
 
 
 def default_cache_dir(vault_root: Path) -> Path:
@@ -211,7 +207,12 @@ class Indexer:
         self._vector_enabled_requested = vector_enabled
         self._vector_enabled = vector_enabled
         self.vector_status = "disabled-by-caller"
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            cache_dir = SANDBOX_CACHE_ROOT / APP_NAME / cache_dir.name
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            self.cache_dir = cache_dir
 
         if vector_enabled and not skip_probe:
             model, api_base, _ = self._embedding_settings()
@@ -325,6 +326,58 @@ class Indexer:
         except ValueError:
             return abs_path
 
+    @staticmethod
+    def _safe_fts_query(query: str) -> str:
+        """Build a conservative FTS5 query from user text."""
+        terms = re.findall(r"[\w-]+", query)
+        return " OR ".join(f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms)
+
+    def _sqlite_fts_search(self, query: str, candidate_count: int) -> list[Hit]:
+        """Use the persisted FTS table directly when vector retrieval is degraded.
+
+        memweave can still touch vector/litellm machinery during search even
+        after the Ollama probe disables vectors. In sandboxed Codex sessions
+        localhost access is denied, so the degraded path must avoid memweave's
+        search stack entirely and query SQLite FTS directly.
+        """
+        db_path = self.cache_dir / "index.sqlite"
+        if not db_path.exists():
+            return []
+
+        def run(match_query: str) -> list[tuple[str, float]]:
+            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+                return conn.execute(
+                    """
+                    SELECT path, -bm25(chunks_fts) AS score
+                    FROM chunks_fts
+                    WHERE chunks_fts MATCH ?
+                    ORDER BY bm25(chunks_fts)
+                    LIMIT ?
+                    """,
+                    (match_query, max(candidate_count * 3, candidate_count)),
+                ).fetchall()
+
+        try:
+            rows = run(query)
+        except sqlite3.OperationalError:
+            safe_query = self._safe_fts_query(query)
+            if not safe_query:
+                return []
+            try:
+                rows = run(safe_query)
+            except sqlite3.OperationalError:
+                return []
+
+        best_by_path: dict[str, float] = {}
+        for path, score in rows:
+            rel = self._abs_to_rel(path)
+            best_by_path[rel] = max(best_by_path.get(rel, float("-inf")), score)
+        ranked = sorted(best_by_path.items(), key=lambda item: item[1], reverse=True)
+        return [
+            Hit(path=path, score=round(score, 1), weight_applied=1.0)
+            for path, score in ranked[:candidate_count]
+        ]
+
     def row_count(self) -> int:
         """Number of files currently indexed."""
         status = asyncio.run(self._store.status())
@@ -425,6 +478,19 @@ class Indexer:
                 self._auto_rebuild(reason="embedder changed")
             except IndexBusyError:
                 pass
+
+        if not self._vector_enabled:
+            hits = self._sqlite_fts_search(query, candidate_count)
+            cfg = self.config
+            if top_k is not None:
+                cfg = cfg.model_copy(update={"top_k": top_k})
+            if min_score is not None:
+                cfg = cfg.model_copy(update={"min_score": min_score})
+            return apply_filters(
+                hits,
+                cfg,
+                override_digest_filter=override_digest_filter,
+            )
 
         try:
             with index_lock(self.cache_dir, exclusive=False):
