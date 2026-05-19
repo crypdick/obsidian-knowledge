@@ -27,11 +27,10 @@ _VAULT_SEARCH_TIMEOUT_SECONDS = 60.0
 from agent.memory_provider import MemoryProvider  # type: ignore
 
 
-# Path to the uv venv Python that has memweave + lib/vault_index installed
-_PLUGIN_REPO = Path(os.environ.get(
-    "OBSIDIAN_KNOWLEDGE_ROOT",
-    str(Path.home() / "src" / "PERSONAL" / "obsidian-knowledge"),
-))
+# Path to the installed plugin root. OBSIDIAN_KNOWLEDGE_ROOT is a dev override
+# for working directly from a source checkout.
+_DEFAULT_PLUGIN_REPO = Path(__file__).resolve().parent.parent
+_PLUGIN_REPO = Path(os.environ.get("OBSIDIAN_KNOWLEDGE_ROOT", str(_DEFAULT_PLUGIN_REPO)))
 _UV_PYTHON = _PLUGIN_REPO / ".venv" / "bin" / "python"
 _HOOKS_DIR = _PLUGIN_REPO / "hooks"
 
@@ -55,6 +54,16 @@ _STOP_REMINDER = (
 )
 
 
+def _python_cmd() -> list[str]:
+    """Return a Python command that can import the plugin's uv-managed deps."""
+    override = os.environ.get("OBSIDIAN_KNOWLEDGE_PYTHON")
+    if override:
+        return [override]
+    if _UV_PYTHON.exists():
+        return [str(_UV_PYTHON)]
+    return ["uv", "run", "python"]
+
+
 def _run_vault_search(query: str, top_k: int | None = None,
                       min_score: float | None = None,
                       override_digest_filter: bool = False) -> list[dict[str, Any]]:
@@ -76,7 +85,7 @@ def _run_vault_search(query: str, top_k: int | None = None,
         "os._exit(0)\n"  # bypass daemon thread cleanup hang (asyncio threads don't exit cleanly)
     )
     result = subprocess.run(
-        [str(_UV_PYTHON), "-c", script],
+        [*_python_cmd(), "-c", script],
         capture_output=True,
         text=True,
         env=os.environ.copy(),
@@ -99,7 +108,7 @@ def _run_build_primer(vault_root: str, plugin_root: str) -> str:
         f"print(build_primer(Path({vault_root!r}), Path({plugin_root!r})))\n"
     )
     result = subprocess.run(
-        [str(_UV_PYTHON), "-c", script],
+        [*_python_cmd(), "-c", script],
         capture_output=True,
         text=True,
         cwd=str(_PLUGIN_REPO),
@@ -428,13 +437,15 @@ class ObsidianVaultProvider(MemoryProvider):
             return False
         if not (vault / ".claude" / "obsidian-knowledge.yaml").exists():
             return False
-        if not _UV_PYTHON.exists():
+        # Verify the plugin dependency environment has memweave.
+        try:
+            result = subprocess.run(
+                [*_python_cmd(), "-c", "import memweave"],
+                capture_output=True,
+                cwd=str(_PLUGIN_REPO),
+            )
+        except FileNotFoundError:
             return False
-        # Verify uv venv has memweave
-        result = subprocess.run(
-            [str(_UV_PYTHON), "-c", "import memweave"],
-            capture_output=True,
-        )
         return result.returncode == 0
 
     def initialize(self, session_id: str, **kwargs: Any) -> None:
@@ -545,7 +556,7 @@ class ObsidianVaultProvider(MemoryProvider):
 
         plugin_root = self.plugin_root
         vault_root = self.vault_root
-        uv_python = str(_UV_PYTHON)
+        python_cmd = _python_cmd()
 
         def _run() -> None:
             try:
@@ -564,7 +575,7 @@ class ObsidianVaultProvider(MemoryProvider):
                     "os._exit(0)\n"  # bypass asyncio daemon thread cleanup hang
                 )
                 subprocess.run(
-                    [uv_python, "-c", script],
+                    [*python_cmd, "-c", script],
                     capture_output=True,
                     env=os.environ.copy(),
                     cwd=plugin_root,

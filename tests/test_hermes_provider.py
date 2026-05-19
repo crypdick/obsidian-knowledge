@@ -53,6 +53,10 @@ def build_index(vault: Path) -> Indexer:
     return indexer
 
 
+def command_script(cmd: list[str]) -> str:
+    return cmd[cmd.index("-c") + 1]
+
+
 # ── Task 14: system_prompt_block ─────────────────────────────────────────────
 
 def test_system_prompt_block_includes_primer(provider, vault):
@@ -177,7 +181,7 @@ def test_vault_search_subprocess_uses_default_cache_and_timeout(monkeypatch, pro
     monkeypatch.setattr(hermes_plugin.subprocess, "run", fake_run)
     assert hermes_plugin._run_vault_search("python") == []
 
-    script = calls[0][0][0][2]
+    script = command_script(calls[0][0][0])
     assert "default_cache_dir" in script
     assert "vault / '.config' / 'obsidian-knowledge' / 'cache'" not in script
     assert calls[0][1]["timeout"] == hermes_plugin._VAULT_SEARCH_TIMEOUT_SECONDS
@@ -230,7 +234,7 @@ def test_sync_turn_runs_indexer_in_background(monkeypatch, provider):
     assert not provider._sync_thread.is_alive()
     assert provider._sync_thread.daemon is False
     assert calls[0][1]["timeout"] == hermes_plugin._VAULT_SEARCH_TIMEOUT_SECONDS
-    script = calls[0][0][0][2]
+    script = command_script(calls[0][0][0])
     assert "default_cache_dir" in script
     assert "idx.sync()" in script
     assert "idx.row_count()" in script
@@ -274,6 +278,21 @@ def test_atexit_safety_net_registered(monkeypatch, vault):
     p.initialize(session_id="t")
     assert hermes_plugin._last_active_provider is p
     del os.environ["OBSIDIAN_VAULT_ROOT"]
+
+
+def test_installed_plugin_root_defaults_to_repo_root(provider):
+    import hermes_plugin
+
+    assert hermes_plugin._PLUGIN_REPO == Path(hermes_plugin.__file__).resolve().parent.parent
+
+
+def test_python_cmd_falls_back_to_uv_run(monkeypatch, provider, tmp_path):
+    import hermes_plugin
+
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_PYTHON", raising=False)
+    monkeypatch.setattr(hermes_plugin, "_UV_PYTHON", tmp_path / "missing-python")
+
+    assert hermes_plugin._python_cmd() == ["uv", "run", "python"]
 
 
 # ── Hermes plugin hook bridge ───────────────────────────────────────────────
