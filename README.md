@@ -191,13 +191,19 @@ Install the repo with Hermes's native plugin manager:
 
 ```bash
 hermes plugins install crypdick/obsidian-knowledge --enable
-hermes config set memory.provider obsidian-vault
+hermes config set memory.provider obsidian-knowledge
+hermes config set memory.memory_enabled false
+hermes config set memory.user_profile_enabled false
 ```
 
 The installed checkout is both a general Hermes plugin (vault-protection and
-reminder hooks) and a memory provider (`obsidian-vault`) for primer, prefetch,
-and `vault_search`. Use `hermes plugins update obsidian-vault` after pushing
-repo updates.
+reminder hooks) and a memory provider (`obsidian-knowledge`) for primer, prefetch,
+`vault_search`, and a provider-owned `memory()` redirect error. The built-in
+Hermes `MEMORY.md` / `USER.md` prompt snapshots should be disabled when this
+provider is active; durable Hermes profile facts live in the vault at
+`wiki/systems/knowledge-base/index.md`, which is injected with a hard size cap
+and should stay a thin wikilink index to detailed notes. Use
+`hermes plugins update obsidian-knowledge` after pushing repo updates.
 
 ### obsidian-knowledge remember "<memory>"
 

@@ -16,6 +16,21 @@ def _resolve_memory_target(cwd: str):
     return resolve_target(cwd)
 
 
+KNOWLEDGE_BASE_INDEX_REL = Path("wiki/systems/knowledge-base/index.md")
+KNOWLEDGE_BASE_INDEX_MAX_CHARS = 6000
+
+
+def _read_capped(path: Path, limit: int) -> str:
+    """Read a UTF-8 text file with a hard character cap for prompt safety."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    if len(text) <= limit:
+        return text.strip()
+    return text[:limit].rstrip() + "\n\n[truncated — open the vault note for the full index]"
+
+
 def build_primer(
     vault_root: Path,
     plugin_root: Path,
@@ -32,6 +47,15 @@ def build_primer(
     wiki = vault_root / "wiki"
     target = _resolve_memory_target(cwd or os.getcwd())
     memory_dir = wiki / target.rel_path
+    kb_index_path = vault_root / KNOWLEDGE_BASE_INDEX_REL
+    kb_index = _read_capped(kb_index_path, KNOWLEDGE_BASE_INDEX_MAX_CHARS)
+    kb_block = ""
+    if kb_index:
+        kb_block = (
+            "\n\nKnowledge-base memory index "
+            f"({KNOWLEDGE_BASE_INDEX_REL}, capped at {KNOWLEDGE_BASE_INDEX_MAX_CHARS} chars):\n"
+            f"{kb_index}"
+        )
     if target.kind == "repo":
         scope_desc = f"this repo ({target.owner}/{target.repo})"
     else:
@@ -44,7 +68,9 @@ def build_primer(
         "(ranked top matching paths). "
         f"Fall back to `rg <pattern> {wiki}/` only for exact-string lookups. "
         "File outcomes at session end (`remember-conversations` skill) — this creates a terse changelog entry and any diary/convo notes. "
-        "Do NOT use Claude's built-in MEMORY.md system; the wiki is the source of truth.\n"
+        "Do NOT use Hermes/Claude built-in MEMORY.md or USER.md systems; the wiki is the source of truth.\n"
+        "- Hermes profile memory lives in `wiki/systems/knowledge-base/index.md` as a thin index with wikilinks to detail notes. "
+        "Keep the index bounded; add or edit linked notes for durable facts instead of growing the index.\n"
         f"- Per-session agent memory ({scope_desc}) lives at "
         f"{memory_dir}/. Use the same MEMORY.md + per-fact .md file layout as "
         "Claude's native auto-memory, but stored in the vault so it's portable, "
@@ -56,4 +82,5 @@ def build_primer(
         "- Reflect on user frustration: if the user expresses frustration "
         "('fuck', 'wtf', 'this keeps happening'), invoke `/improve-harness`. "
         "The agent is not the unit of analysis — the system is."
+        f"{kb_block}"
     )

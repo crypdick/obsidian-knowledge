@@ -43,13 +43,13 @@ if not vault_root:
 
 os.environ["OBSIDIAN_VAULT_ROOT"] = vault_root
 
-p = mod.ObsidianVaultProvider()
+p = mod.ObsidianKnowledgeProvider()
 
-print("=== Smoke Test: obsidian-vault Hermes provider ===\n")
+print("=== Smoke Test: obsidian-knowledge Hermes provider ===\n")
 
 # Test 1: name
-assert p.name == "obsidian-vault", f"Bad name: {p.name}"
-print("PASS  1. name == 'obsidian-vault'")
+assert p.name == "obsidian-knowledge", f"Bad name: {p.name}"
+print("PASS  1. name == 'obsidian-knowledge'")
 
 # Test 2: is_available
 avail = p.is_available()

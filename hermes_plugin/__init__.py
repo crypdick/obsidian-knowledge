@@ -1,7 +1,7 @@
 """Obsidian vault memory provider for Hermes Agent CLI.
 
 Wraps the shared lib/vault_index/ retrieval into a MemoryProvider implementation.
-Activated via ``memory.provider: obsidian-vault`` in ~/.hermes/config.yaml.
+Activated via ``memory.provider: obsidian-knowledge`` in ~/.hermes/config.yaml.
 
 Required env: OBSIDIAN_VAULT_ROOT — absolute path to the vault.
 
@@ -377,7 +377,7 @@ def register(ctx: Any) -> None:
 
 
 # Module-level ref so atexit handler can call shutdown() even on crash.
-_last_active_provider: "ObsidianVaultProvider | None" = None
+_last_active_provider: "ObsidianKnowledgeProvider | None" = None
 
 
 def _atexit_shutdown() -> None:
@@ -391,8 +391,8 @@ def _atexit_shutdown() -> None:
 atexit.register(_atexit_shutdown)
 
 
-class ObsidianVaultProvider(MemoryProvider):
-    """Hermes MemoryProvider backed by an Obsidian vault via memweave retrieval."""
+class ObsidianKnowledgeProvider(MemoryProvider):
+    """Hermes MemoryProvider backed by the Obsidian knowledge base."""
 
     NUDGE = (
         "\n\nThis is your long-term memory. Write learnings to the wiki as you go. "
@@ -424,9 +424,27 @@ class ObsidianVaultProvider(MemoryProvider):
         },
     }
 
+    MEMORY_REDIRECT_SCHEMA: dict[str, Any] = {
+        "name": "memory",
+        "description": (
+            "Disabled built-in Hermes memory tool for this profile. "
+            "Returns an error directing agents to use the Obsidian knowledge base instead."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "description": "Ignored; built-in memory is disabled."},
+                "target": {"type": "string", "description": "Ignored; built-in memory is disabled."},
+                "content": {"type": "string", "description": "Ignored; write durable facts to the vault instead."},
+                "old_text": {"type": "string", "description": "Ignored; edit the relevant vault note instead."},
+            },
+            "required": [],
+        },
+    }
+
     @property
     def name(self) -> str:
-        return "obsidian-vault"
+        return "obsidian-knowledge"
 
     def is_available(self) -> bool:
         root = os.environ.get("OBSIDIAN_VAULT_ROOT")
@@ -484,28 +502,25 @@ class ObsidianVaultProvider(MemoryProvider):
         return primer + directive
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
-        """Consume a ready queued result without blocking agent startup."""
+        """Return same-turn vault_search results for the current user query."""
+        query = (query or "").strip()
         if not query:
             return ""
 
-        hits: list[Any] = []
-        if self._prefetch_thread is not None:
-            self._prefetch_thread.join(timeout=0.0)
-            if not self._prefetch_thread.is_alive():
-                with self._prefetch_lock:
-                    hits = self._prefetch_cache
-                    self._prefetch_cache = []
-                self._prefetch_thread = None
+        hits = _run_vault_search(query)
+        if not hits:
+            raise RuntimeError(
+                "vault_search returned no hits for the current query; "
+                "treat Obsidian recall as broken and investigate the vault index, "
+                "digest filters, or vault access before relying on memory context."
+            )
 
-        fresh = [h for h in hits if h["path"] not in self.injected_paths_this_session]
-        for h in fresh:
-            self.injected_paths_this_session.add(h["path"])
-
-        lines = ["Top semantic vault hits:"]
-        for h in fresh:
+        shown_query = query[:80]
+        if len(query) > 80:
+            shown_query += "..."
+        lines = [f"Results for vault_search({shown_query!r}):"]
+        for h in hits:
             lines.append(f"  {h['score']:.1f}  {h['path']}")
-        if len(lines) == 1:
-            return self.NUDGE.lstrip()
         return "\n".join(lines) + self.NUDGE
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
@@ -514,9 +529,20 @@ class ObsidianVaultProvider(MemoryProvider):
         return ""
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
-        return [self.VAULT_SEARCH_SCHEMA]
+        return [self.VAULT_SEARCH_SCHEMA, self.MEMORY_REDIRECT_SCHEMA]
 
     def handle_tool_call(self, tool_name: str, args: dict[str, Any], **kwargs: Any) -> str:
+        if tool_name == "memory":
+            return json.dumps({
+                "success": False,
+                "error": (
+                    "Built-in Hermes memory is disabled for this profile. "
+                    "Use the Obsidian knowledge base instead: update "
+                    "wiki/systems/knowledge-base/index.md or a linked vault note, "
+                    "and use vault_search/obsidian-knowledge for recall."
+                ),
+                "replacement": "obsidian-knowledge",
+            })
         if tool_name != "vault_search":
             raise NotImplementedError(f"Unknown tool: {tool_name}")
         try:
@@ -531,21 +557,8 @@ class ObsidianVaultProvider(MemoryProvider):
         return json.dumps(hits)
 
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
-        """Run search in background; result cached for next prefetch() call."""
-        import threading
-        if self._prefetch_thread is not None and self._prefetch_thread.is_alive():
-            return
-
-        def _run() -> None:
-            try:
-                hits = _run_vault_search(query)
-            except Exception:
-                hits = []
-            with self._prefetch_lock:
-                self._prefetch_cache = hits
-
-        self._prefetch_thread = threading.Thread(target=_run, daemon=False)
-        self._prefetch_thread.start()
+        """No-op: prefetch() runs same-turn vault_search to avoid stale memory."""
+        return None
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
         """Re-index after each turn. Background thread; debounced."""

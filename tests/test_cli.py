@@ -302,5 +302,5 @@ def test_repo_root_is_hermes_plugin():
     assert (root / "plugin.yaml").exists()
     assert (root / "__init__.py").exists()
     manifest = (root / "plugin.yaml").read_text()
-    assert "name: obsidian-vault" in manifest
+    assert "name: obsidian-knowledge" in manifest
     assert "pre_tool_call" in manifest

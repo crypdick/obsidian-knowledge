@@ -6,7 +6,7 @@ Installed with:
 
 The same checkout exposes:
 - lifecycle hooks via the normal Hermes plugin manager
-- the obsidian-vault MemoryProvider via Hermes's memory provider loader
+- the obsidian-knowledge MemoryProvider via Hermes's memory provider loader
 """
 from __future__ import annotations
 
@@ -21,11 +21,11 @@ if str(PLUGIN_ROOT) not in sys.path:
 
 
 def register(ctx: Any) -> None:
-    from hermes_plugin import ObsidianVaultProvider  # noqa: WPS433
+    from hermes_plugin import ObsidianKnowledgeProvider  # noqa: WPS433
     from hermes_plugin import register as register_hooks  # noqa: WPS433
 
     register_hooks(ctx)
 
     register_memory_provider = getattr(ctx, "register_memory_provider", None)
     if callable(register_memory_provider):
-        register_memory_provider(ObsidianVaultProvider())
+        register_memory_provider(ObsidianKnowledgeProvider())

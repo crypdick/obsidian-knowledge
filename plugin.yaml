@@ -1,5 +1,5 @@
-name: obsidian-vault
-version: 0.1.0
+name: obsidian-knowledge
+version: 3.22.1
 description: "Obsidian knowledge-base memory provider plus vault-protection lifecycle hooks."
 kind: standalone
 hooks:
