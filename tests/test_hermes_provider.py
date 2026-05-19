@@ -108,13 +108,17 @@ def test_prefetch_runs_current_query_every_call(provider, vault, monkeypatch):
     assert "wiki/python.md" in second
 
 
-def test_prefetch_raises_when_vault_search_returns_no_hits(provider, vault, monkeypatch):
+def test_prefetch_inlines_warning_when_vault_search_returns_no_hits(provider, vault, monkeypatch):
     import hermes_plugin
 
     monkeypatch.setattr(hermes_plugin, "_run_vault_search", lambda query: [])
 
-    with pytest.raises(RuntimeError, match="vault_search returned no hits"):
-        provider.prefetch("python")
+    out = provider.prefetch("python")
+
+    assert "Obsidian memory provider warning" in out
+    assert "vault_search('python') returned no hits" in out
+    assert "fix the memory plugin" in out
+    assert "long-term memory" in out
 
 
 def test_prefetch_ignores_stale_background_cache(provider, monkeypatch):
@@ -401,6 +405,9 @@ def test_post_tool_call_reflection_queues_next_pre_llm(monkeypatch, provider, tm
 
     assert injected is not None
     assert "friction" in injected["context"]
+    assert "/improve-harness" not in injected["context"]
+    assert "or describe it" not in injected["context"]
+    assert "auto-invokes improve-harness" in injected["context"]
 
 
 def test_session_end_queues_index_sync_nudge(provider):

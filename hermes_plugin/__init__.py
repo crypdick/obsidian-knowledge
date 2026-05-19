@@ -41,8 +41,8 @@ _SESSION_WIKI_INDEX_FOLDERS: dict[str, set[str]] = {}
 
 _REFLECT_REMINDER = (
     "Step back: any friction worth feeding back into the harness, or insight "
-    "worth saving to the knowledge base? If friction, invoke `/improve-harness` "
-    "or describe it. If knowledge worth preserving, use the "
+    "worth saving to the knowledge base? Hermes auto-invokes improve-harness "
+    "when friction patterns are detected. If knowledge worth preserving, use the "
     "`remember-conversations` skill."
 )
 
@@ -509,10 +509,15 @@ class ObsidianKnowledgeProvider(MemoryProvider):
 
         hits = _run_vault_search(query)
         if not hits:
-            raise RuntimeError(
-                "vault_search returned no hits for the current query; "
-                "treat Obsidian recall as broken and investigate the vault index, "
-                "digest filters, or vault access before relying on memory context."
+            shown_query = query[:80]
+            if len(query) > 80:
+                shown_query += "..."
+            return (
+                f"Obsidian memory provider warning: vault_search({shown_query!r}) "
+                "returned no hits for the current query. Treat automatic Obsidian "
+                "recall as suspect and fix the memory plugin, vault index, digest "
+                "filters, or vault access before relying on this memory context."
+                + self.NUDGE
             )
 
         shown_query = query[:80]
