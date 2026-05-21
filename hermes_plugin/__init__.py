@@ -430,11 +430,16 @@ def _on_session_finalize(session_id: str = "", task_id: str = "", **_: Any) -> N
     """Bridge true session-boundary finalization into the next Hermes turn.
 
     Gateway/CLI ``/new`` and shutdown paths fire ``on_session_finalize`` rather
-    than another model turn in the old session. Queue under both the old session
-    and ``default`` so the next session still receives the Stop-hook nudge.
+    than another model turn in the old session. If per-turn ``on_session_end``
+    already queued reminders for the old session, copy those reminders to
+    ``default`` before rerunning Stop hooks. That avoids Claude/Codex Stop-hook
+    cooldowns suppressing the true session-boundary reminder.
     """
     key = _session_key(session_id, task_id)
-    hook_reasons = _run_stop_hook_reasons(session_id=key)
+    with _REMINDER_LOCK:
+        pending_for_session = list(_PENDING_REMINDERS.get(key, []))
+
+    hook_reasons = pending_for_session or _run_stop_hook_reasons(session_id=key)
     if not hook_reasons and not _can_run_stop_hooks():
         hook_reasons = [_STOP_REMINDER]
     for reason in hook_reasons:

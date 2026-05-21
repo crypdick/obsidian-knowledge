@@ -475,3 +475,23 @@ def test_session_finalize_queues_stop_hooks_for_next_session(monkeypatch, provid
 
     assert injected is not None
     assert "finalize reminder" in injected["context"]
+
+
+def test_session_finalize_carries_pending_end_reminders_across_boundary(monkeypatch, provider, tmp_path):
+    import hermes_plugin
+
+    monkeypatch.setenv("OBSIDIAN_VAULT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        hermes_plugin,
+        "_run_stop_hook_reasons",
+        lambda session_id="": ["queued before finalize"] if session_id == "old-session" else [],
+    )
+
+    hermes_plugin._on_session_end(session_id="old-session")
+
+    monkeypatch.setattr(hermes_plugin, "_run_stop_hook_reasons", lambda session_id="": [])
+    hermes_plugin._on_session_finalize(session_id="old-session")
+    injected = hermes_plugin._on_pre_llm_call(session_id="new-session")
+
+    assert injected is not None
+    assert "queued before finalize" in injected["context"]
