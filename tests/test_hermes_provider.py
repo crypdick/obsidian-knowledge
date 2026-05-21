@@ -324,6 +324,7 @@ def test_register_adds_hermes_hook_bridge(provider):
         "pre_tool_call",
         "post_tool_call",
         "on_session_end",
+        "on_session_finalize",
         "pre_llm_call",
     }
 
@@ -426,3 +427,51 @@ def test_session_end_queues_index_sync_nudge(provider):
 
     assert injected is not None
     assert "parent index.md" in injected["context"]
+
+
+def test_session_end_uses_packaged_stop_hook_reasons(monkeypatch, provider, tmp_path):
+    import hermes_plugin
+
+    monkeypatch.setenv("OBSIDIAN_VAULT_ROOT", str(tmp_path))
+    calls = []
+
+    class Result:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, reason: str):
+            self.stdout = json.dumps({"decision": "block", "reason": reason})
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return Result(f"reason from {Path(cmd[-1]).name}")
+
+    monkeypatch.setattr(hermes_plugin.subprocess, "run", fake_run)
+
+    hermes_plugin._on_session_end(session_id="session-stop")
+    injected = hermes_plugin._on_pre_llm_call(session_id="session-stop")
+
+    assert injected is not None
+    assert "reason from update-changelog.py" in injected["context"]
+    assert "reason from remind-convos.py" in injected["context"]
+    assert calls
+    assert all(call[1]["cwd"] == str(tmp_path) for call in calls)
+
+
+def test_session_finalize_queues_stop_hooks_for_next_session(monkeypatch, provider, tmp_path):
+    import hermes_plugin
+
+    monkeypatch.setenv("OBSIDIAN_VAULT_ROOT", str(tmp_path))
+
+    class Result:
+        returncode = 0
+        stderr = ""
+        stdout = json.dumps({"decision": "block", "reason": "finalize reminder"})
+
+    monkeypatch.setattr(hermes_plugin.subprocess, "run", lambda *a, **k: Result())
+
+    hermes_plugin._on_session_finalize(session_id="old-session")
+    injected = hermes_plugin._on_pre_llm_call(session_id="new-session")
+
+    assert injected is not None
+    assert "finalize reminder" in injected["context"]

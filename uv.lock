@@ -967,7 +967,7 @@ wheels = [
 
 [[package]]
 name = "obsidian-knowledge"
-version = "3.22.1"
+version = "3.22.3"
 source = { editable = "." }
 dependencies = [
     { name = "botocore" },

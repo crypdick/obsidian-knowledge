@@ -145,6 +145,67 @@ def _drain_reminders(key: str) -> list[str]:
         return reminders
 
 
+def _hook_payload(session_id: str = "", stop_hook_active: bool = False) -> str:
+    """Return the JSON stdin payload expected by Claude/Codex Stop hooks."""
+    return json.dumps({
+        "session_id": session_id or "default",
+        "stop_hook_active": stop_hook_active,
+    })
+
+
+def _run_stop_hook_reasons(session_id: str = "") -> list[str]:
+    """Run packaged Stop-hook scripts and return any block reasons.
+
+    Claude Code and Codex execute these scripts directly and treat
+    ``{"decision":"block","reason":...}`` as a stop-block. Hermes does not
+    have a stop-block continuation loop, so the plugin bridges parity by
+    turning the same reasons into next-turn ``pre_llm_call`` context.
+    """
+    reasons: list[str] = []
+    cwd = os.environ.get("OBSIDIAN_VAULT_ROOT") or os.environ.get("OBSIDIAN_VAULT_PATH")
+    if not cwd:
+        return reasons
+    cwd_path = Path(cwd).expanduser()
+    if not cwd_path.is_dir():
+        return reasons
+
+    env = os.environ.copy()
+    env["OBSIDIAN_KNOWLEDGE_HOOK_AGENT"] = "hermes"
+    payload = _hook_payload(session_id=session_id)
+    for script_name in ("update-changelog.py", "remind-convos.py"):
+        script = _HOOKS_DIR / script_name
+        if not script.exists():
+            continue
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(script)],
+                input=payload,
+                text=True,
+                capture_output=True,
+                cwd=str(cwd_path),
+                env=env,
+                timeout=10,
+                check=False,
+            )
+        except Exception:
+            continue
+        stdout = (proc.stdout or "").strip()
+        if not stdout:
+            continue
+        try:
+            parsed = json.loads(stdout)
+        except json.JSONDecodeError:
+            continue
+        if parsed.get("decision") == "block" and parsed.get("reason"):
+            reasons.append(str(parsed["reason"]))
+    return reasons
+
+
+def _can_run_stop_hooks() -> bool:
+    cwd = os.environ.get("OBSIDIAN_VAULT_ROOT") or os.environ.get("OBSIDIAN_VAULT_PATH")
+    return bool(cwd and Path(cwd).expanduser().is_dir())
+
+
 def _with_workdir(workdir: str | None):
     """Temporarily switch cwd for rules that interpret relative paths."""
     class _Workdir:
@@ -341,10 +402,15 @@ def _on_session_end(
     interrupted: bool = False,
     **_: Any,
 ) -> None:
-    """Queue Stop-hook style reminders for the next Hermes turn."""
+    """Queue Stop-hook reminders for the next Hermes turn."""
     key = _session_key(session_id, task_id)
     if completed and not interrupted:
-        _queue_reminder(key, _STOP_REMINDER)
+        hook_reasons = _run_stop_hook_reasons(session_id=key)
+        if hook_reasons:
+            for reason in hook_reasons:
+                _queue_reminder(key, reason)
+        elif not _can_run_stop_hooks():
+            _queue_reminder(key, _STOP_REMINDER)
 
     with _REMINDER_LOCK:
         new_folders = _SESSION_WIKI_NEW_FOLDERS.pop(key, set())
@@ -360,6 +426,22 @@ def _on_session_end(
         )
 
 
+def _on_session_finalize(session_id: str = "", task_id: str = "", **_: Any) -> None:
+    """Bridge true session-boundary finalization into the next Hermes turn.
+
+    Gateway/CLI ``/new`` and shutdown paths fire ``on_session_finalize`` rather
+    than another model turn in the old session. Queue under both the old session
+    and ``default`` so the next session still receives the Stop-hook nudge.
+    """
+    key = _session_key(session_id, task_id)
+    hook_reasons = _run_stop_hook_reasons(session_id=key)
+    if not hook_reasons and not _can_run_stop_hooks():
+        hook_reasons = [_STOP_REMINDER]
+    for reason in hook_reasons:
+        _queue_reminder(key, reason)
+        _queue_reminder("default", reason)
+
+
 def _on_pre_llm_call(session_id: str = "", task_id: str = "", **_: Any) -> dict[str, str] | None:
     """Inject queued Hermes hook reminders into the next active turn."""
     reminders = _drain_reminders(_session_key(session_id, task_id))
@@ -373,6 +455,7 @@ def register(ctx: Any) -> None:
     ctx.register_hook("pre_tool_call", _on_pre_tool_call)
     ctx.register_hook("post_tool_call", _on_post_tool_call)
     ctx.register_hook("on_session_end", _on_session_end)
+    ctx.register_hook("on_session_finalize", _on_session_finalize)
     ctx.register_hook("pre_llm_call", _on_pre_llm_call)
 
 
