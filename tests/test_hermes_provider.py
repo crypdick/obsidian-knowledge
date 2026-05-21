@@ -429,6 +429,48 @@ def test_session_end_queues_index_sync_nudge(provider):
     assert "parent index.md" in injected["context"]
 
 
+def test_session_end_queues_index_sync_nudge_for_terminal_obsidian_move(provider):
+    import hermes_plugin
+
+    key = "session-index-move"
+    hermes_plugin._on_post_tool_call(
+        tool_name="terminal",
+        args={"command": 'obsidian move path="wiki/systems/foo.md" to="wiki/systems/bar.md"'},
+        session_id=key,
+        result='{"exit_code": 0}',
+    )
+    hermes_plugin._on_session_end(session_id=key)
+
+    injected = hermes_plugin._on_pre_llm_call(session_id=key)
+
+    assert injected is not None
+    assert "wiki/systems/" in injected["context"]
+    assert "parent index.md" in injected["context"]
+
+
+def test_session_end_does_not_queue_index_sync_nudge_when_terminal_edits_index(provider):
+    import hermes_plugin
+
+    key = "session-index-move-synced"
+    hermes_plugin._on_post_tool_call(
+        tool_name="terminal",
+        args={"command": 'obsidian move path="wiki/systems/foo.md" to="wiki/systems/bar.md"'},
+        session_id=key,
+        result='{"exit_code": 0}',
+    )
+    hermes_plugin._on_post_tool_call(
+        tool_name="terminal",
+        args={"command": 'obsidian edit path="wiki/systems/index.md" content="..."'},
+        session_id=key,
+        result='{"exit_code": 0}',
+    )
+    hermes_plugin._on_session_end(session_id=key)
+
+    injected = hermes_plugin._on_pre_llm_call(session_id=key)
+
+    assert injected is None or "parent index.md" not in injected["context"]
+
+
 def test_session_end_uses_packaged_stop_hook_reasons(monkeypatch, provider, tmp_path):
     import hermes_plugin
 

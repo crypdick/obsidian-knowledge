@@ -15,6 +15,7 @@ import atexit
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -330,6 +331,57 @@ def _cache_root() -> Path:
     return Path(override) if override else Path.home() / ".cache" / "obsidian-knowledge"
 
 
+def _terminal_result_succeeded(result: Any) -> bool:
+    """Return False for obvious failed Hermes terminal results."""
+    if isinstance(result, dict):
+        code = result.get("exit_code")
+        return code in (None, 0)
+    if isinstance(result, str):
+        try:
+            parsed = json.loads(result)
+        except json.JSONDecodeError:
+            return '"error"' not in result[:200].lower()
+        if isinstance(parsed, dict):
+            code = parsed.get("exit_code")
+            return code in (None, 0)
+    return True
+
+
+def _wiki_folder_from_path(path: str) -> tuple[str, str] | None:
+    """Return (folder, basename) for a path under wiki/<folder>/... ."""
+    match = re.search(r"(?:^|[/\s\"'=])wiki/([^/\s\"']+)/([^\s\"']+\.md)\b", path)
+    if not match:
+        return None
+    return match.group(1), Path(match.group(2)).name
+
+
+def _track_terminal_wiki_index_state(command: str, new_folders: set[str], index_folders: set[str]) -> None:
+    """Track Hermes terminal obsidian CLI moves/edits like Claude/Codex transcript hooks."""
+    if "obsidian" not in command or "wiki/" not in command:
+        return
+
+    # Any terminal command explicitly touching wiki/<folder>/index.md counts as
+    # an index edit for parity with the packaged transcript hook's Write/Edit
+    # detection. Hermes does not expose a Claude-style transcript here, so we
+    # conservatively inspect successful obsidian CLI commands.
+    for folder, basename in re.findall(r"(?:^|[/\s\"'=])wiki/([^/\s\"']+)/(index\.md)\b", command):
+        if basename == "index.md":
+            index_folders.add(folder)
+
+    # Claude/Codex nudge-index-sync detects Bash `obsidian move`/`rename` with
+    # `to=` or `name=` targets under wiki/<folder>/. Mirror that behavior for
+    # Hermes terminal calls.
+    if not re.search(r"\bobsidian\s+(?:move|rename)\b", command):
+        return
+    for value in re.findall(r"\b(?:to|name)=['\"]?([^'\"\s]+)", command):
+        parsed = _wiki_folder_from_path(value)
+        if not parsed:
+            continue
+        folder, basename = parsed
+        if basename != "index.md":
+            new_folders.add(folder)
+
+
 def _track_wiki_index_state(
     key: str,
     tool_name: str,
@@ -337,12 +389,20 @@ def _track_wiki_index_state(
     result: Any,
 ) -> None:
     """Track wiki file edits so Hermes can emit the index-sync nudge."""
-    if tool_name not in {"write_file", "patch"}:
+    if tool_name not in {"write_file", "patch", "terminal"}:
         return
     if isinstance(result, str) and '"error"' in result[:200].lower():
         return
 
     paths: list[str] = []
+    if tool_name == "terminal":
+        if not _terminal_result_succeeded(result):
+            return
+        with _REMINDER_LOCK:
+            new_folders = _SESSION_WIKI_NEW_FOLDERS.setdefault(key, set())
+            index_folders = _SESSION_WIKI_INDEX_FOLDERS.setdefault(key, set())
+            _track_terminal_wiki_index_state(str(args.get("command") or ""), new_folders, index_folders)
+        return
     if tool_name == "write_file":
         paths = [str(args.get("path") or "")]
     elif args.get("mode", "replace") == "patch":
