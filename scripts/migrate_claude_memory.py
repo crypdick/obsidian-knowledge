@@ -34,7 +34,7 @@ CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 
 
 def slug_to_path(slug: str) -> Path | None:
-    """Reverse `-home-ricardo-src-PERSONAL-blue-team` → /home/ricardo/src/PERSONAL/blue-team.
+    """Reverse a Claude project slug such as `-home-alice-src-blue-team` back to its absolute cwd path.
 
     Uses greedy longest-prefix descent: at each level, picks the longest
     `-`-joined prefix that exists as an actual directory. Falls back to None

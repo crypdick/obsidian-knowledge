@@ -11,7 +11,7 @@ pattern: obsidian-knowledge.*git\s+commit
 Before this commit proceeds, verify that version numbers have been bumped. Check staged changes:
 
 ```bash
-cd /home/ricardo/src/PERSONAL/obsidian-knowledge && git diff --cached --name-only
+git diff --cached --name-only
 ```
 
 At least these files must be in the staged changes with an updated version:
