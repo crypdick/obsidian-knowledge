@@ -1,9 +1,10 @@
 name: obsidian-knowledge
-version: 3.22.5
+version: 3.22.6
 description: "Obsidian knowledge-base memory provider plus vault-protection lifecycle hooks."
 kind: standalone
 hooks:
   - pre_tool_call
   - post_tool_call
   - on_session_end
+  - on_session_finalize
   - pre_llm_call

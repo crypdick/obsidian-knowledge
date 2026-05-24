@@ -140,10 +140,7 @@ def _queue_reminder(key: str, message: str) -> None:
 
 def _drain_reminders(key: str) -> list[str]:
     with _REMINDER_LOCK:
-        reminders = _PENDING_REMINDERS.pop(key, [])
-        if key != "default":
-            reminders.extend(_PENDING_REMINDERS.pop("default", []))
-        return reminders
+        return _PENDING_REMINDERS.pop(key, [])
 
 
 def _hook_payload(session_id: str = "", stop_hook_active: bool = False) -> str:
@@ -491,9 +488,10 @@ def _on_session_finalize(session_id: str = "", task_id: str = "", **_: Any) -> N
 
     Gateway/CLI ``/new`` and shutdown paths fire ``on_session_finalize`` rather
     than another model turn in the old session. If per-turn ``on_session_end``
-    already queued reminders for the old session, copy those reminders to
-    ``default`` before rerunning Stop hooks. That avoids Claude/Codex Stop-hook
-    cooldowns suppressing the true session-boundary reminder.
+    already queued reminders for the old session, preserve those session-scoped
+    reminders before rerunning Stop hooks. Do not copy reminders into a global
+    ``default`` bucket: gateway topics/sessions must not drain each other's
+    finalize reminders.
     """
     key = _session_key(session_id, task_id)
     with _REMINDER_LOCK:
@@ -504,7 +502,6 @@ def _on_session_finalize(session_id: str = "", task_id: str = "", **_: Any) -> N
         hook_reasons = [_STOP_REMINDER]
     for reason in hook_reasons:
         _queue_reminder(key, reason)
-        _queue_reminder("default", reason)
 
 
 def _on_pre_llm_call(session_id: str = "", task_id: str = "", **_: Any) -> dict[str, str] | None:
