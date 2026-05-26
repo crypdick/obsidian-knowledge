@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.4.4
+version: 1.4.5
 ---
 
 # Vault Organizer
@@ -42,7 +42,10 @@ Read `$VAULT/Utility/obsidian-knowledge/needs-attention.md` — note known issue
 ### Step 2: Run structural audit
 
 ```bash
-SCRIPTS=$(dirname $(find ~/.claude/plugins -name "vault-audit.py" 2>/dev/null | head -1))
+SCRIPTS="${HERMES_VAULT_ORGANIZER_SCRIPTS:-$HOME/.hermes/skills/note-taking/vault-organizer}"
+if [ ! -f "$SCRIPTS/vault-audit.py" ]; then
+  SCRIPTS=$(dirname $(find ~/.claude/plugins ~/.hermes/skills -name "vault-audit.py" 2>/dev/null | head -1))
+fi
 python3 "$SCRIPTS/vault-audit.py" "$VAULT"
 ```
 
