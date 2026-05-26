@@ -24,6 +24,10 @@ Maintain Obsidian vault structure. Single-pass pipeline. Never edit primary file
 - "Use [[Wikilinks]]" + "Automatically update internal links" enabled in Obsidian settings
 - Always pass `vault="<name>"` to every CLI call — default resolves to most recently focused vault, which may be wrong.
 
+## Sync-conflict exclusion
+
+Treat Syncthing `.sync-conflict-YYYYMMDD-HHMMSS-DEVICEID` files as non-live artifacts, not notes. Do not index them, repair their links, rename them, include them in unresolved/orphan reports, or rewrite them during gardening. If audit/CLI output includes conflicts, filter them out before normal maintenance and triage them separately as sync-conflict merge/delete work.
+
 ## Pipeline
 
 ### Step 0: Locate vault + verify Obsidian running
