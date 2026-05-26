@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import re
 
-import yaml
+try:
+    import yaml
+except ImportError:  # pragma: no cover - depends on host python
+    yaml = None
 
 # Folders where files are expected to have YYYY-MM-DD date prefixes.
 # Match as substrings of the path: "Journal/" at the start or "/diary/",
@@ -120,6 +123,11 @@ def parse_frontmatter(content: str) -> tuple[dict | None, str | None]:
     block = "\n".join(lines[1:close_idx])
     if not block.strip():
         return {}, None
+    if yaml is None:
+        # Keep hooks/sweeps runnable under minimal system Python. Without
+        # PyYAML we can still validate delimiter shape, but not full YAML syntax.
+        return {}, None
+
     try:
         parsed = yaml.safe_load(block)
         if parsed is None:

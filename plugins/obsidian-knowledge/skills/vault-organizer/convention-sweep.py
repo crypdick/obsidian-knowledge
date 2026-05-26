@@ -6,7 +6,7 @@ Usage: python3 convention-sweep.py <vault_root>
 Walks all `.md` files under <vault_root> (skipping dotfolders, _sources/,
 .trash/, node_modules/) and runs the same three checks as the
 PreToolUse `enforce-conventions.py` hook and the SessionStart `doctor.py`
-hook — using the shared `hooks/lib/patterns.py` module so all four
+hook — using the shared `hooks/hookslib/patterns.py` module so all four
 points (write-time, session-start, on-demand sweep, persistence) stay
 in lockstep.
 
@@ -24,13 +24,29 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Import shared patterns module from hooks/lib/. Layout:
-#   <plugin>/hooks/lib/patterns.py
+# Import shared patterns module from hooks/lib/. Installed plugin layout is:
+#   <plugin>/hooks/hookslib/patterns.py
 #   <plugin>/skills/vault-organizer/convention-sweep.py
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
+# Source checkout layout is:
+#   <repo>/plugins/obsidian-knowledge/hooks/hookslib/patterns.py
+#   <repo>/skills/vault-organizer/convention-sweep.py
+def _find_hooks_dir() -> Path:
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parent.parent.parent / "hooks",
+        here.parent.parent.parent / "plugins" / "obsidian-knowledge" / "hooks",
+    ]
+    for candidate in candidates:
+        if (candidate / "hookslib" / "patterns.py").exists():
+            return candidate
+    raise ModuleNotFoundError(
+        "Could not locate hooks/hookslib/patterns.py from convention-sweep.py"
+    )
 
-from lib.patterns import (  # noqa: E402
+
+sys.path.insert(0, str(_find_hooks_dir()))
+
+from hookslib.patterns import (  # noqa: E402
     DATE_PREFIX_RE,
     PERIODIC_NOTE_RE,
     find_wikilink_ext_violations,
@@ -86,7 +102,7 @@ def print_header(lib_dir: Path, counts: dict[str, int]) -> None:
         return
     summary = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
     print(f"# convention-sweep: {summary}")
-    print(f"# All checks shared with enforce-conventions.py + doctor.py via hooks/lib/patterns.py.")
+    print(f"# All checks shared with enforce-conventions.py + doctor.py via hooks/hookslib/patterns.py.")
     print(f"# needs-attention.md entry format → {lib_dir}/state-files.md")
     print()
 

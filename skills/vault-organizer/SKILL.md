@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.4.3
+version: 1.4.4
 ---
 
 # Vault Organizer
@@ -117,4 +117,4 @@ Remove resolved entries. Add new unresolvable issues. Read `lib/state-files.md` 
 
 ### Step 8: Create changelog entry
 
-Create `$VAULT/Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`. Read `lib/state-files.md` for format. Skip if no actions taken.
+Create `$VAULT/Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`. Read `lib/state-files.md` for format. Add the new changelog file to `$VAULT/Utility/obsidian-knowledge/changelog/index.md` in the same pass. Skip if no actions taken.

@@ -25,7 +25,10 @@ REASON = (
     "Write one terse line per significant action: "
     "'YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]'. "
     "No narrative, no code blocks — pointers only. "
-    "If nothing substantive happened or you already logged, carry on."
+    "Immediately add that new file to Utility/obsidian-knowledge/changelog/index.md "
+    "as '- [[YYYY-MM-DD-HHMMSS-slug]] — short orientation phrase' so it is not "
+    "left as an orphan for vault-gardener. "
+    "If nothing substantive happened or you already logged and indexed it, carry on."
 )
 
 

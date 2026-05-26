@@ -8,7 +8,7 @@ description: >-
   hook reminder, by the user saying "file this", "save this conversation",
   "remember this", or at agent discretion when a response deserves to
   outlive chat history.
-version: 0.9.3
+version: 0.9.4
 ---
 
 # Remember Conversations
@@ -21,7 +21,7 @@ Each session up to two outputs. Pick combo by what happened.
 
 ### Changelog entry
 
-Create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` if session produced substance — edits, decisions, discoveries, dead ends. Filename example: `2026-05-12-143022-vault-organizer.md`. Contents: one terse line per significant action, format `YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]`. No narrative, no code blocks — pointers only. Skip if nothing meaningful or already logged.
+Create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` if session produced substance — edits, decisions, discoveries, dead ends. Filename example: `2026-05-12-143022-vault-organizer.md`. Contents: one terse line per significant action, format `YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]`. No narrative, no code blocks — pointers only. Immediately add the new file to `Utility/obsidian-knowledge/changelog/index.md` with `- [[YYYY-MM-DD-HHMMSS-slug]] — short orientation phrase`; do not leave it for vault-gardener to discover as an orphan. Skip if nothing meaningful or already logged.
 
 ### Session notes
 
@@ -188,4 +188,4 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
 
 ### Always
 
-**Update changelog** — create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` summarizing actions as terse 1-liners. Link to session notes, not inline detail. No narrative in changelog itself.
+**Update changelog** — create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` summarizing actions as terse 1-liners. Link to session notes, not inline detail. No narrative in changelog itself. Add the same file to `Utility/obsidian-knowledge/changelog/index.md` before finishing.

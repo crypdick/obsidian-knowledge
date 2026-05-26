@@ -40,6 +40,8 @@ DUMPING_GROUND_SKIP_NAMES = {"archive", "_sources", "Utility"}
 DUMPING_GROUND_THRESHOLD = 4
 AUDIT_SKIP_ZONES = {"Utility"}
 SCAN_SKIP_DIR_NAMES = {"_sources", ".trash", "node_modules"}
+INDEX_SKIP_DIR_NAMES = {"_sources"}
+SYNC_CONFLICT_RE = re.compile(r"\.sync-conflict-\d{8}-\d{6}-[^/]+\.md$", re.IGNORECASE)
 FRONTMATTER_SCAN_LINE_LIMIT = 60
 
 # Patterns matching filenames that belong in a typed subfolder (diary/, convos/,
@@ -66,6 +68,8 @@ def load_managed_zones(vault_root: Path) -> list[str]:
 def is_skipped(name: str) -> bool:
     if name in SKIP_NAMES:
         return True
+    if SYNC_CONFLICT_RE.search(name):
+        return True
     return any(p.match(name) for p in SKIP_PATTERNS)
 
 
@@ -76,7 +80,13 @@ def extract_wikilink_targets(text: str) -> set[str]:
 def audit_folder(folder: Path) -> list[str]:
     issues: list[str] = []
 
-    children_dirs = [d for d in folder.iterdir() if d.is_dir() and not d.name.startswith('.')]
+    children_dirs = [
+        d
+        for d in folder.iterdir()
+        if d.is_dir()
+        and not d.name.startswith('.')
+        and d.name not in INDEX_SKIP_DIR_NAMES
+    ]
     children_md = [f for f in folder.iterdir() if f.is_file() and f.suffix == '.md']
 
     index = folder / "index.md"
