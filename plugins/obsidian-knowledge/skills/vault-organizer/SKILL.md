@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.4.5
+version: 1.4.6
 ---
 
 # Vault Organizer
@@ -23,6 +23,10 @@ Maintain Obsidian vault structure. Single-pass pipeline. Never edit primary file
 - Obsidian CLI installed + configured (`Settings → General → Command line interface`)
 - "Use [[Wikilinks]]" + "Automatically update internal links" enabled in Obsidian settings
 - Always pass `vault="<name>"` to every CLI call — default resolves to most recently focused vault, which may be wrong.
+
+## Sync-conflict exclusion
+
+Treat Syncthing `.sync-conflict-YYYYMMDD-HHMMSS-DEVICEID` files as non-live artifacts, not notes. Do not index them, repair their links, rename them, include them in unresolved/orphan reports, or rewrite them during gardening. If audit/CLI output includes conflicts, filter them out before normal maintenance and triage them separately as sync-conflict merge/delete work.
 
 ## Pipeline
 
@@ -73,10 +77,11 @@ After structural fixes, rename ambiguous non-markdown files. Read `lib/rename-fi
 
 ```bash
 obsidian unresolved verbose format=json | python3 "$SCRIPTS/filter-unresolved-links.py" "$VAULT"
+obsidian unresolved verbose format=json | python3 "$SCRIPTS/recover-unresolved-links.py" "$VAULT" > /tmp/vault-unresolved-recovery.tsv
 obsidian orphans
 ```
 
-Read `lib/broken-links.md` for triage rules on the surviving candidates. Walk the full list — the script has already removed known stub patterns, so the remainder is the work, not noise. Do not collapse the tail into a "mostly stubs, skip" bucket without checking each.
+Read `lib/broken-links.md` for triage rules on the surviving candidates. Use `recover-unresolved-links.py --apply` only after reviewing its report; it is designed to rewrite only unique exact/high-confidence filename recoveries and leave ambiguous/concept-stub cases untouched. Walk the full list — the filter/recovery scripts reduce risk and queue deterministic candidates, but the surviving remainder is still the work, not noise. Do not collapse the tail into a "mostly stubs, skip" bucket without checking each.
 
 ### Step 5: Convention violations sweep
 
