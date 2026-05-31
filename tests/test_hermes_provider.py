@@ -213,6 +213,42 @@ def test_handle_tool_call_unknown_tool_raises(provider):
         provider.handle_tool_call("not_a_tool", {})
 
 
+def test_indexer_does_not_force_rebuild_for_prefingerprint_vector_cache(tmp_path: Path, vault: Path):
+    """Old caches with an existing vector table should remain searchable.
+
+    A missing embedder fingerprint alone is not proof that the cache is FTS-only:
+    deployments upgraded before the fingerprint file existed may already have
+    populated chunks_vec. Search/prefetch must not synchronously rebuild those
+    caches on every query, because gateway memory prefetch has a tight timeout.
+    """
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    import sqlite3
+
+    with sqlite3.connect(cache / "index.sqlite") as conn:
+        conn.execute("CREATE TABLE chunks_vec (id INTEGER PRIMARY KEY)")
+
+    idx = Indexer(vault_root=vault, cache_dir=cache, config=load_config(vault / ".claude" / "obsidian-knowledge.yaml"), skip_probe=True)
+
+    assert idx._stale_fingerprint() is False
+    assert idx._needs_rebuild is False
+
+
+def test_indexer_rebuilds_prefingerprint_cache_without_vector_table(tmp_path: Path, vault: Path):
+    """Pre-vector/pre-fingerprint caches still need a one-time rebuild."""
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    import sqlite3
+
+    with sqlite3.connect(cache / "index.sqlite") as conn:
+        conn.execute("CREATE TABLE files (id INTEGER PRIMARY KEY)")
+
+    idx = Indexer(vault_root=vault, cache_dir=cache, config=load_config(vault / ".claude" / "obsidian-knowledge.yaml"), skip_probe=True)
+
+    assert idx._stale_fingerprint() is True
+    assert idx._needs_rebuild is True
+
+
 # ── Task 18: sync_turn ───────────────────────────────────────────────────────
 
 

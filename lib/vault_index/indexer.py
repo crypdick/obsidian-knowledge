@@ -269,10 +269,27 @@ class Indexer:
             return False
         stored = self._read_stored_fingerprint()
         if stored is None:
-            # Pre-3.15 cache: built FTS-only, no fingerprint. If vectors are
-            # enabled now, we need a rebuild to populate chunks_vec.
+            # Pre-fingerprint cache. Do not assume it is FTS-only: some live
+            # deployments already have a populated vector table but predate the
+            # fingerprint marker. For those, synchronous search/prefetch should
+            # use the existing cache rather than spending the whole gateway
+            # memory-prefetch timeout on a rebuild every turn.
+            if self._vector_table_exists(db):
+                return False
             return True
         return stored != self._embedder_fingerprint()
+
+    @staticmethod
+    def _vector_table_exists(db_path: Path) -> bool:
+        """Return True when the cache already contains memweave's vector table."""
+        try:
+            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+                row = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunks_vec'"
+                ).fetchone()
+        except sqlite3.Error:
+            return False
+        return row is not None
 
     @staticmethod
     def _embedding_settings() -> tuple[str, str, str | None]:
