@@ -177,6 +177,73 @@ def format_remember_candidates(hits: list) -> str:
     return "\n".join(lines)
 
 
+DEFAULT_DOCTOR_QUERIES = (
+    "hermes-agent-operating-profile",
+    "automated-systems-review",
+)
+
+
+def run_search_doctor(
+    *,
+    vault: Path,
+    cache: Path,
+    idx,
+    queries: list[str] | tuple[str, ...] = DEFAULT_DOCTOR_QUERIES,
+    top_k: int = 3,
+    override_digest_filter: bool = True,
+) -> tuple[int, str]:
+    """Run a concise live vault-search health check.
+
+    Returns ``(exit_code, text)`` so the CLI and tests share exactly the same
+    verdict. Exit 0 means the index has rows and every known-hit query returned
+    at least one result. Exit 2 means the index is empty/unreadable or a
+    known-hit query returned no hits.
+    """
+    lines = [
+        "obsidian-knowledge search doctor",
+        f"vault: {vault}",
+        f"cache: {cache}",
+    ]
+    ok = True
+    try:
+        rows = idx.row_count()
+    except Exception as exc:  # pragma: no cover - defensive CLI boundary
+        rows = None
+        ok = False
+        lines.append(f"rows: ERROR ({type(exc).__name__}: {exc})")
+    else:
+        lines.append(f"rows: {rows}")
+        if rows <= 0:
+            ok = False
+
+    vector_status = getattr(idx, "vector_status", "unknown")
+    vector_enabled = bool(getattr(idx, "_vector_enabled", False))
+    vector_label = "enabled" if vector_enabled else "degraded"
+    lines.append(f"vector: {vector_label} ({vector_status})")
+
+    for query in queries:
+        lines.append(f"query: {query}")
+        try:
+            hits = idx.search(
+                query,
+                top_k=top_k,
+                override_digest_filter=override_digest_filter,
+            )
+        except Exception as exc:  # pragma: no cover - defensive CLI boundary
+            ok = False
+            lines.append(f"  hits: ERROR ({type(exc).__name__}: {exc})")
+            continue
+        lines.append(f"  hits: {len(hits)}")
+        if not hits:
+            ok = False
+            continue
+        top = hits[0]
+        lines.append(f"  top: {top.path} ({top.score})")
+
+    lines.append(f"status: {'PASS' if ok else 'FAIL'}")
+    return (0 if ok else 2), "\n".join(lines)
+
+
 def hook_script_path(name: str) -> Path:
     """Return the packaged path for an existing hook script."""
     package_root = Path(__file__).resolve().parents[2]
@@ -386,6 +453,24 @@ def main() -> int:
         help="Override digest filter (include paths normally hidden from prefetch).",
     )
 
+    p_doctor = sub.add_parser(
+        "doctor",
+        help="Run a live vault-search health check with known-hit queries",
+    )
+    p_doctor.add_argument("--vault", type=Path, default=None)
+    p_doctor.add_argument(
+        "--query",
+        action="append",
+        dest="queries",
+        help="Known-hit query to test; may be repeated.",
+    )
+    p_doctor.add_argument("--top-k", type=int, default=3)
+    p_doctor.add_argument(
+        "--digest-only",
+        action="store_true",
+        help="Apply the normal digest filter instead of searching all indexed paths.",
+    )
+
     p_hook = sub.add_parser("_hook", help=argparse.SUPPRESS)
     hook_sub = p_hook.add_subparsers(dest="hook_event", required=True)
     for name in ("pre-tool-use", "post-tool-use", "session-start", "stop"):
@@ -439,6 +524,24 @@ def main() -> int:
     elif args.cmd == "link-hermes-memories":
         vault = resolve_vault(args.vault)
         link_hermes_memories(vault, args.hermes_memories_dir)
+    elif args.cmd == "doctor":
+        from lib.vault_index.config import load_config
+        from lib.vault_index.indexer import Indexer, default_cache_dir
+
+        vault = resolve_vault(args.vault)
+        cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+        cache = default_cache_dir(vault)
+        idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+        code, text = run_search_doctor(
+            vault=vault,
+            cache=cache,
+            idx=idx,
+            queries=args.queries or DEFAULT_DOCTOR_QUERIES,
+            top_k=args.top_k,
+            override_digest_filter=not args.digest_only,
+        )
+        print(text)
+        return code
     elif args.cmd in {"search", "remember"}:
         from lib.vault_index.config import load_config
         from lib.vault_index.indexer import Indexer, default_cache_dir

@@ -10,13 +10,14 @@ from pathlib import Path
 import pytest
 
 from lib.vault_index.cli import (
+    SearchTimeoutError,
     default_cache_dir_for_vault,
     format_remember_candidates,
     init_vault_index,
     link_hermes_memories,
     resolve_vault,
+    run_search_doctor,
     search_ttl,
-    SearchTimeoutError,
 )
 
 
@@ -140,6 +141,66 @@ def test_search_ttl_raises_for_stuck_work():
     with pytest.raises(SearchTimeoutError):
         with search_ttl(1):
             signal_pause()
+
+
+def test_run_search_doctor_passes_with_rows_and_known_hits(tmp_path: Path):
+    class Hit:
+        def __init__(self, score, path):
+            self.score = score
+            self.path = path
+
+    class FakeIndexer:
+        vector_status = "ok: bge-m3 via http://127.0.0.1:11434"
+        _vector_enabled = True
+
+        def row_count(self):
+            return 12
+
+        def search(self, query, *, top_k, override_digest_filter):
+            assert top_k == 1
+            assert override_digest_filter is True
+            return [Hit(88.8, f"wiki/{query}.md")]
+
+    code, lines = run_search_doctor(
+        vault=tmp_path / "vault",
+        cache=tmp_path / "cache",
+        idx=FakeIndexer(),
+        queries=["hermes-agent-operating-profile", "automated-systems-review"],
+        top_k=1,
+        override_digest_filter=True,
+    )
+
+    assert code == 0
+    assert "status: PASS" in lines
+    assert "rows: 12" in lines
+    assert "query: hermes-agent-operating-profile" in lines
+    assert "top: wiki/hermes-agent-operating-profile.md (88.8)" in lines
+
+
+def test_run_search_doctor_fails_when_known_query_has_no_hits(tmp_path: Path):
+    class FakeIndexer:
+        vector_status = "Ollama unreachable"
+        _vector_enabled = False
+
+        def row_count(self):
+            return 12
+
+        def search(self, query, *, top_k, override_digest_filter):
+            return []
+
+    code, lines = run_search_doctor(
+        vault=tmp_path / "vault",
+        cache=tmp_path / "cache",
+        idx=FakeIndexer(),
+        queries=["automated-systems-review"],
+        top_k=1,
+        override_digest_filter=True,
+    )
+
+    assert code == 2
+    assert "status: FAIL" in lines
+    assert "vector: degraded (Ollama unreachable)" in lines
+    assert "hits: 0" in lines
 
 
 def signal_pause() -> None:
