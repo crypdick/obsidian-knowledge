@@ -24,6 +24,8 @@ from typing import Any
 
 
 _VAULT_SEARCH_TIMEOUT_SECONDS = 60.0
+_VAULT_SYNC_TIMEOUT_SECONDS = 300.0
+_SYNC_FINGERPRINT_FILENAME = "last-sync-fingerprint.txt"
 
 from agent.memory_provider import MemoryProvider  # type: ignore
 
@@ -118,6 +120,58 @@ def _run_build_primer(vault_root: str, plugin_root: str) -> str:
     if result.returncode != 0:
         return "You are operating under the obsidian-knowledge harness."
     return result.stdout.strip()
+
+
+def _run_vault_sync(vault_root: str, plugin_root: str, python_cmd: list[str]) -> None:
+    """Run an incremental vault sync, skipping when the indexed file set is unchanged."""
+    script = (
+        "import hashlib, os, sys\n"
+        f"sys.path.insert(0, {plugin_root!r})\n"
+        "from pathlib import Path\n"
+        "from lib.vault_index.config import load_config\n"
+        "from lib.vault_index.indexer import Indexer, default_cache_dir\n"
+        f"vault = Path({vault_root!r})\n"
+        "cfg_path = vault / '.claude' / 'obsidian-knowledge.yaml'\n"
+        "cfg = load_config(cfg_path)\n"
+        "cache = default_cache_dir(vault)\n"
+        "idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)\n"
+        "fingerprint = hashlib.sha256()\n"
+        "for candidate in [cfg_path, *map(Path, idx._allowed_vault_files())]:\n"
+        "    try:\n"
+        "        st = candidate.stat()\n"
+        "    except OSError:\n"
+        "        continue\n"
+        "    rel = str(candidate.relative_to(vault)) if candidate.is_relative_to(vault) else str(candidate)\n"
+        "    fingerprint.update(rel.encode())\n"
+        "    fingerprint.update(b'\\0')\n"
+        "    fingerprint.update(str(st.st_mtime_ns).encode())\n"
+        "    fingerprint.update(b'\\0')\n"
+        "    fingerprint.update(str(st.st_size).encode())\n"
+        "    fingerprint.update(b'\\n')\n"
+        "digest = fingerprint.hexdigest()\n"
+        f"marker = cache / {_SYNC_FINGERPRINT_FILENAME!r}\n"
+        "try:\n"
+        "    if marker.read_text().strip() == digest:\n"
+        "        os._exit(0)\n"
+        "except OSError:\n"
+        "    pass\n"
+        "idx.sync()\n"
+        "idx.row_count()\n"
+        "try:\n"
+        "    marker.write_text(digest)\n"
+        "except OSError:\n"
+        "    pass\n"
+        "os._exit(0)\n"  # bypass asyncio daemon thread cleanup hang
+    )
+    subprocess.run(
+        [*python_cmd, "-c", script],
+        capture_output=True,
+        env=os.environ.copy(),
+        cwd=plugin_root,
+        stdin=subprocess.DEVNULL,  # prevent watchfiles blocking on stdin
+        timeout=_VAULT_SYNC_TIMEOUT_SECONDS,
+        check=True,
+    )
 
 
 def _import_hookslib() -> None:
@@ -723,28 +777,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
 
         def _run() -> None:
             try:
-                script = (
-                    "import sys, os\n"
-                    f"sys.path.insert(0, {plugin_root!r})\n"
-                    "from pathlib import Path\n"
-                    "from lib.vault_index.config import load_config\n"
-                    "from lib.vault_index.indexer import Indexer, default_cache_dir\n"
-                    f"vault = Path({vault_root!r})\n"
-                    "cfg = load_config(vault / '.claude' / 'obsidian-knowledge.yaml')\n"
-                    "cache = default_cache_dir(vault)\n"
-                    "idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)\n"
-                    "idx.sync()\n"
-                    "idx.row_count()\n"
-                    "os._exit(0)\n"  # bypass asyncio daemon thread cleanup hang
-                )
-                subprocess.run(
-                    [*python_cmd, "-c", script],
-                    capture_output=True,
-                    env=os.environ.copy(),
-                    cwd=plugin_root,
-                    stdin=subprocess.DEVNULL,  # prevent watchfiles blocking on stdin
-                    timeout=_VAULT_SEARCH_TIMEOUT_SECONDS,
-                )
+                _run_vault_sync(vault_root, plugin_root, python_cmd)
             except Exception as exc:
                 import logging
                 logging.getLogger(__name__).warning("sync_turn failed: %s", exc)

@@ -272,9 +272,11 @@ def test_sync_turn_runs_indexer_in_background(monkeypatch, provider):
 
     assert not provider._sync_thread.is_alive()
     assert provider._sync_thread.daemon is False
-    assert calls[0][1]["timeout"] == hermes_plugin._VAULT_SEARCH_TIMEOUT_SECONDS
+    assert calls[0][1]["timeout"] == hermes_plugin._VAULT_SYNC_TIMEOUT_SECONDS
     script = command_script(calls[0][0][0])
     assert "default_cache_dir" in script
+    assert hermes_plugin._SYNC_FINGERPRINT_FILENAME in script
+    assert "marker.read_text().strip() == digest" in script
     assert "idx.sync()" in script
     assert "idx.row_count()" in script
 
