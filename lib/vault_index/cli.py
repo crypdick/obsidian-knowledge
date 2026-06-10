@@ -65,7 +65,7 @@ class SearchTimeoutError(TimeoutError):
 
 
 @contextlib.contextmanager
-def search_ttl(seconds: int | None):
+def search_ttl(seconds: int | None, *, label: str = "search"):
     """Bound CLI searches so stuck retrieval cannot leave orphaned processes."""
     if not seconds or seconds <= 0 or not hasattr(signal, "SIGALRM"):
         yield
@@ -75,7 +75,7 @@ def search_ttl(seconds: int | None):
     previous_alarm = signal.alarm(0)
 
     def _raise_timeout(_signum, _frame):
-        raise SearchTimeoutError(f"search exceeded {seconds}s TTL")
+        raise SearchTimeoutError(f"{label} exceeded {seconds}s TTL")
 
     signal.signal(signal.SIGALRM, _raise_timeout)
     signal.alarm(seconds)
@@ -429,6 +429,12 @@ def main() -> int:
     p_reindex = sub.add_parser("reindex", help="Run a full re-index of the vault")
     p_reindex.add_argument("--vault", type=Path, default=None)
     p_reindex.add_argument("--force", action="store_true")
+    p_reindex.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=None,
+        help="Abort reindex if it exceeds this many seconds.",
+    )
 
     p_search = sub.add_parser("search", help="Search the vault index")
     p_search.add_argument("query", help="Free-text query")
@@ -510,13 +516,17 @@ def main() -> int:
         cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
         idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
         try:
-            stats = idx.full_reindex(force=args.force)
+            with search_ttl(args.timeout_seconds, label="reindex"):
+                stats = idx.full_reindex(force=args.force)
         except IndexBusyError:
             print(
                 "reindex: another index operation is in progress (lock held); exiting cleanly.",
                 file=sys.stderr,
             )
             return 0
+        except SearchTimeoutError as exc:
+            print(f"reindex: timed out ({exc})", file=sys.stderr)
+            return 124
         print(
             f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}",
             flush=True,

@@ -138,8 +138,14 @@ def test_default_cache_dir_for_vault_falls_back_when_cache_unwritable(
 
 
 def test_search_ttl_raises_for_stuck_work():
-    with pytest.raises(SearchTimeoutError):
+    with pytest.raises(SearchTimeoutError, match="search exceeded"):
         with search_ttl(1):
+            signal_pause()
+
+
+def test_search_ttl_uses_custom_label_for_stuck_work():
+    with pytest.raises(SearchTimeoutError, match="reindex exceeded"):
+        with search_ttl(1, label="reindex"):
             signal_pause()
 
 
@@ -316,6 +322,34 @@ def test_cli_reindex_smoke(tmp_path: Path):
         stderr=subprocess.DEVNULL,  # discard LiteLLM stderr noise to avoid pipe-buffer deadlock
         text=True,
         cwd=Path(__file__).parents[1],  # repo root
+        env=env,
+    )
+    assert result.returncode == 0, "reindex subprocess exited non-zero"
+    assert "Indexed:" in result.stdout
+
+
+def test_cli_reindex_accepts_timeout_flag(tmp_path: Path):
+    vault = tmp_path / "vault"
+    shutil.copytree(FIXTURE, vault)
+    env = {
+        **os.environ,
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "lib.vault_index.cli",
+            "reindex",
+            "--vault",
+            str(vault),
+            "--timeout-seconds",
+            "20",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        cwd=Path(__file__).parents[1],
         env=env,
     )
     assert result.returncode == 0, "reindex subprocess exited non-zero"
