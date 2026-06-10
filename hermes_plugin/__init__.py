@@ -24,7 +24,9 @@ from typing import Any
 
 
 _VAULT_SEARCH_TIMEOUT_SECONDS = 60.0
-_VAULT_SYNC_TIMEOUT_SECONDS = 300.0
+_VAULT_PREFETCH_TIMEOUT_SECONDS = 8.0
+_VAULT_PRIMER_TIMEOUT_SECONDS = 5.0
+_VAULT_SYNC_TIMEOUT_SECONDS = 45.0
 _SYNC_FINGERPRINT_FILENAME = "last-sync-fingerprint.txt"
 
 from agent.memory_provider import MemoryProvider  # type: ignore
@@ -69,7 +71,9 @@ def _python_cmd() -> list[str]:
 
 def _run_vault_search(query: str, top_k: int | None = None,
                       min_score: float | None = None,
-                      override_digest_filter: bool = False) -> list[dict[str, Any]]:
+                      override_digest_filter: bool = False,
+                      timeout: float = _VAULT_SEARCH_TIMEOUT_SECONDS,
+                      allow_rebuild: bool = True) -> list[dict[str, Any]]:
     """Run vault_search via uv venv subprocess, return list of {score, path}."""
     script = (
         "import asyncio, json, sys, os\n"
@@ -82,7 +86,7 @@ def _run_vault_search(query: str, top_k: int | None = None,
         "cfg = load_config(cfg_path)\n"
         "cache = default_cache_dir(vault)\n"
         "idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)\n"
-        f"hits = idx.search({query!r}, top_k={top_k!r}, min_score={min_score!r}, override_digest_filter={override_digest_filter!r})\n"
+        f"hits = idx.search({query!r}, top_k={top_k!r}, min_score={min_score!r}, override_digest_filter={override_digest_filter!r}, allow_rebuild={allow_rebuild!r})\n"
         "print(json.dumps([{'score': h.score, 'path': h.path} for h in hits]))\n"
         "sys.stdout.flush()\n"
         "os._exit(0)\n"  # bypass daemon thread cleanup hang (asyncio threads don't exit cleanly)
@@ -94,7 +98,7 @@ def _run_vault_search(query: str, top_k: int | None = None,
         env=os.environ.copy(),
         cwd=str(_PLUGIN_REPO),
         stdin=subprocess.DEVNULL,  # prevent watchfiles from blocking on stdin
-        timeout=_VAULT_SEARCH_TIMEOUT_SECONDS,
+        timeout=timeout,
     )
     if result.returncode != 0:
         raise RuntimeError(f"vault_search failed: {result.stderr}")
@@ -104,39 +108,75 @@ def _run_vault_search(query: str, top_k: int | None = None,
 def _run_build_primer(vault_root: str, plugin_root: str) -> str:
     """Get primer text via uv venv subprocess."""
     script = (
-        "import sys\n"
+        "import os, sys\n"
         f"sys.path.insert(0, {plugin_root!r})\n"
         "from pathlib import Path\n"
         "from lib.vault_index.primer import build_primer\n"
         f"print(build_primer(Path({vault_root!r}), Path({plugin_root!r})))\n"
+        "sys.stdout.flush()\n"
+        "os._exit(0)\n"
     )
-    result = subprocess.run(
-        [*_python_cmd(), "-c", script],
-        capture_output=True,
-        text=True,
-        cwd=str(_PLUGIN_REPO),
-        stdin=subprocess.DEVNULL,  # prevent watchfiles from blocking on stdin
-    )
+    try:
+        result = subprocess.run(
+            [*_python_cmd(), "-c", script],
+            capture_output=True,
+            text=True,
+            cwd=str(_PLUGIN_REPO),
+            stdin=subprocess.DEVNULL,  # prevent watchfiles from blocking on stdin
+            timeout=_VAULT_PRIMER_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return "You are operating under the obsidian-knowledge harness."
     if result.returncode != 0:
         return "You are operating under the obsidian-knowledge harness."
     return result.stdout.strip()
 
 
+def _skip_automatic_vault_search(query: str) -> bool:
+    """Skip expensive automatic recall for greetings and acknowledgements."""
+    normalized = re.sub(r"\s+", " ", query.strip().lower())
+    normalized = normalized.strip(" .!?,;:-")
+    return normalized in {
+        "hi",
+        "hello",
+        "hey",
+        "yo",
+        "sup",
+        "thanks",
+        "thank you",
+        "thx",
+        "ok",
+        "okay",
+        "cool",
+        "nice",
+    }
+
+
 def _run_vault_sync(vault_root: str, plugin_root: str, python_cmd: list[str]) -> None:
     """Run an incremental vault sync, skipping when the indexed file set is unchanged."""
     script = (
-        "import hashlib, os, sys\n"
+        "import hashlib, os, re, sys\n"
         f"sys.path.insert(0, {plugin_root!r})\n"
         "from pathlib import Path\n"
+        "from platformdirs import user_cache_dir\n"
         "from lib.vault_index.config import load_config\n"
-        "from lib.vault_index.indexer import Indexer, default_cache_dir\n"
+        "from lib.vault_index.filters import path_passes\n"
         f"vault = Path({vault_root!r})\n"
         "cfg_path = vault / '.claude' / 'obsidian-knowledge.yaml'\n"
         "cfg = load_config(cfg_path)\n"
-        "cache = default_cache_dir(vault)\n"
-        "idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)\n"
+        "cache_root = os.environ.get('OBSIDIAN_KNOWLEDGE_CACHE_ROOT')\n"
+        "cache_base = Path(cache_root).expanduser() / 'obsidian-knowledge' if cache_root else Path(user_cache_dir('obsidian-knowledge'))\n"
+        "vault_resolved = vault.resolve()\n"
+        "vault_key = hashlib.sha256(str(vault_resolved).encode()).hexdigest()[:8]\n"
+        "safe_name = re.sub(r'[^a-zA-Z0-9._-]', '-', vault_resolved.name) or 'vault'\n"
+        "cache = cache_base / f'{safe_name}-{vault_key}'\n"
         "fingerprint = hashlib.sha256()\n"
-        "for candidate in [cfg_path, *map(Path, idx._allowed_vault_files())]:\n"
+        "allowed = []\n"
+        "for candidate in vault.rglob('*.md'):\n"
+        "    rel = str(candidate.relative_to(vault))\n"
+        "    if path_passes(rel, cfg.index):\n"
+        "        allowed.append(candidate)\n"
+        "for candidate in [cfg_path, *allowed]:\n"
         "    try:\n"
         "        st = candidate.stat()\n"
         "    except OSError:\n"
@@ -155,6 +195,8 @@ def _run_vault_sync(vault_root: str, plugin_root: str, python_cmd: list[str]) ->
         "        os._exit(0)\n"
         "except OSError:\n"
         "    pass\n"
+        "from lib.vault_index.indexer import Indexer\n"
+        "idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)\n"
         "idx.sync()\n"
         "idx.row_count()\n"
         "try:\n"
@@ -705,8 +747,26 @@ class ObsidianKnowledgeProvider(MemoryProvider):
         query = (query or "").strip()
         if not query:
             return ""
+        if _skip_automatic_vault_search(query):
+            return self.NUDGE.lstrip()
 
-        hits = _run_vault_search(query)
+        try:
+            hits = _run_vault_search(
+                query,
+                timeout=_VAULT_PREFETCH_TIMEOUT_SECONDS,
+                allow_rebuild=False,
+            )
+        except Exception as exc:
+            shown_query = query[:80]
+            if len(query) > 80:
+                shown_query += "..."
+            return (
+                f"Obsidian memory provider warning: vault_search({shown_query!r}) "
+                f"failed during automatic recall: {exc}. Treat automatic Obsidian "
+                "recall as suspect; use the vault_search tool explicitly if this "
+                "turn needs memory."
+                + self.NUDGE
+            )
         if not hits:
             shown_query = query[:80]
             if len(query) > 80:

@@ -473,6 +473,7 @@ class Indexer:
         top_k: int | None = None,
         min_score: float | None = None,
         override_digest_filter: bool = False,
+        allow_rebuild: bool = True,
     ) -> list[Hit]:
         """Run FTS retrieval; apply digest filter + weights; rescale; truncate.
 
@@ -487,17 +488,7 @@ class Indexer:
         # Request more candidates than needed so apply_filters has room to filter.
         candidate_count = max(50, effective_top_k * 5)
 
-        # Auto-rebuild when the embedder fingerprint changed since the last
-        # successful index. This keeps "swap MEMWEAVE_EMBEDDING_MODEL and run
-        # search" from blowing up on a stale chunks_vec.
-        if self._needs_rebuild:
-            try:
-                self._auto_rebuild(reason="embedder changed")
-            except IndexBusyError:
-                pass
-
-        if not self._vector_enabled:
-            hits = self._sqlite_fts_search(query, candidate_count)
+        def filtered(hits: list[Hit]) -> list[Hit]:
             cfg = self.config
             if top_k is not None:
                 cfg = cfg.model_copy(update={"top_k": top_k})
@@ -509,6 +500,18 @@ class Indexer:
                 override_digest_filter=override_digest_filter,
             )
 
+        # Auto-rebuild when the embedder fingerprint changed since the last
+        # successful index. Chat prefetch calls can opt out so stale caches do
+        # not spend the turn-start budget rebuilding before the model responds.
+        if self._needs_rebuild and allow_rebuild:
+            try:
+                self._auto_rebuild(reason="embedder changed")
+            except IndexBusyError:
+                pass
+
+        if not self._vector_enabled:
+            return filtered(self._sqlite_fts_search(query, candidate_count))
+
         try:
             with index_lock(self.cache_dir, exclusive=False):
                 raw = asyncio.run(
@@ -518,6 +521,8 @@ class Indexer:
             # Defensive net: reindex didn't run for some reason but the index
             # is missing chunks_vec. Trigger a rebuild and retry once.
             if "chunks_vec" in str(exc) and self._vector_enabled:
+                if not allow_rebuild:
+                    return filtered(self._sqlite_fts_search(query, candidate_count))
                 try:
                     self._auto_rebuild(reason="chunks_vec missing")
                     with index_lock(self.cache_dir, exclusive=False):
@@ -541,10 +546,4 @@ class Indexer:
             for r in raw
         ]
 
-        cfg = self.config
-        if top_k is not None:
-            cfg = cfg.model_copy(update={"top_k": top_k})
-        if min_score is not None:
-            cfg = cfg.model_copy(update={"min_score": min_score})
-
-        return apply_filters(hits, cfg, override_digest_filter=override_digest_filter)
+        return filtered(hits)

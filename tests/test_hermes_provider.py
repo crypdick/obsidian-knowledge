@@ -79,7 +79,7 @@ def test_prefetch_returns_report_format(provider, vault, monkeypatch):
     monkeypatch.setattr(
         hermes_plugin,
         "_run_vault_search",
-        lambda query: [{"score": 100.0, "path": "wiki/python.md"}],
+        lambda query, **kwargs: [{"score": 100.0, "path": "wiki/python.md"}],
     )
 
     out = provider.prefetch("python")
@@ -94,7 +94,7 @@ def test_prefetch_runs_current_query_every_call(provider, vault, monkeypatch):
 
     calls = []
 
-    def fake_search(query):
+    def fake_search(query, **kwargs):
         calls.append(query)
         return [{"score": 100.0, "path": f"wiki/{query}.md"}]
 
@@ -111,7 +111,7 @@ def test_prefetch_runs_current_query_every_call(provider, vault, monkeypatch):
 def test_prefetch_inlines_warning_when_vault_search_returns_no_hits(provider, vault, monkeypatch):
     import hermes_plugin
 
-    monkeypatch.setattr(hermes_plugin, "_run_vault_search", lambda query: [])
+    monkeypatch.setattr(hermes_plugin, "_run_vault_search", lambda query, **kwargs: [])
 
     out = provider.prefetch("python")
 
@@ -121,13 +121,49 @@ def test_prefetch_inlines_warning_when_vault_search_returns_no_hits(provider, va
     assert "long-term memory" in out
 
 
+def test_prefetch_skips_greeting_without_search(provider, monkeypatch):
+    import hermes_plugin
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("greeting prefetch should not search the vault")
+
+    monkeypatch.setattr(hermes_plugin, "_run_vault_search", fail_if_called)
+
+    out = provider.prefetch("hi")
+
+    assert "long-term memory" in out
+
+
+def test_prefetch_uses_bounded_no_rebuild_search(provider, monkeypatch):
+    import hermes_plugin
+
+    calls = []
+
+    def fake_search(query, **kwargs):
+        calls.append((query, kwargs))
+        return [{"score": 100.0, "path": "wiki/current.md"}]
+
+    monkeypatch.setattr(hermes_plugin, "_run_vault_search", fake_search)
+
+    out = provider.prefetch("how should I tune Hermes memory?")
+
+    assert "wiki/current.md" in out
+    assert calls == [(
+        "how should I tune Hermes memory?",
+        {
+            "timeout": hermes_plugin._VAULT_PREFETCH_TIMEOUT_SECONDS,
+            "allow_rebuild": False,
+        },
+    )]
+
+
 def test_prefetch_ignores_stale_background_cache(provider, monkeypatch):
     import hermes_plugin
 
     monkeypatch.setattr(
         hermes_plugin,
         "_run_vault_search",
-        lambda query: [{"score": 100.0, "path": "wiki/current.md"}],
+        lambda query, **kwargs: [{"score": 100.0, "path": "wiki/current.md"}],
     )
     provider._prefetch_cache = [{"score": 100.0, "path": "wiki/stale.md"}]
     provider._prefetch_thread = MagicMock()
@@ -190,6 +226,43 @@ def test_vault_search_subprocess_uses_default_cache_and_timeout(monkeypatch, pro
     assert calls[0][1]["timeout"] == hermes_plugin._VAULT_SEARCH_TIMEOUT_SECONDS
 
 
+def test_build_primer_subprocess_uses_timeout_and_forced_exit(monkeypatch, provider, vault):
+    import hermes_plugin
+
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = "primer"
+        stderr = ""
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return Result()
+
+    monkeypatch.setattr(hermes_plugin.subprocess, "run", fake_run)
+
+    assert hermes_plugin._run_build_primer(str(vault), str(vault.parent)) == "primer"
+
+    script = command_script(calls[0][0][0])
+    assert "os._exit(0)" in script
+    assert calls[0][1]["timeout"] == hermes_plugin._VAULT_PRIMER_TIMEOUT_SECONDS
+
+
+def test_build_primer_timeout_returns_fallback(monkeypatch, provider, vault):
+    import hermes_plugin
+
+    def fake_run(*args, **kwargs):
+        raise hermes_plugin.subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(hermes_plugin.subprocess, "run", fake_run)
+
+    assert (
+        hermes_plugin._run_build_primer(str(vault), str(vault.parent))
+        == "You are operating under the obsidian-knowledge harness."
+    )
+
+
 def test_handle_tool_call_vault_search_returns_json(provider, vault):
     build_index(vault)
     result_json = provider.handle_tool_call("vault_search", {"query": "python"})
@@ -249,6 +322,16 @@ def test_indexer_rebuilds_prefingerprint_cache_without_vector_table(tmp_path: Pa
     assert idx._needs_rebuild is True
 
 
+def test_indexer_search_can_skip_rebuild_for_hot_path(vault: Path):
+    idx = make_indexer(vault)
+    idx._needs_rebuild = True
+    idx._vector_enabled = False
+    idx._auto_rebuild = MagicMock(side_effect=AssertionError("should not rebuild"))
+
+    assert isinstance(idx.search("python", allow_rebuild=False), list)
+    idx._auto_rebuild.assert_not_called()
+
+
 # ── Task 18: sync_turn ───────────────────────────────────────────────────────
 
 
@@ -274,9 +357,14 @@ def test_sync_turn_runs_indexer_in_background(monkeypatch, provider):
     assert provider._sync_thread.daemon is False
     assert calls[0][1]["timeout"] == hermes_plugin._VAULT_SYNC_TIMEOUT_SECONDS
     script = command_script(calls[0][0][0])
-    assert "default_cache_dir" in script
+    assert "user_cache_dir('obsidian-knowledge')" in script
     assert hermes_plugin._SYNC_FINGERPRINT_FILENAME in script
+    assert "path_passes(rel, cfg.index)" in script
     assert "marker.read_text().strip() == digest" in script
+    assert "from lib.vault_index.indexer import Indexer" in script
+    assert script.index("marker.read_text().strip() == digest") < script.index(
+        "from lib.vault_index.indexer import Indexer"
+    )
     assert "idx.sync()" in script
     assert "idx.row_count()" in script
 
