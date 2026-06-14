@@ -551,17 +551,22 @@ def main() -> int:
         vault = resolve_vault(args.vault)
         init_vault_index(vault / ".claude" / "obsidian-knowledge.yaml")
     elif args.cmd == "reindex":
-        vault = resolve_vault(args.vault)
-        cache = default_cache_dir_for_vault(vault)
-        cache.mkdir(parents=True, exist_ok=True)
-
         from lib.vault_index.config import load_config
         from lib.vault_index.indexer import IndexBusyError, Indexer
 
-        cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
-        idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+        # Bound the ENTIRE reindex, not just full_reindex(): setup steps
+        # (vault resolution, config load, Indexer init / fingerprint check) also
+        # do filesystem reads that can block indefinitely on a contended/stalled
+        # path. A hang there escaped the old full_reindex-only guard and left an
+        # orphaned process (observed via a worker stuck in a bare open() during
+        # Indexer init). The watchdog inside search_ttl force-exits regardless.
         try:
             with search_ttl(args.timeout_seconds, label="reindex"):
+                vault = resolve_vault(args.vault)
+                cache = default_cache_dir_for_vault(vault)
+                cache.mkdir(parents=True, exist_ok=True)
+                cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+                idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
                 stats = idx.full_reindex(force=args.force)
         except IndexBusyError:
             print(
