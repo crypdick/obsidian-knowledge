@@ -149,6 +149,42 @@ def test_search_ttl_uses_custom_label_for_stuck_work():
             signal_pause()
 
 
+def test_search_ttl_hard_kills_when_signal_is_swallowed():
+    """When SIGALRM cannot be delivered (work stuck in a C call, or the signal
+    is masked), a watchdog thread must force-exit the process at the deadline.
+
+    Regression: the hourly reindex cron accumulated 255 orphaned processes
+    because a hung TLS read inside an embedding request swallowed the SIGALRM,
+    so ``--timeout-seconds`` never fired and the process never exited.
+    """
+    import time as _time
+
+    script = (
+        "import signal, time, sys\n"
+        "from lib.vault_index.cli import search_ttl\n"
+        # Block SIGALRM so the alarm can never be delivered — emulates a long
+        # C-extension call that never returns to the Python signal check.
+        "signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGALRM})\n"
+        "with search_ttl(1, label='reindex'):\n"
+        "    time.sleep(60)\n"
+        "sys.exit(0)\n"
+    )
+    t0 = _time.monotonic()
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    elapsed = _time.monotonic() - t0
+    assert result.returncode == 124, (
+        f"expected hard-timeout exit 124, got {result.returncode}; "
+        f"stderr={result.stderr!r}"
+    )
+    assert elapsed < 25, f"watchdog should fire within seconds, took {elapsed:.1f}s"
+
+
 def test_run_search_doctor_passes_with_rows_and_known_hits(tmp_path: Path):
     class Hit:
         def __init__(self, score, path):

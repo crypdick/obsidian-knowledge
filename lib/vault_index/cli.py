@@ -9,6 +9,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import platformdirs
@@ -57,6 +58,10 @@ APP_NAME = "obsidian-knowledge"
 CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
 SEARCH_TTL_ENV = "OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS"
 DEFAULT_SEARCH_TTL_SECONDS = 30
+# Extra time past the signal-based deadline before the watchdog hard-exits.
+# Lets the clean SIGALRM/unwind path win when it can; the watchdog only fires
+# when the work is wedged in a C call the signal cannot interrupt.
+_HARD_TIMEOUT_GRACE_SECONDS = 5
 SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
 
 
@@ -66,26 +71,66 @@ class SearchTimeoutError(TimeoutError):
 
 @contextlib.contextmanager
 def search_ttl(seconds: int | None, *, label: str = "search"):
-    """Bound CLI searches so stuck retrieval cannot leave orphaned processes."""
-    if not seconds or seconds <= 0 or not hasattr(signal, "SIGALRM"):
+    """Bound CLI searches so stuck retrieval cannot leave orphaned processes.
+
+    Two lines of defense:
+
+    1. ``signal.alarm`` raises :class:`SearchTimeoutError` at the deadline —
+       clean and catchable, but only on the main thread and only between Python
+       bytecodes.  It cannot interrupt a long C-extension call (e.g. a hung TLS
+       read inside an embedding HTTP request), because the pending signal is
+       only serviced once control returns to the interpreter.
+    2. A daemon watchdog thread force-exits the process a few seconds past the
+       deadline if the clean path did not unwind.  This guarantees the process
+       dies regardless of where it is stuck, which is what prevents orphaned
+       reindex processes from piling up (observed: 255 stuck processes
+       accumulating from the hourly cron because a C-level SSL read swallowed
+       the SIGALRM and ``--timeout-seconds`` silently never fired).
+    """
+    if not seconds or seconds <= 0:
         yield
         return
 
-    previous_handler = signal.getsignal(signal.SIGALRM)
-    previous_alarm = signal.alarm(0)
+    cancel = threading.Event()
 
-    def _raise_timeout(_signum, _frame):
-        raise SearchTimeoutError(f"{label} exceeded {seconds}s TTL")
+    def _watchdog():
+        if not cancel.wait(seconds + _HARD_TIMEOUT_GRACE_SECONDS):
+            sys.stderr.write(
+                f"{label}: hard timeout after "
+                f"{seconds + _HARD_TIMEOUT_GRACE_SECONDS}s — signal-based "
+                "timeout did not fire (likely stuck in a C call); force-exiting "
+                "to avoid an orphaned process\n"
+            )
+            sys.stderr.flush()
+            os._exit(124)
 
-    signal.signal(signal.SIGALRM, _raise_timeout)
-    signal.alarm(seconds)
+    watchdog = threading.Thread(
+        target=_watchdog, name="search-ttl-watchdog", daemon=True
+    )
+    watchdog.start()
+
+    use_alarm = hasattr(signal, "SIGALRM")
+    previous_handler = None
+    previous_alarm = 0
+    if use_alarm:
+        previous_handler = signal.getsignal(signal.SIGALRM)
+        previous_alarm = signal.alarm(0)
+
+        def _raise_timeout(_signum, _frame):
+            raise SearchTimeoutError(f"{label} exceeded {seconds}s TTL")
+
+        signal.signal(signal.SIGALRM, _raise_timeout)
+        signal.alarm(seconds)
+
     try:
         yield
     finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, previous_handler)
-        if previous_alarm:
-            signal.alarm(previous_alarm)
+        cancel.set()
+        if use_alarm:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, previous_handler)
+            if previous_alarm:
+                signal.alarm(previous_alarm)
 
 
 def search_ttl_seconds() -> int:
