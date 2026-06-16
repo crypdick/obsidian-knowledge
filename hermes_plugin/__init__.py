@@ -45,10 +45,8 @@ _SESSION_WIKI_NEW_FOLDERS: dict[str, set[str]] = {}
 _SESSION_WIKI_INDEX_FOLDERS: dict[str, set[str]] = {}
 
 _REFLECT_REMINDER = (
-    "Step back: any friction worth feeding back into the harness, or insight "
-    "worth saving to the knowledge base? Hermes auto-invokes improve-harness "
-    "when friction patterns are detected. If knowledge worth preserving, use the "
-    "`remember-conversations` skill."
+    "Step back: any insight worth saving to the knowledge base? If knowledge "
+    "worth preserving, use the `remember-conversations` skill."
 )
 
 _STOP_REMINDER = (

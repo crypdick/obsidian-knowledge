@@ -1,6 +1,6 @@
 ---
 name: deploy-harness
-description: Merge an approved improve-harness branch into main, bump patch version, push to origin. Callable from improve-harness Phase 5 OR manually for hand-edited changes.
+description: Merge an approved harness branch into main, bump patch version, push to origin. Callable manually for hand-edited changes.
 ---
 
 # Deploy Harness

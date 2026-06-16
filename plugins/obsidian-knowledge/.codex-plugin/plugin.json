@@ -1,7 +1,7 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.22.14",
-  "description": "Self-evolving plugin that manages an Obsidian knowledge vault: capture, organize, index, garden, and improve its own harness.",
+  "version": "3.22.15",
+  "description": "Plugin that manages an Obsidian knowledge vault: capture, organize, index, and garden.",
   "author": {
     "name": "Ricardo Decal"
   },
@@ -15,8 +15,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Obsidian Knowledge",
-    "shortDescription": "Manage and improve an Obsidian knowledge vault",
-    "longDescription": "Skills for organizing Obsidian vaults, searching knowledge notes, remembering conversations, and improving the local knowledge harness.",
+    "shortDescription": "Manage an Obsidian knowledge vault",
+    "longDescription": "Skills for organizing Obsidian vaults, searching knowledge notes, and remembering conversations.",
     "developerName": "Ricardo Decal",
     "category": "Productivity",
     "capabilities": [
@@ -26,8 +26,7 @@
     ],
     "defaultPrompt": [
       "Organize my Obsidian vault",
-      "Search my knowledge vault",
-      "Improve the knowledge harness"
+      "Search my knowledge vault"
     ],
     "brandColor": "#4B6B88",
     "screenshots": []

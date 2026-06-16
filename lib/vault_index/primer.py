@@ -78,9 +78,7 @@ def build_primer(
         "start; append new feedback/project/reference facts there, not under "
         "~/.claude/projects/*/memory/ (a PreToolUse hook will block that).\n"
         "- Reflect on friction: if you struggle with the harness, hit unexpected "
-        "blocks, or repeat the same workaround, invoke `/improve-harness`.\n"
-        "- Reflect on user frustration: if the user expresses frustration "
-        "('fuck', 'wtf', 'this keeps happening'), invoke `/improve-harness`. "
-        "The agent is not the unit of analysis — the system is."
+        "blocks, or repeat the same workaround, mention the friction in your "
+        "normal session outcome so it can be handled deliberately later."
         f"{kb_block}"
     )

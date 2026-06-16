@@ -3,7 +3,7 @@ from hookslib import recall_init_lib  # noqa: E402
 
 
 class TestBuildPrimer:
-    def test_includes_all_five_directives(self, tmp_vault, tmp_path):
+    def test_includes_core_harness_directives(self, tmp_vault, tmp_path):
         plugin_root = tmp_path / "plugin"
         plugin_root.mkdir()
         primer = recall_init_lib.build_primer(tmp_vault, plugin_root)
@@ -11,8 +11,8 @@ class TestBuildPrimer:
         assert "memory" in primer.lower()
         assert "obsidian-knowledge search" in primer
         assert "remember-conversations" in primer
-        assert "/improve-harness" in primer
-        assert "frustration" in primer.lower()
+        assert "/improve-harness" not in primer
+        assert "frustration" not in primer.lower()
 
     def test_primer_does_not_mention_vault_search_slash_command(self, tmp_vault, tmp_path):
         plugin_root = tmp_path / "plugin"

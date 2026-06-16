@@ -40,22 +40,15 @@ history:
 
 ### improve-harness
 
-Multi-phase side-quest workflow to fix harness friction. Triggered by
-`/improve-harness <description>` or natural-language frustration phrases.
-The side quest runs as a headless `claude -p --worktree` session that
-produces a proposal (with internal review), receives main-agent
-executive review, then implements (with internal review via
-`subagent-driven-development`) and leaves a branch for human approval.
-
-The skill is organized for progressive disclosure: `SKILL.md` is a thin
-index; sub-asset files (`phases.md`, `templates.md`, `conventions.md`)
-hold the details and load only when needed.
+Disabled as of `3.22.15`. The command shim and skill index are retained
+as `.disabled` files for reference, but they are no longer discoverable by
+the plugin runtime.
 
 ### deploy-harness
 
 Single-purpose skill: merge an approved `improve/<slug>` branch into
-main, bump patch version, push to origin. Called from `improve-harness`
-Phase 5 or invokable manually.
+main, bump patch version, push to origin. Invokable manually for
+approved harness changes.
 
 ## Hooks
 
@@ -161,10 +154,10 @@ conversations.
 ### recall-init (SessionStart)
 
 `recall-init.py` runs at every session start. Injects the harness
-primer: a 5-directive context block covering memory location, recall
-via `obsidian-knowledge search`, capture at session end, friction reflection, and
-user-frustration reflection. The primer stands alone — agents that
-read only this know how to operate within the harness.
+primer: a compact context block covering memory location, recall
+via `obsidian-knowledge search`, capture at session end, and friction
+reflection. The primer stands alone — agents that read only this know how
+to operate within the harness.
 
 ### reflect-nudge (PostToolUse on Bash)
 
@@ -176,9 +169,8 @@ and consider whether observed friction warrants a harness improvement.
 
 ### /improve-harness <description>
 
-Triggers the meta-improvement workflow. The argument is the friction
-description — main agent uses it to seed the incident report and
-generate a slug.
+Disabled as of `3.22.15`. The old command body lives at
+`commands/improve-harness.md.disabled` for reference.
 
 ### obsidian-knowledge search "<query>"
 

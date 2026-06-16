@@ -14,9 +14,9 @@ def test_build_primer_mentions_wiki_path(tmp_path: Path):
     assert "wiki" in text.lower()
 
 
-def test_build_primer_mentions_improve_harness(tmp_path: Path):
+def test_build_primer_omits_improve_harness(tmp_path: Path):
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
-    assert "/improve-harness" in text
+    assert "/improve-harness" not in text
 
 
 def test_build_primer_injects_knowledge_base_index_with_cap(tmp_path: Path):

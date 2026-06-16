@@ -531,10 +531,10 @@ def test_post_tool_call_reflection_queues_next_pre_llm(monkeypatch, provider, tm
     injected = hermes_plugin._on_pre_llm_call(session_id=key)
 
     assert injected is not None
-    assert "friction" in injected["context"]
+    assert "remember-conversations" in injected["context"]
     assert "/improve-harness" not in injected["context"]
     assert "or describe it" not in injected["context"]
-    assert "auto-invokes improve-harness" in injected["context"]
+    assert "auto-invokes improve-harness" not in injected["context"]
 
 
 def test_session_end_queues_index_sync_nudge(provider):

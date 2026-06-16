@@ -48,8 +48,8 @@ class TestReflectNudge:
         code, out = run_hook(make_payload(), tmp_path)
         assert code == 0
         assert "systemMessage" in out
-        assert "friction" in out["systemMessage"].lower() or \
-               "/improve-harness" in out["systemMessage"]
+        assert "remember-conversations" in out["systemMessage"]
+        assert "/improve-harness" not in out["systemMessage"]
 
     def test_fires_continuously_at_multiples(self, tmp_path):
         """Fires at 10, 20, 30 — no per-session suppression."""
