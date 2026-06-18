@@ -287,11 +287,29 @@ def test_private_hook_entrypoint_runs_existing_hook(tmp_path: Path):
 
 def test_codex_hooks_template_uses_installed_cli():
     """Codex hooks should use the uv-tool-installed CLI, not repo-local paths."""
-    template = json.loads((Path(__file__).parents[1] / "hooks" / "hooks.json").read_text())
+    template = json.loads((Path(__file__).parents[1] / "hooks" / "codex-hooks.json").read_text())
     rendered = json.dumps(template)
     assert "obsidian-knowledge _hook pre-tool-use" in rendered
     assert "${CLAUDE_PLUGIN_ROOT}" not in rendered
     assert "/home/" not in rendered
+
+
+def test_top_level_codex_hooks_off_claude_autodiscovery_path():
+    """The top-level tree is dual-runtime: it ships Claude's inline plugin.json
+    hooks AND Codex's hook config. Codex's file must NOT live at hooks/hooks.json
+    because Claude Code auto-discovers that exact path in addition to the inline
+    plugin.json hooks, which double-fires every hook (e.g. SessionStart runs the
+    primer twice). Keep the Codex config at hooks/codex-hooks.json, referenced
+    explicitly from .codex-plugin/plugin.json.
+    """
+    root = Path(__file__).parents[1]
+    assert not (root / "hooks" / "hooks.json").exists(), (
+        "hooks/hooks.json collides with Claude Code's hook auto-discovery; "
+        "the top-level Codex hook config must stay at hooks/codex-hooks.json"
+    )
+    assert (root / "hooks" / "codex-hooks.json").exists()
+    codex_manifest = json.loads((root / ".codex-plugin" / "plugin.json").read_text())
+    assert codex_manifest["hooks"] == "./hooks/codex-hooks.json"
 
 
 def test_codex_marketplace_uses_structured_local_source():
