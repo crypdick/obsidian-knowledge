@@ -335,7 +335,20 @@ def test_indexer_search_can_skip_rebuild_for_hot_path(vault: Path):
 # ── Task 18: sync_turn ───────────────────────────────────────────────────────
 
 
-def test_sync_turn_runs_indexer_in_background(monkeypatch, provider):
+def test_sync_turn_skips_when_no_vault_markdown_changed(monkeypatch, provider):
+    import hermes_plugin
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("sync_turn should not reindex when the vault is clean")
+
+    monkeypatch.setattr(hermes_plugin.subprocess, "run", fail_if_called)
+
+    provider.sync_turn(user_content="hi", assistant_content="hello", session_id="test")
+
+    assert provider._sync_thread is None
+
+
+def test_sync_turn_runs_indexer_after_vault_markdown_write(monkeypatch, provider, vault):
     import hermes_plugin
 
     calls = []
@@ -350,7 +363,14 @@ def test_sync_turn_runs_indexer_in_background(monkeypatch, provider):
         return Result()
 
     monkeypatch.setattr(hermes_plugin.subprocess, "run", fake_run)
-    provider.sync_turn(user_content="hi", assistant_content="hello")
+    hermes_plugin._on_post_tool_call(
+        tool_name="write_file",
+        args={"path": str(vault / "wiki" / "python.md"), "content": "updated"},
+        session_id="test",
+        result='{"bytes_written": 7}',
+    )
+
+    provider.sync_turn(user_content="hi", assistant_content="hello", session_id="test")
     provider._sync_thread.join(timeout=5.0)
 
     assert not provider._sync_thread.is_alive()

@@ -16,6 +16,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -43,6 +44,7 @@ _REMINDER_LOCK = threading.Lock()
 _PENDING_REMINDERS: dict[str, list[str]] = {}
 _SESSION_WIKI_NEW_FOLDERS: dict[str, set[str]] = {}
 _SESSION_WIKI_INDEX_FOLDERS: dict[str, set[str]] = {}
+_SYNC_DIRTY_SESSIONS: set[str] = set()
 
 _REFLECT_REMINDER = (
     "Step back: any insight worth saving to the knowledge base? If knowledge "
@@ -446,6 +448,95 @@ def _wiki_folder_from_path(path: str) -> tuple[str, str] | None:
     return match.group(1), Path(match.group(2)).name
 
 
+def _vault_root_path() -> Path | None:
+    root = os.environ.get("OBSIDIAN_VAULT_ROOT") or os.environ.get("OBSIDIAN_VAULT_PATH")
+    if not root:
+        return None
+    try:
+        return Path(root).expanduser().resolve()
+    except OSError:
+        return Path(root).expanduser()
+
+
+def _resolve_tool_path(raw_path: str, workdir: str | None = None) -> Path | None:
+    if not raw_path:
+        return None
+    try:
+        path = Path(raw_path).expanduser()
+        if not path.is_absolute():
+            base = Path(
+                workdir
+                or os.environ.get("TERMINAL_CWD")
+                or os.getcwd()
+            ).expanduser()
+            path = base / path
+        return path.resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+
+def _is_vault_markdown_path(raw_path: str, workdir: str | None = None) -> bool:
+    if not raw_path or not raw_path.lower().endswith(".md"):
+        return False
+    vault = _vault_root_path()
+    if vault is None:
+        return False
+    path = _resolve_tool_path(raw_path, workdir=workdir)
+    if path is None:
+        return False
+    try:
+        path.relative_to(vault)
+    except ValueError:
+        return False
+    return True
+
+
+def _extract_terminal_path_tokens(command: str) -> list[str]:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+    paths: list[str] = []
+    for token in tokens:
+        if "=" in token:
+            _key, value = token.split("=", 1)
+            token = value
+        token = token.strip("'\"")
+        if token.lower().endswith(".md"):
+            paths.append(token)
+    return paths
+
+
+def _mark_sync_dirty_if_vault_markdown_changed(
+    key: str,
+    tool_name: str,
+    args: dict[str, Any],
+    result: Any,
+) -> None:
+    if tool_name not in {"write_file", "patch", "terminal"}:
+        return
+    if isinstance(result, str) and '"error"' in result[:200].lower():
+        return
+    if tool_name == "terminal" and not _terminal_result_succeeded(result):
+        return
+
+    workdir = str(args.get("workdir") or "") or None
+    paths: list[str] = []
+    if tool_name == "write_file":
+        paths = [str(args.get("path") or "")]
+    elif tool_name == "patch":
+        if args.get("mode", "replace") == "patch":
+            paths = [path for _, path, _ in _extract_patch_files(str(args.get("patch") or ""))]
+        else:
+            paths = [str(args.get("path") or "")]
+    elif tool_name == "terminal":
+        paths = _extract_terminal_path_tokens(str(args.get("command") or ""))
+
+    if any(_is_vault_markdown_path(path, workdir=workdir) for path in paths):
+        with _REMINDER_LOCK:
+            _SYNC_DIRTY_SESSIONS.add(key)
+
+
 def _track_terminal_wiki_index_state(command: str, new_folders: set[str], index_folders: set[str]) -> None:
     """Track Hermes terminal obsidian CLI moves/edits like Claude/Codex transcript hooks."""
     if "obsidian" not in command or "wiki/" not in command:
@@ -532,6 +623,7 @@ def _on_post_tool_call(
         args = {}
     key = _session_key(session_id, task_id)
     _track_wiki_index_state(key, tool_name, args, result)
+    _mark_sync_dirty_if_vault_markdown_changed(key, tool_name, args, result)
 
     if tool_name != "terminal":
         return
@@ -823,11 +915,16 @@ class ObsidianKnowledgeProvider(MemoryProvider):
         return None
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
-        """Re-index after each turn. Background thread; debounced."""
+        """Re-index after turns that actually changed vault markdown."""
         import threading
-        if self._sync_thread is not None and self._sync_thread.is_alive():
-            self._sync_pending = True
-            return
+        key = _session_key(session_id or self.session_id)
+        with _REMINDER_LOCK:
+            if key not in _SYNC_DIRTY_SESSIONS:
+                return
+            if self._sync_thread is not None and self._sync_thread.is_alive():
+                self._sync_pending = True
+                return
+            _SYNC_DIRTY_SESSIONS.discard(key)
 
         plugin_root = self.plugin_root
         vault_root = self.vault_root
@@ -840,8 +937,10 @@ class ObsidianKnowledgeProvider(MemoryProvider):
                 import logging
                 logging.getLogger(__name__).warning("sync_turn failed: %s", exc)
             finally:
-                if self._sync_pending:
-                    self._sync_pending = False
+                with _REMINDER_LOCK:
+                    if self._sync_pending:
+                        self._sync_pending = False
+                        _SYNC_DIRTY_SESSIONS.add(key)
 
         self._sync_thread = threading.Thread(target=_run, daemon=False)
         self._sync_thread.start()
