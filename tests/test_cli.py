@@ -342,14 +342,23 @@ def test_codex_marketplace_points_to_packaged_plugin():
     assert (plugin_root / "hooks" / "hooks.json").exists()
 
 
-def test_legacy_marketplace_uses_codex_compatible_source():
-    """Codex also reads this marketplace path when no .agents marketplace exists."""
+def test_claude_marketplace_uses_string_local_source():
+    """Claude Code's marketplace must use the bare string source "./".
+
+    The structured form {"source": "local", "path": "./."} is rejected by
+    Claude Code as an unsupported source type, which silently wedges the
+    install at whatever version was first cached (autoUpdate refreshes the
+    marketplace git but can never re-resolve the plugin). Every working
+    local-root plugin uses the string form. Codex's structured-source needs
+    are met by .agents/plugins/marketplace.json, so this file only has to
+    satisfy Claude.
+    """
     marketplace = json.loads(
         (Path(__file__).parents[1] / ".claude-plugin" / "marketplace.json").read_text()
     )
     plugin = marketplace["plugins"][0]
 
-    assert plugin["source"] == {"source": "local", "path": "./."}
+    assert plugin["source"] == "./"
     package = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())[
         "project"
     ]
