@@ -1,16 +1,22 @@
 """Subprocess tests for hooks/doctor.py."""
 
 import json
+import os
 import subprocess
+import uuid
 from pathlib import Path
 
 HOOK = Path(__file__).parent.parent / "hooks" / "doctor.py"
 
+# Unique per-process so the session-keyed debounce marker never collides
+# with a prior test run.
+RUN_ID = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
-def run_hook(cwd: str, env: dict | None = None) -> str:
+
+def run_hook(cwd: str, env: dict | None = None, payload: dict | None = None) -> str:
     proc = subprocess.run(
         ["python3", str(HOOK)],
-        input=json.dumps({}),
+        input=json.dumps(payload or {}),
         capture_output=True,
         text=True,
         cwd=cwd,
@@ -79,3 +85,20 @@ def test_skips_sources_folders(subprocess_vault):
     (vault / "wiki" / "_sources" / "orig.md").write_text("See [[foo.md]].")
     out = run_hook(str(vault), env=env)
     assert out == ""
+
+
+def test_debounces_repeat_fire_within_session(subprocess_vault):
+    """A SessionStart re-fire for the same session_id skips the re-scan.
+
+    Guards against a compaction loop re-walking the vault and re-printing the
+    digest back to back.
+    """
+    vault, env = subprocess_vault
+    (vault / "note.md").write_text("See [[foo.md]].")
+    session = {"session_id": f"s-{RUN_ID}-debounce"}
+
+    out1 = run_hook(str(vault), env=env, payload=session)
+    out2 = run_hook(str(vault), env=env, payload=session)
+
+    assert "wikilink-ext" in out1
+    assert out2 == ""  # second fire debounced → no re-scan output

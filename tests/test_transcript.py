@@ -2,7 +2,7 @@
 
 import json
 
-from hookslib.transcript import iter_tool_uses
+from hookslib.transcript import count_user_messages, iter_tool_uses
 
 
 def test_missing_file_yields_nothing(tmp_path):
@@ -42,3 +42,34 @@ def test_handles_non_list_content(tmp_path):
     f = tmp_path / "t.jsonl"
     f.write_text(json.dumps({"message": {"content": "string"}}) + "\n")
     assert list(iter_tool_uses(str(f))) == []
+
+
+def test_count_user_messages_none_when_unavailable(tmp_path):
+    assert count_user_messages(None) is None
+    assert count_user_messages(str(tmp_path / "nope.jsonl")) is None
+
+
+def test_count_user_messages_counts_only_genuine(tmp_path):
+    f = tmp_path / "t.jsonl"
+    f.write_text(
+        "\n".join(
+            json.dumps(e)
+            for e in [
+                {"type": "user", "message": {"role": "user", "content": "hello"}},
+                # tool_result carrier — not a genuine user message
+                {"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": "t1", "content": "ok"},
+                ]}},
+                # meta entry — excluded
+                {"type": "user", "isMeta": True,
+                 "message": {"content": "system reminder"}},
+                {"type": "assistant", "message": {"content": [
+                    {"type": "text", "text": "hi"}]}},
+                # multimodal user message (list, no tool_result) — counts
+                {"type": "user", "message": {"content": [
+                    {"type": "text", "text": "second"}]}},
+            ]
+        )
+        + "\n"
+    )
+    assert count_user_messages(str(f)) == 2

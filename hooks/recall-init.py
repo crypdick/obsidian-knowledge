@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hookslib import recall_init_lib  # noqa: E402
 from hookslib import vault_config  # noqa: E402
+from hookslib.stop_hook import session_debounce  # noqa: E402
 
 
 def resolve_vaults_config() -> Path:
@@ -27,11 +28,11 @@ def resolve_vaults_config() -> Path:
 
 
 def main() -> int:
-    # Read stdin payload (we don't use it but Claude Code may send one)
+    # Read stdin payload (used for the SessionStart debounce below).
     try:
-        json.load(sys.stdin)
+        payload = json.load(sys.stdin) or {}
     except (json.JSONDecodeError, ValueError):
-        pass
+        payload = {}
 
     # Resolve vault config
     config_path = resolve_vaults_config()
@@ -52,6 +53,12 @@ def main() -> int:
         return 0
 
     if not vault_roots:
+        return 0
+
+    # SessionStart fires on startup|resume|compact. Debounce so a rapid
+    # re-fire (e.g. an auto-compaction loop) doesn't re-inject the primer
+    # back to back for the same session.
+    if session_debounce(payload, "recall-init"):
         return 0
 
     vault_root = Path(vault_roots[0])

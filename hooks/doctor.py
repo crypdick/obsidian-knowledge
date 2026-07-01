@@ -33,6 +33,7 @@ from hookslib.patterns import (  # noqa: E402
     is_in_dated_folder,
     parse_frontmatter,
 )
+from hookslib.stop_hook import session_debounce  # noqa: E402
 from hookslib.vault_config import load_vault_roots  # noqa: E402
 from hookslib.vault_policy import find_containing_vault  # noqa: E402
 
@@ -145,12 +146,20 @@ def check_ollama(vault_root: str) -> str | None:
 
 def main() -> None:
     try:
-        sys.stdin.read()
-    except Exception:
-        pass
+        payload = json.loads(sys.stdin.read() or "{}")
+    except (json.JSONDecodeError, ValueError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
 
     vault_root = find_containing_vault(os.getcwd(), load_vault_roots())
     if not vault_root:
+        sys.exit(0)
+
+    # SessionStart fires on startup|resume|compact. Debounce before the
+    # full-vault walk so a rapid re-fire (e.g. an auto-compaction loop)
+    # doesn't re-scan the vault and re-print the digest back to back.
+    if session_debounce(payload, "doctor"):
         sys.exit(0)
 
     needs_attention = count_needs_attention(vault_root)
