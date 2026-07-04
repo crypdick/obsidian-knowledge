@@ -38,12 +38,22 @@ def load_vault_roots() -> list[str]:
     return roots
 
 
-def is_in_vault(path: str, vault_roots: list[str] | None = None) -> bool:
-    """Return True if `path` is inside any configured vault root."""
+def matching_vault_root(path: str, vault_roots: list[str] | None = None) -> str | None:
+    """Return the configured vault root that contains `path`, or None if outside all.
+
+    Lets callers anchor vault-relative paths (e.g. the changelog directory) to
+    an absolute location instead of a cwd-relative one — which is what stops
+    reminders from being ambiguously resolved into `wiki/Utility/...`.
+    """
     if vault_roots is None:
         vault_roots = load_vault_roots()
     abs_path = os.path.abspath(os.path.expanduser(path))
-    return any(
-        abs_path == root or abs_path.startswith(root + os.sep)
-        for root in vault_roots
-    )
+    for root in vault_roots:
+        if abs_path == root or abs_path.startswith(root + os.sep):
+            return root
+    return None
+
+
+def is_in_vault(path: str, vault_roots: list[str] | None = None) -> bool:
+    """Return True if `path` is inside any configured vault root."""
+    return matching_vault_root(path, vault_roots) is not None
