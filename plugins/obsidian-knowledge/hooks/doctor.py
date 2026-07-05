@@ -27,15 +27,15 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from hookslib.patterns import (  # noqa: E402
+from hookslib.patterns import (
     DATE_PREFIX_RE,
     find_wikilink_ext_violations,
     is_in_dated_folder,
     parse_frontmatter,
 )
-from hookslib.stop_hook import session_debounce  # noqa: E402
-from hookslib.vault_config import load_vault_roots  # noqa: E402
-from hookslib.vault_policy import find_containing_vault  # noqa: E402
+from hookslib.stop_hook import session_debounce
+from hookslib.vault_config import load_vault_roots
+from hookslib.vault_policy import find_containing_vault
 
 SKIP_DIRS = {".obsidian", ".config", ".git", ".trash", ".claude", "_sources"}
 
@@ -122,7 +122,7 @@ def check_ollama(vault_root: str) -> str | None:
     # Defer import so test_doctor.py doesn't need the vault_index package.
     try:
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-        from vault_index.indexer import (  # type: ignore
+        from vault_index.indexer import (
             DEFAULT_EMBEDDING_API_BASE,
             DEFAULT_EMBEDDING_MODEL,
             _ollama_probe,

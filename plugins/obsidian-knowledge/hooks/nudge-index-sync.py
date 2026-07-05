@@ -17,17 +17,18 @@ import json
 import os
 import re
 import sys
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from hookslib.stop_hook import in_cooldown, read_input  # noqa: E402
-from hookslib.transcript import iter_tool_uses  # noqa: E402
-from hookslib.vault_config import is_in_vault  # noqa: E402
+from hookslib.stop_hook import in_cooldown, read_input
+from hookslib.transcript import iter_tool_uses
+from hookslib.vault_config import is_in_vault
 
 MOVE_RE = re.compile(r'obsidian\s+(?:move|rename)\b[^\n]*?(?:to|name)=["\']?wiki/([^/\s"\']+)/')
 
 
-def folders_with_new_files(tool_uses: list[dict]) -> set[str]:
+def folders_with_new_files(tool_uses: list[dict[str, Any]]) -> set[str]:
     """Return set of wiki folder names where new non-index files were written."""
     folders = set()
     for use in tool_uses:
@@ -45,7 +46,7 @@ def folders_with_new_files(tool_uses: list[dict]) -> set[str]:
     return folders
 
 
-def folders_with_index_edits(tool_uses: list[dict]) -> set[str]:
+def folders_with_index_edits(tool_uses: list[dict[str, Any]]) -> set[str]:
     """Return set of wiki folders whose index.md was Written or Edited this session."""
     folders = set()
     for use in tool_uses:

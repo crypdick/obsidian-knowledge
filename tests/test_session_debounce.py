@@ -4,6 +4,7 @@ The debounce re-runs only when BOTH gates open: >= cooldown_seconds elapsed
 AND the user sent a new message since the last run. Either gate alone
 suppresses an auto-compaction storm (many SessionStart events, no new message).
 """
+
 import json
 import os
 import uuid

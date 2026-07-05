@@ -11,13 +11,14 @@ Each section is optional. A missing section means the corresponding
 rule no-ops, so users without these concerns pay no enforcement cost
 and don't need to write any config.
 """
+
 from __future__ import annotations
 
 import os
 from typing import Any
 
 try:
-    import yaml  # type: ignore[import-not-found]
+    import yaml
 
     _HAVE_YAML = True
 except ImportError:  # pragma: no cover — PyYAML optional but expected

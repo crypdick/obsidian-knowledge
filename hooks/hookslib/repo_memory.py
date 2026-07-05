@@ -13,6 +13,7 @@ to `systems/machines/<hostname>/memory/` for sessions outside any repo
 
 Returned `rel_path` is always relative to `<vault>/wiki/`.
 """
+
 from __future__ import annotations
 
 import re
@@ -25,10 +26,11 @@ from pathlib import Path
 @dataclass(frozen=True)
 class MemoryTarget:
     """Where to write a memory file. rel_path is under <vault>/wiki/."""
-    kind: str           # "repo" | "host"
-    rel_path: str       # e.g. "repos/anthropics/claude-code/memory"
-    owner: str | None   # github user/org (kind=repo)
-    repo: str | None    # repo name (kind=repo)
+
+    kind: str  # "repo" | "host"
+    rel_path: str  # e.g. "repos/anthropics/claude-code/memory"
+    owner: str | None  # github user/org (kind=repo)
+    repo: str | None  # repo name (kind=repo)
     hostname: str | None  # (kind=host)
     remote_url: str | None  # diagnostic; None for kind=host
 

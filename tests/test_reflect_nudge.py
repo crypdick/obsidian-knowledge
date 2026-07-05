@@ -1,4 +1,5 @@
 """Integration tests for reflect-nudge PostToolUse hook."""
+
 import json
 import os
 import subprocess
@@ -39,7 +40,7 @@ class TestReflectNudge:
         for i in range(9):
             code, out = run_hook(make_payload(), tmp_path)
             assert code == 0
-            assert "systemMessage" not in out, f"fired prematurely at call {i+1}"
+            assert "systemMessage" not in out, f"fired prematurely at call {i + 1}"
 
     def test_fires_at_tenth_call(self, tmp_path):
         """10th call produces a reflection nudge."""

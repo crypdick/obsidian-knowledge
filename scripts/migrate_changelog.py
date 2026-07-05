@@ -9,6 +9,7 @@ Usage:
     uv run python scripts/migrate_changelog.py --vault /path/to/vault   # dry-run
     uv run python scripts/migrate_changelog.py --vault /path/to/vault --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,18 +33,18 @@ class MigrateResult:
     skipped: int = 0
 
 
-_H2_SPLIT_RE = re.compile(r'^## (\d{4}-\d{2}-\d{2}) — (.+)$', re.MULTILINE)
-_SLUG_STRIP_RE = re.compile(r'[^a-z0-9\s-]')
-_SLUG_SPACE_RE = re.compile(r'[\s_]+')
-_SLUG_DASH_RE = re.compile(r'-{2,}')
+_H2_SPLIT_RE = re.compile(r"^## (\d{4}-\d{2}-\d{2}) — (.+)$", re.MULTILINE)
+_SLUG_STRIP_RE = re.compile(r"[^a-z0-9\s-]")
+_SLUG_SPACE_RE = re.compile(r"[\s_]+")
+_SLUG_DASH_RE = re.compile(r"-{2,}")
 
 
 def slugify(title: str, max_len: int = 60) -> str:
     s = title.lower()
-    s = _SLUG_STRIP_RE.sub('', s)
-    s = _SLUG_SPACE_RE.sub('-', s)
-    s = _SLUG_DASH_RE.sub('-', s)
-    s = s[:max_len].rstrip('-')
+    s = _SLUG_STRIP_RE.sub("", s)
+    s = _SLUG_SPACE_RE.sub("-", s)
+    s = _SLUG_DASH_RE.sub("-", s)
+    s = s[:max_len].rstrip("-")
     return s
 
 
@@ -52,8 +53,8 @@ def entry_to_filename(date: str, title: str) -> str:
 
 
 def extract_diary_links(body: str) -> list[str]:
-    all_links = re.findall(r'\[\[[^\]]+\]\]', body)
-    return [link for link in all_links if '/diary/' in link or '/convos/' in link]
+    all_links = re.findall(r"\[\[[^\]]+\]\]", body)
+    return [link for link in all_links if "/diary/" in link or "/convos/" in link]
 
 
 def parse_entries(content: str) -> list[Entry]:

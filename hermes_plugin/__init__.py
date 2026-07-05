@@ -1,5 +1,7 @@
 """Obsidian vault memory provider for Hermes Agent CLI.
 
+# allow: file-length  (large entrypoint module; decomposition tracked in docs/QUALITY.md)
+
 Wraps the shared lib/vault_index/ retrieval into a MemoryProvider implementation.
 Activated via ``memory.provider: obsidian-knowledge`` in ~/.hermes/config.yaml.
 
@@ -9,9 +11,11 @@ Architecture note: lib/vault_index requires memweave which requires Python 3.12+
 Hermes runs Python 3.11. This provider bridges to the uv venv via subprocess
 to avoid the version mismatch.
 """
+
 from __future__ import annotations
 
 import atexit
+import contextlib
 import importlib.util
 import json
 import os
@@ -21,17 +25,17 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, cast
 
+from agent.memory_provider import (
+    MemoryProvider,
+)
 
 _VAULT_SEARCH_TIMEOUT_SECONDS = 60.0
 _VAULT_PREFETCH_TIMEOUT_SECONDS = 8.0
 _VAULT_PRIMER_TIMEOUT_SECONDS = 5.0
 _VAULT_SYNC_TIMEOUT_SECONDS = 45.0
 _SYNC_FINGERPRINT_FILENAME = "last-sync-fingerprint.txt"
-
-from agent.memory_provider import MemoryProvider  # type: ignore  # noqa: E402  (Hermes runtime module; imported after config constants)
-
 
 # Path to the installed plugin root. OBSIDIAN_KNOWLEDGE_ROOT is a dev override
 # for working directly from a source checkout.
@@ -69,11 +73,14 @@ def _python_cmd() -> list[str]:
     return ["uv", "run", "python"]
 
 
-def _run_vault_search(query: str, top_k: int | None = None,
-                      min_score: float | None = None,
-                      override_digest_filter: bool = False,
-                      timeout: float = _VAULT_SEARCH_TIMEOUT_SECONDS,
-                      allow_rebuild: bool = True) -> list[dict[str, Any]]:
+def _run_vault_search(
+    query: str,
+    top_k: int | None = None,
+    min_score: float | None = None,
+    override_digest_filter: bool = False,
+    timeout: float = _VAULT_SEARCH_TIMEOUT_SECONDS,
+    allow_rebuild: bool = True,
+) -> list[dict[str, Any]]:
     """Run vault_search via uv venv subprocess, return list of {score, path}."""
     script = (
         "import asyncio, json, sys, os\n"
@@ -102,7 +109,8 @@ def _run_vault_search(query: str, top_k: int | None = None,
     )
     if result.returncode != 0:
         raise RuntimeError(f"vault_search failed: {result.stderr}")
-    return json.loads(result.stdout.strip())
+    hits: list[dict[str, Any]] = json.loads(result.stdout.strip())
+    return hits
 
 
 def _run_build_primer(vault_root: str, plugin_root: str) -> str:
@@ -281,7 +289,8 @@ def _run_stop_hook_reasons(session_id: str = "") -> list[str]:
                 timeout=10,
                 check=False,
             )
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
+            # A candidate command that times out or isn't runnable: try the next.
             continue
         stdout = (proc.stdout or "").strip()
         if not stdout:
@@ -302,6 +311,7 @@ def _can_run_stop_hooks() -> bool:
 
 def _with_workdir(workdir: str | None):
     """Temporarily switch cwd for rules that interpret relative paths."""
+
     class _Workdir:
         def __enter__(self) -> None:
             self.old_cwd = os.getcwd()
@@ -363,14 +373,17 @@ def _run_protect_rules(tool_name: str, tool_input: dict[str, Any], workdir: str 
     spec.loader.exec_module(protect_vault)
     vault_root = os.environ.get("OBSIDIAN_VAULT_ROOT")
     if vault_root:
-        protect_vault.VAULT_ROOTS = [os.path.abspath(os.path.expanduser(vault_root))]
+        # protect_vault is a dynamically loaded module; mypy types it as
+        # ModuleType and rejects attribute assignment even though VAULT_ROOTS
+        # is a real module-level global we intentionally override here.
+        cast(Any, protect_vault).VAULT_ROOTS = [os.path.abspath(os.path.expanduser(vault_root))]
 
     if tool_name == "Bash" and protect_vault.ESCAPE_HATCH in tool_input.get("command", ""):
         return None
 
     with _with_workdir(workdir):
         for rule in protect_vault.RULES:
-            reason = rule(tool_name, tool_input)
+            reason: str | None = rule(tool_name, tool_input)
             if reason:
                 return reason
     return None
@@ -389,7 +402,7 @@ def _hermes_tool_as_protect_inputs(
         return []
 
     if args.get("mode", "replace") == "patch":
-        translated = []
+        translated: list[tuple[str, dict[str, Any], str | None]] = []
         for op, path, added_text in _extract_patch_files(str(args.get("patch") or "")):
             if op == "add":
                 translated.append(("Write", {"file_path": path, "content": added_text}, None))
@@ -397,11 +410,13 @@ def _hermes_tool_as_protect_inputs(
                 translated.append(("Edit", {"file_path": path, "new_string": added_text}, None))
         return translated
 
-    return [(
-        "Edit",
-        {"file_path": args.get("path", ""), "new_string": args.get("new_string", "")},
-        None,
-    )]
+    return [
+        (
+            "Edit",
+            {"file_path": args.get("path", ""), "new_string": args.get("new_string", "")},
+            None,
+        )
+    ]
 
 
 def _on_pre_tool_call(
@@ -464,11 +479,7 @@ def _resolve_tool_path(raw_path: str, workdir: str | None = None) -> Path | None
     try:
         path = Path(raw_path).expanduser()
         if not path.is_absolute():
-            base = Path(
-                workdir
-                or os.environ.get("TERMINAL_CWD")
-                or os.getcwd()
-            ).expanduser()
+            base = Path(workdir or os.environ.get("TERMINAL_CWD") or os.getcwd()).expanduser()
             path = base / path
         return path.resolve(strict=False)
     except (OSError, RuntimeError, ValueError):
@@ -629,12 +640,12 @@ def _on_post_tool_call(
         return
     try:
         _import_hookslib()
-        from hookslib import reflect_counter  # type: ignore
+        from hookslib import reflect_counter
 
         count = reflect_counter.increment(_cache_root() / key)
         if reflect_counter.should_fire(count):
             _queue_reminder(key, _REFLECT_REMINDER)
-    except Exception:
+    except Exception:  # allow: exception-handling  (best-effort nudge; must never break the host turn)
         return
 
 
@@ -708,21 +719,19 @@ def register(ctx: Any) -> None:
 
 
 # Module-level ref so atexit handler can call shutdown() even on crash.
-_last_active_provider: "ObsidianKnowledgeProvider | None" = None
+_last_active_provider: ObsidianKnowledgeProvider | None = None
 
 
 def _atexit_shutdown() -> None:
     if _last_active_provider is not None:
-        try:
+        with contextlib.suppress(Exception):
             _last_active_provider.shutdown()
-        except Exception:
-            pass
 
 
 atexit.register(_atexit_shutdown)
 
 
-class ObsidianKnowledgeProvider(MemoryProvider):
+class ObsidianKnowledgeProvider(MemoryProvider):  # type: ignore[misc]  # MemoryProvider is Any (Hermes-runtime-only agent module)
     """Hermes MemoryProvider backed by the Obsidian knowledge base."""
 
     NUDGE = (
@@ -731,7 +740,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
         "Use vault_search for more results."
     )
 
-    VAULT_SEARCH_SCHEMA: dict[str, Any] = {
+    VAULT_SEARCH_SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "vault_search",
         "description": (
             "Hybrid BM25 + dense semantic search over the Obsidian vault. "
@@ -755,7 +764,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
         },
     }
 
-    MEMORY_REDIRECT_SCHEMA: dict[str, Any] = {
+    MEMORY_REDIRECT_SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "memory",
         "description": (
             "Disabled built-in Hermes memory tool for this profile. "
@@ -766,8 +775,14 @@ class ObsidianKnowledgeProvider(MemoryProvider):
             "properties": {
                 "action": {"type": "string", "description": "Ignored; built-in memory is disabled."},
                 "target": {"type": "string", "description": "Ignored; built-in memory is disabled."},
-                "content": {"type": "string", "description": "Ignored; write durable facts to the vault instead."},
-                "old_text": {"type": "string", "description": "Ignored; edit the relevant vault note instead."},
+                "content": {
+                    "type": "string",
+                    "description": "Ignored; write durable facts to the vault instead.",
+                },
+                "old_text": {
+                    "type": "string",
+                    "description": "Ignored; edit the relevant vault note instead.",
+                },
             },
             "required": [],
         },
@@ -808,6 +823,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
 
         # Threading state for queue_prefetch
         import threading
+
         self._prefetch_lock = threading.Lock()
         self._prefetch_thread: Any = None
         self._prefetch_cache: list[Any] = []
@@ -826,7 +842,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
         directive = (
             "\n\n"
             "On your first turn, call the `skill_view` tool with "
-            "`name=\"obsidian-knowledge\"` to load the skill instructions. "
+            '`name="obsidian-knowledge"` to load the skill instructions. '
             "Re-load it after a context compaction if you find yourself "
             "uncertain about vault conventions."
         )
@@ -846,7 +862,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
                 timeout=_VAULT_PREFETCH_TIMEOUT_SECONDS,
                 allow_rebuild=False,
             )
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling  (recall failure surfaced, not raised)
             shown_query = query[:80]
             if len(query) > 80:
                 shown_query += "..."
@@ -854,8 +870,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
                 f"Obsidian memory provider warning: vault_search({shown_query!r}) "
                 f"failed during automatic recall: {exc}. Treat automatic Obsidian "
                 "recall as suspect; use the vault_search tool explicitly if this "
-                "turn needs memory."
-                + self.NUDGE
+                "turn needs memory." + self.NUDGE
             )
         if not hits:
             shown_query = query[:80]
@@ -865,8 +880,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
                 f"Obsidian memory provider warning: vault_search({shown_query!r}) "
                 "returned no hits for the current query. Treat automatic Obsidian "
                 "recall as suspect and fix the memory plugin, vault index, digest "
-                "filters, or vault access before relying on this memory context."
-                + self.NUDGE
+                "filters, or vault access before relying on this memory context." + self.NUDGE
             )
 
         shown_query = query[:80]
@@ -904,9 +918,9 @@ class ObsidianKnowledgeProvider(MemoryProvider):
                 query=args["query"],
                 top_k=args.get("top_k"),
                 min_score=args.get("min_score"),
-                override_digest_filter=bool(args.get("override_digest_filter", False)),
+                override_digest_filter=bool(args.get("override_digest_filter")),
             )
-        except Exception as exc:
+        except Exception as exc:  # allow: exception-handling  (tool-call boundary → structured error)
             return json.dumps({"error": str(exc)})
         return json.dumps(hits)
 
@@ -917,6 +931,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
         """Re-index after turns that actually changed vault markdown."""
         import threading
+
         key = _session_key(session_id or self.session_id)
         with _REMINDER_LOCK:
             if key not in _SYNC_DIRTY_SESSIONS:
@@ -935,6 +950,7 @@ class ObsidianKnowledgeProvider(MemoryProvider):
                 _run_vault_sync(vault_root, plugin_root, python_cmd)
             except Exception as exc:
                 import logging
+
                 logging.getLogger(__name__).warning("sync_turn failed: %s", exc)
             finally:
                 with _REMINDER_LOCK:

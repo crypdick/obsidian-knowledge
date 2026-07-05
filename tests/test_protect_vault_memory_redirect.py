@@ -1,6 +1,7 @@
 """Integration test: protect-vault.py block_memory_file_creation cites
 the resolved per-repo vault path in the deny message.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,8 +34,7 @@ def repo_with_remote(tmp_path):
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     subprocess.run(
-        ["git", "-C", str(repo), "remote", "add", "origin",
-         "git@github.com:Anthropic/claude-code.git"],
+        ["git", "-C", str(repo), "remote", "add", "origin", "git@github.com:Anthropic/claude-code.git"],
         check=True,
     )
     return repo
@@ -42,9 +42,7 @@ def repo_with_remote(tmp_path):
 
 def test_redirect_cites_repo_path(tmp_path, repo_with_remote, subprocess_vault):
     vault, env = subprocess_vault
-    blocked_target = (
-        tmp_path / ".claude" / "projects" / "-some-slug" / "memory" / "feedback_x.md"
-    )
+    blocked_target = tmp_path / ".claude" / "projects" / "-some-slug" / "memory" / "feedback_x.md"
     blocked_target.parent.mkdir(parents=True)
 
     payload = {
@@ -69,9 +67,7 @@ def test_redirect_cites_host_path_when_no_repo(tmp_path, subprocess_vault):
     non_repo = tmp_path / "not-a-repo"
     non_repo.mkdir()
 
-    blocked_target = (
-        tmp_path / ".claude" / "projects" / "-some-slug" / "memory" / "project_x.md"
-    )
+    blocked_target = tmp_path / ".claude" / "projects" / "-some-slug" / "memory" / "project_x.md"
     blocked_target.parent.mkdir(parents=True)
 
     payload = {
@@ -92,9 +88,7 @@ def test_redirect_cites_host_path_when_no_repo(tmp_path, subprocess_vault):
 def test_user_prefix_files_are_not_blocked(tmp_path, subprocess_vault):
     """user_*.md files (user-profile facts) stay in ~/.claude — only feedback/project/reference are blocked."""
     vault, env = subprocess_vault
-    target = (
-        tmp_path / ".claude" / "projects" / "-slug" / "memory" / "user_profile.md"
-    )
+    target = tmp_path / ".claude" / "projects" / "-slug" / "memory" / "user_profile.md"
     target.parent.mkdir(parents=True)
     payload = {
         "tool_name": "Write",

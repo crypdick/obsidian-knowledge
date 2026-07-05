@@ -7,7 +7,10 @@ prevention, surfacing, and persistence stay in lockstep.
 from __future__ import annotations
 
 import re
+from types import ModuleType
+from typing import Any
 
+yaml: ModuleType | None
 try:
     import yaml
 except ImportError:  # pragma: no cover - depends on host python
@@ -25,9 +28,7 @@ DATED_FOLDER_MARKERS = [
 
 # Date prefix: YYYY-MM-DD where MM is 01-12 and DD is 01-31 (loose, not
 # calendar-accurate; good enough to reject typos like 2026-13-01).
-DATE_PREFIX_RE = re.compile(
-    r"^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])"
-)
+DATE_PREFIX_RE = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])")
 
 # Obsidian periodic note filenames: YYYY-Y.md, YYYY-MNN.md, YYYY-WNN.md.
 # These live in Journal/ and use their own naming convention rather than
@@ -91,15 +92,12 @@ def find_wikilink_ext_violations(content: str) -> list[tuple[int, str]]:
         for match in WIKILINK_MD_EXT_RE.finditer(scan_line):
             end = match.end()
             close = scan_line.find("]]", end - 2)
-            if close != -1:
-                text = scan_line[match.start() : close + 2]
-            else:
-                text = match.group(0)
+            text = scan_line[match.start() : close + 2] if close != -1 else match.group(0)
             violations.append((lineno, text))
     return violations
 
 
-def parse_frontmatter(content: str) -> tuple[dict | None, str | None]:
+def parse_frontmatter(content: str) -> tuple[dict[str, Any] | None, str | None]:
     """Parse YAML frontmatter block.
 
     Returns (parsed_dict, None) on success.

@@ -7,6 +7,7 @@ per-session suppression. The continuous cadence is intentional: it
 builds reflection into the agent's working rhythm, not a one-time
 interruption.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hookslib import reflect_counter  # noqa: E402
+from hookslib import reflect_counter
 
 REMINDER = (
     "Step back: any insight worth saving to the knowledge base? "

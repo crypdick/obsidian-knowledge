@@ -17,11 +17,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Lint (ruff)
-        run: uv run ruff check .
-
-      - name: Check Codex plugin is in sync with repo root
-        run: uv run python scripts/sync_codex_plugin.py --check
-
-      - name: Tests
-        run: uv run pytest -q
+      # Runs every gate (hygiene, detect-secrets, ruff, flynt, vulture, xenon,
+      # mypy --strict, custom taste hooks, Codex-sync check, pytest + coverage
+      # ratchet) so CI matches the local pre-commit exactly.
+      - name: Pre-commit (lint, types, complexity, tests, coverage)
+        run: uv run pre-commit run --all-files --show-diff-on-failure

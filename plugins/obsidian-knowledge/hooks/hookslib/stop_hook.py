@@ -5,18 +5,21 @@ stop_hook_active), enforces a per-session cooldown via a marker file's
 mtime, and emits a `{"decision": "block", "reason": ...}` JSON block —
 or exits silently to allow the conversation to continue normally.
 """
+
 import json
 import os
 import sys
 import time
+from typing import Any
 
 from .transcript import count_user_messages
 
 
-def read_input() -> dict:
+def read_input() -> dict[str, Any]:
     """Read and parse the JSON payload from stdin. Returns {} on parse error."""
     try:
-        return json.load(sys.stdin)
+        payload: dict[str, Any] = json.load(sys.stdin)
+        return payload
     except (json.JSONDecodeError, ValueError):
         return {}
 
@@ -41,7 +44,7 @@ def _marker_cooldown(session_id, marker_basename: str, cooldown_seconds: int) ->
     return False
 
 
-def in_cooldown(payload: dict, marker_basename: str, cooldown_seconds: int = 300) -> bool:
+def in_cooldown(payload: dict[str, Any], marker_basename: str, cooldown_seconds: int = 300) -> bool:
     """Return True if this hook should skip emitting a block.
 
     Skips when:
@@ -60,7 +63,7 @@ SESSIONSTART_COOLDOWN_S = 300  # 5 minutes
 
 
 def session_debounce(
-    payload: dict,
+    payload: dict[str, Any],
     marker_basename: str,
     cooldown_seconds: int = SESSIONSTART_COOLDOWN_S,
 ) -> bool:

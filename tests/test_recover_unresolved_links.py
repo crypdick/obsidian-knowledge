@@ -40,7 +40,9 @@ def test_apply_rewrites_only_auto_fixable_links(tmp_path: Path) -> None:
     (tmp_path / ".claude" / "obsidian-knowledge.yaml").write_text("ai_managed: [wiki]\n", encoding="utf-8")
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki" / "Renamed File.md").write_text("# Renamed\n", encoding="utf-8")
-    (tmp_path / "wiki" / "source.md").write_text("See [[renamed_file|display]] and [[plain concept]].\n", encoding="utf-8")
+    (tmp_path / "wiki" / "source.md").write_text(
+        "See [[renamed_file|display]] and [[plain concept]].\n", encoding="utf-8"
+    )
 
     result = run_recover(
         tmp_path,
@@ -52,14 +54,18 @@ def test_apply_rewrites_only_auto_fixable_links(tmp_path: Path) -> None:
     )
 
     assert "# applied_rewrites\t1" in result.stdout
-    assert (tmp_path / "wiki" / "source.md").read_text(encoding="utf-8") == "See [[wiki/Renamed File|display]] and [[plain concept]].\n"
+    assert (tmp_path / "wiki" / "source.md").read_text(
+        encoding="utf-8"
+    ) == "See [[wiki/Renamed File|display]] and [[plain concept]].\n"
 
 
 def test_path_and_date_references_are_missing_not_concept_stubs(tmp_path: Path) -> None:
     (tmp_path / ".claude").mkdir()
     (tmp_path / ".claude" / "obsidian-knowledge.yaml").write_text("ai_managed: [wiki]\n", encoding="utf-8")
     (tmp_path / "wiki").mkdir()
-    (tmp_path / "wiki" / "source.md").write_text("[[2026-04-05-missing]] [[scripts/foo.py]]\n", encoding="utf-8")
+    (tmp_path / "wiki" / "source.md").write_text(
+        "[[2026-04-05-missing]] [[scripts/foo.py]]\n", encoding="utf-8"
+    )
 
     result = run_recover(
         tmp_path,
@@ -82,7 +88,9 @@ def test_path_like_links_do_not_fall_back_to_unrelated_basename(tmp_path: Path) 
     (tmp_path / "wiki" / "real").mkdir(parents=True)
     (tmp_path / "Utility" / "obsidian-knowledge").mkdir(parents=True)
     (tmp_path / "wiki" / "real" / "changelog.md").write_text("# Wrong basename\n", encoding="utf-8")
-    (tmp_path / "wiki" / "source.md").write_text("[[Utility/obsidian-knowledge/changelog]]\n", encoding="utf-8")
+    (tmp_path / "wiki" / "source.md").write_text(
+        "[[Utility/obsidian-knowledge/changelog]]\n", encoding="utf-8"
+    )
 
     result = run_recover(
         tmp_path,
@@ -92,7 +100,9 @@ def test_path_like_links_do_not_fall_back_to_unrelated_basename(tmp_path: Path) 
 
     assert "# applied_rewrites\t0" in result.stdout
     assert "missing-note/date/path reference\tUtility/obsidian-knowledge/changelog" in result.stdout
-    assert (tmp_path / "wiki" / "source.md").read_text(encoding="utf-8") == "[[Utility/obsidian-knowledge/changelog]]\n"
+    assert (tmp_path / "wiki" / "source.md").read_text(
+        encoding="utf-8"
+    ) == "[[Utility/obsidian-knowledge/changelog]]\n"
 
 
 def test_ambiguous_fuzzy_candidates_are_not_applied(tmp_path: Path) -> None:

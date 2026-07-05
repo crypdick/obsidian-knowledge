@@ -1,4 +1,5 @@
 """Unit tests for scan-vault-secrets known-leaked literal blacklist."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -36,12 +37,7 @@ class TestLoadKnownLeaked:
 
     def test_skips_blank_and_comment_lines(self, tmp_path, hook_module):
         (tmp_path / ".secrets.known-leaked").write_text(
-            "# leading comment\n"
-            "alpha\n"
-            "\n"
-            "  # indented comment\n"
-            "beta\n"
-            "\n"
+            "# leading comment\nalpha\n\n  # indented comment\nbeta\n\n"
         )
         assert hook_module.load_known_leaked(str(tmp_path)) == ["alpha", "beta"]
 
@@ -68,9 +64,7 @@ class TestScanKnownLeaked:
 
     def test_finds_single_match(self, tmp_path, hook_module):
         (tmp_path / "a.md").write_text("line one\nthe alpha is here\nline three\n")
-        total, files, sample = hook_module.scan_known_leaked(
-            str(tmp_path), ["a.md"], ["alpha"]
-        )
+        total, files, sample = hook_module.scan_known_leaked(str(tmp_path), ["a.md"], ["alpha"])
         assert total == 1
         assert files == 1
         assert len(sample) == 1
@@ -80,26 +74,20 @@ class TestScanKnownLeaked:
     def test_counts_all_occurrences_across_files(self, tmp_path, hook_module):
         (tmp_path / "a.md").write_text("alpha\nalpha\n")
         (tmp_path / "b.md").write_text("alpha\nbeta\n")
-        total, files, _ = hook_module.scan_known_leaked(
-            str(tmp_path), ["a.md", "b.md"], ["alpha", "beta"]
-        )
+        total, files, _ = hook_module.scan_known_leaked(str(tmp_path), ["a.md", "b.md"], ["alpha", "beta"])
         assert total == 4
         assert files == 2
 
     def test_sample_capped_at_limit(self, tmp_path, hook_module):
         # Write 20 occurrences; sample should cap at KNOWN_LEAKED_SAMPLE_LIMIT.
         (tmp_path / "a.md").write_text("alpha\n" * 20)
-        total, _, sample = hook_module.scan_known_leaked(
-            str(tmp_path), ["a.md"], ["alpha"]
-        )
+        total, _, sample = hook_module.scan_known_leaked(str(tmp_path), ["a.md"], ["alpha"])
         assert total == 20
         assert len(sample) == hook_module.KNOWN_LEAKED_SAMPLE_LIMIT
 
     def test_multiple_literals_on_same_line_each_count(self, tmp_path, hook_module):
         (tmp_path / "a.md").write_text("alpha and beta together\n")
-        total, files, sample = hook_module.scan_known_leaked(
-            str(tmp_path), ["a.md"], ["alpha", "beta"]
-        )
+        total, files, sample = hook_module.scan_known_leaked(str(tmp_path), ["a.md"], ["alpha", "beta"])
         assert total == 2
         assert files == 1
         # Sample contains entries for each literal that matched.
@@ -108,9 +96,7 @@ class TestScanKnownLeaked:
 
     def test_unreadable_file_skipped_not_raised(self, tmp_path, hook_module):
         (tmp_path / "a.md").write_text("alpha\n")
-        total, files, _ = hook_module.scan_known_leaked(
-            str(tmp_path), ["a.md", "nope.md"], ["alpha"]
-        )
+        total, files, _ = hook_module.scan_known_leaked(str(tmp_path), ["a.md", "nope.md"], ["alpha"])
         assert total == 1
         assert files == 1
 
@@ -120,9 +106,7 @@ class TestScanKnownLeaked:
         # dictionary substrings will also match (by design — the user
         # curates the blacklist).
         (tmp_path / "a.md").write_text("scanning for `alpha` in vault\n")
-        total, _, _ = hook_module.scan_known_leaked(
-            str(tmp_path), ["a.md"], ["alpha"]
-        )
+        total, _, _ = hook_module.scan_known_leaked(str(tmp_path), ["a.md"], ["alpha"])
         assert total == 1
 
     def test_sample_paths_are_vault_relative(self, tmp_path, hook_module):
@@ -131,7 +115,5 @@ class TestScanKnownLeaked:
         sub.mkdir()
         (sub / "a.md").write_text("alpha\n")
         rel = "sub/a.md"
-        _, _, sample = hook_module.scan_known_leaked(
-            str(tmp_path), [rel], ["alpha"]
-        )
+        _, _, sample = hook_module.scan_known_leaked(str(tmp_path), [rel], ["alpha"])
         assert sample == [f"{rel}:1 :: alpha"]

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# allow: file-length  (vault-write guard; decomposition tracked in docs/QUALITY.md)
 """
 PreToolUse hook: protect Obsidian vault integrity.
 
@@ -30,13 +31,15 @@ import json
 import os
 import re
 import sys
+from collections.abc import Callable
+from typing import Any
 
 # Shared with Stop hooks via lib/vault_config.py; per-vault policy via
 # lib/vault_policy.py.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hookslib.repo_memory import resolve_target  # noqa: E402
-from hookslib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
-from hookslib.vault_policy import find_containing_vault, load_vault_policy  # noqa: E402
+from hookslib.repo_memory import resolve_target
+from hookslib.vault_config import is_in_vault, load_vault_roots
+from hookslib.vault_policy import find_containing_vault, load_vault_policy
 
 ESCAPE_HATCH = "I_AM_BEING_CAREFUL=1"
 PROTECTED_DIRS = ["_sources"]
@@ -48,11 +51,7 @@ def command_touches_vault(command: str) -> bool:
     """Return True if the command operates on or from within a vault."""
     if is_in_vault(os.getcwd(), VAULT_ROOTS):
         return True
-    return any(
-        is_in_vault(token, VAULT_ROOTS)
-        for token in command.split()
-        if token.startswith(("/", "~"))
-    )
+    return any(is_in_vault(token, VAULT_ROOTS) for token in command.split() if token.startswith(("/", "~")))
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -64,27 +63,28 @@ def deny(rule: str, message: str, hint: str = "", show_escape_hint: bool = True)
     # "use the escape hatch" or "I confirm". Self-authorizing the escape hatch
     # defeats the entire purpose of this safety system.
     escape_warning = (
-        f"\n\n>>> AGENT: DO NOT bypass this by prepending {ESCAPE_HATCH} yourself. <<<"
-        "\n>>> Show this BLOCKED message to the user verbatim and ask them to confirm. <<<"
-        "\n>>> The escape hatch exists for the HUMAN to authorize, not for you to self-authorize. <<<"
-        f"\n>>> If the user confirms, re-run with {ESCAPE_HATCH} prepended. <<<"
-    ) if show_escape_hint else ""
+        (
+            f"\n\n>>> AGENT: DO NOT bypass this by prepending {ESCAPE_HATCH} yourself. <<<"
+            "\n>>> Show this BLOCKED message to the user verbatim and ask them to confirm. <<<"
+            "\n>>> The escape hatch exists for the HUMAN to authorize, not for you to self-authorize. <<<"
+            f"\n>>> If the user confirms, re-run with {ESCAPE_HATCH} prepended. <<<"
+        )
+        if show_escape_hint
+        else ""
+    )
     if not hint:
         hint = ""
     return f"BLOCKED [{rule}]: {message} {hint}{escape_warning}"
 
 
 def path_hits_protected_dir(path: str) -> bool:
-    return any(
-        f"/{d}/" in path or path.rstrip("/").endswith(f"/{d}")
-        for d in PROTECTED_DIRS
-    )
+    return any(f"/{d}/" in path or path.rstrip("/").endswith(f"/{d}") for d in PROTECTED_DIRS)
 
 
 # ── Rules ────────────────────────────────────────────────────────
 
 
-def protected_dirs_file(tool_name: str, tool_input: dict) -> str | None:
+def protected_dirs_file(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Block Write/Edit to _sources/ directories inside any configured vault."""
     if tool_name not in ("Write", "Edit"):
         return None
@@ -101,7 +101,7 @@ def protected_dirs_file(tool_name: str, tool_input: dict) -> str | None:
     return None
 
 
-def _bash_write_targets(command: str) -> list:
+def _bash_write_targets(command: str) -> list[str]:
     """Return paths targeted by destructive operations in a bash command.
 
     Walks each write operation (redirect, rm/mv/etc., sed -i) and collects
@@ -110,33 +110,33 @@ def _bash_write_targets(command: str) -> list:
     like `ls _sources/ 2>/dev/null && rm /tmp/x` (rm targets /tmp, not
     _sources, but both tokens were present).
     """
-    targets: list = []
+    targets: list[str] = []
 
     # Stdout/stderr redirects: > target, >> target. Skip /dev/null.
     # Lookbehind avoids matching `<<` heredocs and `2>&1`.
-    for m in re.finditer(r'(?<![<>&])>>?\s*(\S+)', command):
+    for m in re.finditer(r"(?<![<>&])>>?\s*(\S+)", command):
         target = m.group(1)
-        if target != '/dev/null':
+        if target != "/dev/null":
             targets.append(target)
 
     # Destructive commands: collect non-flag args until next |;& or EOL.
-    destructive_cmd = r'\b(?:rm|mv|rmdir|unlink|truncate|shred|chmod|chown)\b'
-    for m in re.finditer(rf'{destructive_cmd}([^|;&]*)', command):
+    destructive_cmd = r"\b(?:rm|mv|rmdir|unlink|truncate|shred|chmod|chown)\b"
+    for m in re.finditer(rf"{destructive_cmd}([^|;&]*)", command):
         for tok in m.group(1).split():
-            if not tok.startswith('-'):
+            if not tok.startswith("-"):
                 targets.append(tok)
 
     # sed -i (in-place edit): file args after -i.
-    for m in re.finditer(r'\bsed\b[^|;&]*\s-i\b([^|;&]*)', command):
+    for m in re.finditer(r"\bsed\b[^|;&]*\s-i\b([^|;&]*)", command):
         for tok in m.group(1).split():
-            if tok.startswith(('-', "'", '"')):
+            if tok.startswith(("-", "'", '"')):
                 continue
             targets.append(tok)
 
     return targets
 
 
-def protected_dirs_bash(tool_name: str, tool_input: dict) -> str | None:
+def protected_dirs_bash(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Block Bash write operations targeting _sources/ paths."""
     if tool_name != "Bash":
         return None
@@ -155,12 +155,14 @@ def protected_dirs_bash(tool_name: str, tool_input: dict) -> str | None:
     # alone misses this because `foo` doesn't contain `_sources`. Since
     # _sources/ holds irreplaceable originals, defense-in-depth is worth
     # the occasional friction.
-    has_destructive = bool(re.search(
-        r'\b(?:rm|mv|rmdir|unlink|truncate|shred|chmod|chown|sed\s+-i)\b',
-        command,
-    ))
+    has_destructive = bool(
+        re.search(
+            r"\b(?:rm|mv|rmdir|unlink|truncate|shred|chmod|chown|sed\s+-i)\b",
+            command,
+        )
+    )
     if has_destructive:
-        for m in re.finditer(r'\bcd\s+(\S+)', command):
+        for m in re.finditer(r"\bcd\s+(\S+)", command):
             if path_hits_protected_dir(m.group(1)):
                 dirs = ", ".join(PROTECTED_DIRS)
                 return deny(
@@ -171,7 +173,7 @@ def protected_dirs_bash(tool_name: str, tool_input: dict) -> str | None:
     return None
 
 
-def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
+def block_published_file_edits(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Warn before Edit-ing files already marked dg-publish: true.
 
     Narrowed to Edit only as of v2.0: for Write, the publish_guard rule
@@ -188,7 +190,7 @@ def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
     if not os.path.isfile(file_path):
         return None
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read(1000)
     except (OSError, UnicodeDecodeError):
         return None
@@ -209,12 +211,12 @@ def block_published_file_edits(tool_name: str, tool_input: dict) -> str | None:
 
 def _find_path_args(segment: str) -> list[str]:
     """Return the leading PATH args of a `find PATH... [predicates...]` call."""
-    m = re.search(r'\bfind\b\s+(.*)', segment)
+    m = re.search(r"\bfind\b\s+(.*)", segment)
     if not m:
         return []
     paths: list[str] = []
     for tok in m.group(1).split():
-        if tok.startswith(('-', '(', ')', '!')):
+        if tok.startswith(("-", "(", ")", "!")):
             break
         paths.append(tok)
     return paths
@@ -222,22 +224,122 @@ def _find_path_args(segment: str) -> list[str]:
 
 def _rsync_dest(segment: str) -> str | None:
     """Return the last positional arg (= destination) of an `rsync ...` call."""
-    m = re.search(r'\brsync\b\s+(.*)', segment)
+    m = re.search(r"\brsync\b\s+(.*)", segment)
     if not m:
         return None
-    positional = [a for a in m.group(1).split() if not a.startswith('-')]
+    positional = [a for a in m.group(1).split() if not a.startswith("-")]
     return positional[-1] if positional else None
 
 
 def _shred_path_args(segment: str) -> list[str]:
     """Return positional path args of `shred ...`."""
-    m = re.search(r'\bshred\b\s+(.*)', segment)
+    m = re.search(r"\bshred\b\s+(.*)", segment)
     if not m:
         return []
-    return [a for a in m.group(1).split() if not a.startswith('-')]
+    return [a for a in m.group(1).split() if not a.startswith("-")]
 
 
-def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
+def strip_quoted(s: str) -> str:
+    """Remove double-quoted string content to avoid false positives.
+
+    Prevents 'mv' or 'rm' inside commit messages, grep patterns, etc.
+    from triggering the check.  Paths actually quoted with spaces
+    (mv "vault dir/file" dest) still fire on the unquoted destination.
+    """
+    return re.sub(r'"[^"]*"', '""', s)
+
+
+def _check_rm_mv(seg: str, target_in_vault: Callable[[str], bool]) -> str | None:
+    """Block recursive `rm` or any `mv` whose target is a vault path."""
+    for m in re.finditer(r"\b(rm|mv)\b([^|;&]*)", seg):
+        cmd = m.group(1)
+        tokens = m.group(2).split()
+        flags = [t for t in tokens if t.startswith("-")]
+        paths = [t for t in tokens if not t.startswith("-")]
+
+        if cmd == "rm":
+            if not any(re.search(r"[rR]", f) for f in flags):
+                continue
+            for p in paths:
+                if target_in_vault(p):
+                    return deny(
+                        "destructive-rm",
+                        "Recursive rm on a path that appears to be in an Obsidian vault.",
+                    )
+
+        if cmd == "mv":
+            for p in paths:
+                if target_in_vault(p):
+                    return deny(
+                        "destructive-mv",
+                        "mv on a path that appears to be in an Obsidian vault. "
+                        "Use the Obsidian CLI for moves to preserve internal links.",
+                    )
+    return None
+
+
+def _check_find_delete(seg: str, target_in_vault: Callable[[str], bool]) -> str | None:
+    """Block `find -delete` / `find -exec rm` whose path arg is a vault path."""
+    if re.search(r"\bfind\b", seg) and (re.search(r"-delete\b", seg) or re.search(r"-exec\s+rm\b", seg)):
+        label = "find -delete" if re.search(r"-delete\b", seg) else "find -exec rm"
+        for p in _find_path_args(seg):
+            if target_in_vault(p):
+                return deny(
+                    "destructive-find",
+                    f"{label} on a path that appears to be in an Obsidian vault.",
+                )
+    return None
+
+
+def _check_rsync_delete(seg: str, target_in_vault: Callable[[str], bool]) -> str | None:
+    """Block `rsync --delete` whose destination is a vault path."""
+    if re.search(r"\brsync\b", seg) and re.search(r"--delete\b", seg):
+        dest = _rsync_dest(seg)
+        if dest and target_in_vault(dest):
+            return deny(
+                "destructive-rsync-delete",
+                "rsync --delete with a destination in an Obsidian vault.",
+            )
+    return None
+
+
+def _check_shred(seg: str, target_in_vault: Callable[[str], bool]) -> str | None:
+    """Block `shred` whose path arg is a vault path."""
+    if re.search(r"\bshred\b", seg):
+        for p in _shred_path_args(seg):
+            if target_in_vault(p):
+                return deny(
+                    "destructive-shred",
+                    "shred on a path that appears to be in an Obsidian vault.",
+                )
+    return None
+
+
+def _check_xargs_rm(segments: list[str], cwd_in_vault: bool) -> str | None:
+    """Block `xargs rm` fed by a pipeline rooted in / referencing a vault.
+
+    rm gets its targets from stdin, so check upstream pipe segments
+    (and cwd) for vault-path references.
+    """
+    for i, seg in enumerate(segments):
+        if not (re.search(r"\bxargs\b", seg) and re.search(r"\brm\b", seg)):
+            continue
+        if cwd_in_vault:
+            return deny(
+                "destructive-xargs-rm",
+                "xargs rm in a pipeline rooted in an Obsidian vault (cwd).",
+            )
+        upstream_tokens = " ".join(segments[:i]).split()
+        for tok in upstream_tokens:
+            if tok.startswith(("/", "~")) and is_in_vault(tok, VAULT_ROOTS):
+                return deny(
+                    "destructive-xargs-rm",
+                    "xargs rm in a pipeline that references an Obsidian vault path.",
+                )
+    return None
+
+
+def destructive_vault_ops(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Block destructive ops when the *target* is a vault path (absolute,
     or relative when cwd is inside a vault).
 
@@ -264,102 +366,31 @@ def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
         # path — not a shell escape char, quote, or pipe fragment.  This prevents
         # false positives when 'mv' appears inside a grep pattern like "mv\|foo":
         # the trailing '\' (before the pipe) would otherwise trigger here.
-        if not token or token[0] in ('"', "'", '\\', '|', '&', ';', '<', '>'):
+        if not token or token[0] in ('"', "'", "\\", "|", "&", ";", "<", ">"):
             return False
         return cwd_in_vault
 
-    def strip_quoted(s: str) -> str:
-        """Remove double-quoted string content to avoid false positives.
-
-        Prevents 'mv' or 'rm' inside commit messages, grep patterns, etc.
-        from triggering the check.  Paths actually quoted with spaces
-        (mv "vault dir/file" dest) still fire on the unquoted destination.
-        """
-        return re.sub(r'"[^"]*"', '""', s)
+    # Per-segment checks, in order; first match wins.
+    segment_checks = (_check_rm_mv, _check_find_delete, _check_rsync_delete, _check_shred)
 
     # Split into statements (`;`, `&&`, `||`), then pipeline segments (`|`).
-    statements = re.split(r'&&|\|\||;', command)
+    statements = re.split(r"&&|\|\||;", command)
     for stmt in statements:
-        segments = stmt.split('|')
+        segments = stmt.split("|")
 
         for seg in segments:
             # Strip quoted-string content so 'mv' inside -m "..." args or grep
             # patterns doesn't trigger the destructive-op check.
             seg = strip_quoted(seg)
-            # rm / mv
-            for m in re.finditer(r'\b(rm|mv)\b([^|;&]*)', seg):
-                cmd = m.group(1)
-                tokens = m.group(2).split()
-                flags = [t for t in tokens if t.startswith("-")]
-                paths = [t for t in tokens if not t.startswith("-")]
+            for check in segment_checks:
+                reason = check(seg, target_in_vault)
+                if reason is not None:
+                    return reason
 
-                if cmd == "rm":
-                    if not any(re.search(r"[rR]", f) for f in flags):
-                        continue
-                    for p in paths:
-                        if target_in_vault(p):
-                            return deny(
-                                "destructive-rm",
-                                "Recursive rm on a path that appears to be in an Obsidian vault.",
-                            )
-
-                if cmd == "mv":
-                    for p in paths:
-                        if target_in_vault(p):
-                            return deny(
-                                "destructive-mv",
-                                "mv on a path that appears to be in an Obsidian vault. "
-                                "Use the Obsidian CLI for moves to preserve internal links.",
-                            )
-
-            # find -delete | find -exec rm
-            if re.search(r'\bfind\b', seg) and (
-                re.search(r'-delete\b', seg) or re.search(r'-exec\s+rm\b', seg)
-            ):
-                label = "find -delete" if re.search(r'-delete\b', seg) else "find -exec rm"
-                for p in _find_path_args(seg):
-                    if target_in_vault(p):
-                        return deny(
-                            "destructive-find",
-                            f"{label} on a path that appears to be in an Obsidian vault.",
-                        )
-
-            # rsync --delete
-            if re.search(r'\brsync\b', seg) and re.search(r'--delete\b', seg):
-                dest = _rsync_dest(seg)
-                if dest and target_in_vault(dest):
-                    return deny(
-                        "destructive-rsync-delete",
-                        "rsync --delete with a destination in an Obsidian vault.",
-                    )
-
-            # shred
-            if re.search(r'\bshred\b', seg):
-                for p in _shred_path_args(seg):
-                    if target_in_vault(p):
-                        return deny(
-                            "destructive-shred",
-                            "shred on a path that appears to be in an Obsidian vault.",
-                        )
-
-        # xargs rm: cross-segment scan within the statement.
-        # rm gets its targets from stdin, so check upstream pipe segments
-        # (and cwd) for vault-path references.
-        for i, seg in enumerate(segments):
-            if not (re.search(r'\bxargs\b', seg) and re.search(r'\brm\b', seg)):
-                continue
-            if cwd_in_vault:
-                return deny(
-                    "destructive-xargs-rm",
-                    "xargs rm in a pipeline rooted in an Obsidian vault (cwd).",
-                )
-            upstream_tokens = ' '.join(segments[:i]).split()
-            for tok in upstream_tokens:
-                if tok.startswith(('/', '~')) and is_in_vault(tok, VAULT_ROOTS):
-                    return deny(
-                        "destructive-xargs-rm",
-                        "xargs rm in a pipeline that references an Obsidian vault path.",
-                    )
+        # xargs rm: cross-segment scan within the statement (uses raw segments).
+        reason = _check_xargs_rm(segments, cwd_in_vault)
+        if reason is not None:
+            return reason
 
     return None
 
@@ -367,7 +398,7 @@ def destructive_vault_ops(tool_name: str, tool_input: dict) -> str | None:
 # ── Per-vault policy rules (opt-in via .claude/obsidian-knowledge.yaml) ──
 
 
-def _publishable_zone_match(abs_path: str, vault_root: str, policy: dict) -> str | None:
+def _publishable_zone_match(abs_path: str, vault_root: str, policy: dict[str, Any]) -> str | None:
     """Return the offending zone label if `abs_path` is publishable, else None."""
     rel = os.path.relpath(abs_path, vault_root)
     parts = rel.split(os.sep)
@@ -380,7 +411,7 @@ def _publishable_zone_match(abs_path: str, vault_root: str, policy: dict) -> str
     return None
 
 
-def ai_readonly_file(tool_name: str, tool_input: dict) -> str | None:
+def ai_readonly_file(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Block Write/Edit on publishable-zone paths (Zone 1)."""
     if tool_name not in ("Write", "Edit"):
         return None
@@ -402,7 +433,7 @@ def ai_readonly_file(tool_name: str, tool_input: dict) -> str | None:
     )
 
 
-def ai_readonly_bash(tool_name: str, tool_input: dict) -> str | None:
+def ai_readonly_bash(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Block destructive Bash ops targeting publishable-zone paths."""
     if tool_name != "Bash":
         return None
@@ -432,7 +463,7 @@ def ai_readonly_bash(tool_name: str, tool_input: dict) -> str | None:
     return None
 
 
-def _matches_publish_allowlist(rel_path: str, allowlist: list) -> bool:
+def _matches_publish_allowlist(rel_path: str, allowlist: list[str]) -> bool:
     for entry in allowlist:
         if entry.endswith("/"):
             stripped = entry.rstrip("/")
@@ -443,15 +474,11 @@ def _matches_publish_allowlist(rel_path: str, allowlist: list) -> bool:
     return False
 
 
-def publish_guard(tool_name: str, tool_input: dict) -> str | None:
+def publish_guard(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Block setting `dg-publish: true` outside the publish allowlist."""
     if tool_name not in ("Write", "Edit"):
         return None
-    content = (
-        tool_input.get("content", "")
-        if tool_name == "Write"
-        else tool_input.get("new_string", "")
-    )
+    content = tool_input.get("content", "") if tool_name == "Write" else tool_input.get("new_string", "")
     if "dg-publish" not in content:
         return None
     if not re.search(r"^\s*dg-publish:\s*true\s*$", content, re.MULTILINE):
@@ -477,7 +504,7 @@ def publish_guard(tool_name: str, tool_input: dict) -> str | None:
     )
 
 
-def generic_filename_guard(tool_name: str, tool_input: dict) -> str | None:
+def generic_filename_guard(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Block creation of generic basenames that collide on Obsidian wikilinks."""
     if tool_name != "Write":
         return None
@@ -509,7 +536,7 @@ def generic_filename_guard(tool_name: str, tool_input: dict) -> str | None:
     )
 
 
-def illegal_filename_guard(tool_name: str, tool_input: dict) -> str | None:
+def illegal_filename_guard(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Block creation of files with chars illegal on any sync target."""
     if tool_name != "Write":
         return None
@@ -541,7 +568,7 @@ def illegal_filename_guard(tool_name: str, tool_input: dict) -> str | None:
     )
 
 
-def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
+def block_memory_file_creation(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     """Redirect operational knowledge from agent auto-memory to the Obsidian wiki.
 
     Blocks Write/Edit to feedback_*.md, project_*.md, reference_*.md in any
@@ -565,18 +592,12 @@ def block_memory_file_creation(tool_name: str, tool_input: dict) -> str | None:
             scope = f"this repo ({target.owner}/{target.repo})"
         else:
             scope = f"this host ({target.hostname}) — no git remote detected from cwd"
-        abs_targets = [
-            f"{root}/wiki/{target.rel_path}/{basename}" for root in VAULT_ROOTS
-        ]
+        abs_targets = [f"{root}/wiki/{target.rel_path}/{basename}" for root in VAULT_ROOTS]
         if len(abs_targets) == 1:
-            target_lines = (
-                f"  Write '{basename}' here instead (scoped to {scope}):\n"
-                f"    {abs_targets[0]}"
-            )
+            target_lines = f"  Write '{basename}' here instead (scoped to {scope}):\n    {abs_targets[0]}"
         else:
-            target_lines = (
-                f"  Write '{basename}' to one of these (scoped to {scope}):\n"
-                + "\n".join(f"    - {p}" for p in abs_targets)
+            target_lines = f"  Write '{basename}' to one of these (scoped to {scope}):\n" + "\n".join(
+                f"    - {p}" for p in abs_targets
             )
     return deny(
         "wiki-policy",

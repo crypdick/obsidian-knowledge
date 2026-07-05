@@ -1,4 +1,5 @@
 """Harness primer text. Single source of truth for both CC and Hermes adapters."""
+
 from __future__ import annotations
 
 import os
@@ -12,7 +13,8 @@ def _resolve_memory_target(cwd: str):
     hooks_dir = plugin_root / "hooks"
     if str(hooks_dir) not in sys.path:
         sys.path.insert(0, str(hooks_dir))
-    from hookslib.repo_memory import resolve_target  # noqa: WPS433
+    from hookslib.repo_memory import resolve_target
+
     return resolve_target(cwd)
 
 
@@ -64,7 +66,7 @@ def build_primer(
         "You are operating under the obsidian-knowledge harness.\n"
         f"- Knowledge: Obsidian wiki at {wiki}/ is the persistent memory store — "
         "search it before answering non-trivial questions with "
-        "`obsidian-knowledge search \"<query>\"` "
+        '`obsidian-knowledge search "<query>"` '
         "(ranked top matching paths). "
         f"Fall back to `rg <pattern> {wiki}/` only for exact-string lookups. "
         "File outcomes at session end (`remember-conversations` skill) — this creates a terse changelog entry and any diary/convo notes. "

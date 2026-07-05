@@ -1,4 +1,5 @@
 """Shared test fixtures for obsidian-knowledge plugin hooks."""
+
 import os
 import sys
 from pathlib import Path
@@ -11,6 +12,34 @@ sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 # hermes_plugin/ lives at the repo root — insert root so `import hermes_plugin` works
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
+
+# `agent.memory_provider` is a Hermes-runtime-only module that hermes_plugin
+# imports at module scope. It is never installed in the test environment, so
+# stub it once here — before any test imports hermes_plugin. Doing this at
+# session scope removes a latent order-dependency: previously only the
+# `provider` fixture stubbed it, so tests that imported hermes_plugin without
+# that fixture passed only when a fixture-using test happened to run first in
+# the same worker (which parallel/reordered runs no longer guarantee).
+from unittest.mock import MagicMock  # noqa: E402
+
+sys.modules.setdefault("agent", MagicMock())
+sys.modules.setdefault("agent.memory_provider", MagicMock())
+sys.modules["agent.memory_provider"].MemoryProvider = object  # type: ignore[attr-defined]
+
+# Scrub repo-binding git env vars so the git-invoking tests (which `git init`
+# throwaway repos under tmp_path) never inherit an ambient git context. Git and
+# pre-commit export these to hook processes, so running the suite via `git
+# commit` would otherwise redirect `git init`/`remote`/`rev-parse` at the real
+# repo. Tests must not depend on the caller's git state; clear it once here.
+for _git_var in (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_PREFIX",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+):
+    os.environ.pop(_git_var, None)
 
 
 @pytest.fixture(autouse=True)
@@ -58,9 +87,7 @@ def tmp_vaults_yaml(tmp_path, monkeypatch, tmp_vault):
     config_dir.mkdir(parents=True)
     config_file = config_dir / "vaults.yaml"
     config_file.write_text(f"vaults:\n  - {tmp_vault}\n")
-    monkeypatch.setattr(
-        "lib.vault_config.CONFIG_PATH", config_file
-    )
+    monkeypatch.setattr("lib.vault_config.CONFIG_PATH", config_file)
     return config_file
 
 

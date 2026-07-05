@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-knowledge"
-version = "3.22.21"
+version = "3.22.22"
 description = "Obsidian vault knowledge integration for Claude Code and Hermes Agent CLI"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,6 +9,7 @@ dependencies = [
     "memweave>=0.1",
     "platformdirs>=4.9.6",
     "botocore>=1.43.10",
+    "beartype>=0.22.9",
 ]
 
 [project.scripts]
@@ -27,16 +28,104 @@ hermes_plugin = "hermes_plugin"
 
 [dependency-groups]
 dev = [
+    "detect-secrets>=1.5.0",
+    "flynt>=1.0.6",
+    "mypy>=2.1.0",
+    "pre-commit>=4.6.0",
     "pytest>=8.0",
+    "pytest-cov>=7.1.0",
     "pytest-mock>=3.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.12",
+    "types-pyyaml>=6.0.12.20260518",
+    "vulture>=2.16",
+    "xenon>=0.9.3",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--no-header -n auto -q --durations=5 --durations-min=1.0 --failed-first"
+timeout = 30
+timeout_method = "thread"
 
 [tool.ruff]
 target-version = "py312"
-# The Codex plugin tree is a generated copy of the root (see
-# scripts/sync_codex_plugin.py); lint the source of truth only.
-extend-exclude = ["plugins/obsidian-knowledge"]
+line-length = 110
+preview = true
+# plugins/obsidian-knowledge is a generated copy of the root (see
+# scripts/sync_codex_plugin.py) -- lint the source of truth only. docs/ holds
+# frozen plan/spec artifacts; preview format rewrites their embedded code blocks.
+extend-exclude = ["plugins/obsidian-knowledge", "docs/"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",    # line-length deferred to the formatter
+    "RUF067",  # non-empty-init-module: hermes_plugin/__init__.py is the plugin entrypoint by design
+    "RUF003",  # ambiguous-unicode-in-comment: em-dashes in prose comments are intentional
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+# Idiomatic test patterns: captured-but-unused unpacking, exact-float asserts on
+# representable literals, async test-doubles matching an interface, [..][0] slices.
+"tests/**/*.py" = ["F841", "C901", "SIM", "RUF059", "RUF069", "RUF029", "RUF015"]
+"scripts/**/*.py" = ["C901"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+show_error_codes = true
+pretty = true
+namespace_packages = true
+explicit_package_bases = true
+# hookslib lives at hooks/hookslib, so hook scripts import it as `hookslib.*`.
+mypy_path = "hooks"
+# First mypy adoption on an existing codebase: keep the two pragmatic exceptions
+# strictify ships by default so the diff stays focused on real type errors, not
+# annotating every internal helper. Real bugs (arg-type, type-arg, ...) still fail.
+disable_error_code = ["no-untyped-call", "no-untyped-def"]
+
+# memweave and botocore ship without stubs; `agent` is a Hermes-runtime-only module.
+[[tool.mypy.overrides]]
+module = ["memweave.*", "botocore.*", "agent.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["lib", "hooks", "hermes_plugin"]
+omit = ["*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/conftest.py"]
+
+[tool.coverage.report]
+# Ratchet floor: current in-process coverage is ~56%. The thin hook entrypoints
+# (doctor.py, recall-init.py, ...) are exercised via subprocess, so their lines
+# don't register in-process -- lib/ and hookslib/ (the real logic) sit at 76-100%.
+# Raise this over time; never lower it. See docs/QUALITY.md.
+fail_under = 55
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+]
+
+[tool.vulture]
+min_confidence = 80
+paths = ["lib", "hooks", "hermes_plugin"]
+exclude = [".venv/", "plugins/"]
+# Params mandated by the Hermes MemoryProvider ABC that our implementation
+# legitimately ignores: **kwargs (forward-compat) and sync_turn's content args
+# (it reindexes off fingerprints, not turn content).
+ignore_names = ["kwargs", "user_content", "assistant_content"]

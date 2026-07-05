@@ -10,6 +10,7 @@ project-root lib without a name collision, we locate the shared module by
 absolute path via importlib and extract build_primer from it directly.
 This avoids mutating sys.modules or relying on import-order assumptions.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -27,7 +28,7 @@ else:
     assert _spec and _spec.loader, f"Cannot load primer from {_PRIMER_PATH}"
     _primer_mod = importlib.util.module_from_spec(_spec)
     sys.modules["vault_index.primer"] = _primer_mod
-    _spec.loader.exec_module(_primer_mod)  # type: ignore[union-attr]
+    _spec.loader.exec_module(_primer_mod)
 
 build_primer = _primer_mod.build_primer
 

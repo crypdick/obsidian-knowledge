@@ -1,5 +1,6 @@
 """Tests for recall_init_lib (primer build)."""
-from hookslib import recall_init_lib  # noqa: E402
+
+from hookslib import recall_init_lib
 
 
 class TestBuildPrimer:

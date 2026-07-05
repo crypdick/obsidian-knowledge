@@ -18,6 +18,7 @@ STACKED_FRONTMATTER is vault-wide (skips _sources/, .trash/, hidden dirs).
 
 A header block at the top of output points to lib/ reference files.
 """
+
 from __future__ import annotations
 
 import re
@@ -26,14 +27,15 @@ from pathlib import Path
 
 try:
     import yaml
+
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
 
 SKIP_NAMES = {"index.md"}
 SKIP_PATTERNS = [
-    re.compile(r'^TODO-', re.IGNORECASE),
-    re.compile(r'^CLAUDE', re.IGNORECASE),
+    re.compile(r"^TODO-", re.IGNORECASE),
+    re.compile(r"^CLAUDE", re.IGNORECASE),
 ]
 TYPED_SUBFOLDERS = {"plans", "convos", "diary", "reference", "_sources", "archive"}
 DUMPING_GROUND_SKIP_NAMES = {"archive", "_sources", "Utility"}
@@ -49,10 +51,10 @@ FRONTMATTER_SCAN_LINE_LIMIT = 60
 # treated as wiki/guide notes — convention says those stay at root and should
 # not count toward the dumping-ground threshold.
 MISPLACED_INLINE_PATTERNS = [
-    re.compile(r'^\d{4}-\d{1,2}-\d{1,2}'),       # date-prefixed: diary/log
-    re.compile(r'-design\.md$', re.IGNORECASE),  # design doc / plan
-    re.compile(r'-convo\.md$', re.IGNORECASE),   # convo note
-    re.compile(r'-diary\.md$', re.IGNORECASE),   # diary note
+    re.compile(r"^\d{4}-\d{1,2}-\d{1,2}"),  # date-prefixed: diary/log
+    re.compile(r"-design\.md$", re.IGNORECASE),  # design doc / plan
+    re.compile(r"-convo\.md$", re.IGNORECASE),  # convo note
+    re.compile(r"-diary\.md$", re.IGNORECASE),  # diary note
 ]
 
 
@@ -74,7 +76,7 @@ def is_skipped(name: str) -> bool:
 
 
 def extract_wikilink_targets(text: str) -> set[str]:
-    return set(re.findall(r'\[\[([^\]|#]+)(?:\|[^\]]+)?\]\]', text))
+    return set(re.findall(r"\[\[([^\]|#]+)(?:\|[^\]]+)?\]\]", text))
 
 
 def audit_folder(folder: Path) -> list[str]:
@@ -83,11 +85,9 @@ def audit_folder(folder: Path) -> list[str]:
     children_dirs = [
         d
         for d in folder.iterdir()
-        if d.is_dir()
-        and not d.name.startswith('.')
-        and d.name not in INDEX_SKIP_DIR_NAMES
+        if d.is_dir() and not d.name.startswith(".") and d.name not in INDEX_SKIP_DIR_NAMES
     ]
-    children_md = [f for f in folder.iterdir() if f.is_file() and f.suffix == '.md']
+    children_md = [f for f in folder.iterdir() if f.is_file() and f.suffix == ".md"]
 
     index = folder / "index.md"
 
@@ -98,9 +98,9 @@ def audit_folder(folder: Path) -> list[str]:
     index_text = index.read_text(encoding="utf-8", errors="replace")
     linked_targets = extract_wikilink_targets(index_text)
     linked_basenames = {
-        component.lower().removesuffix('.md')
+        component.lower().removesuffix(".md")
         for t in linked_targets
-        for component in t.rstrip('/').split('/')
+        for component in t.rstrip("/").split("/")
     }
 
     for md in children_md:
@@ -110,17 +110,14 @@ def audit_folder(folder: Path) -> list[str]:
             issues.append(f"NOT_INDEXED\t{index}\tentry={md.name}")
 
     for d in children_dirs:
-        if d.name.startswith('.'):
+        if d.name.startswith("."):
             continue
         if d.name.lower() not in linked_basenames:
             issues.append(f"NOT_INDEXED\t{index}\tentry={d.name}/")
 
     has_subfolders = len(children_dirs) > 0
     if has_subfolders and folder.name not in DUMPING_GROUND_SKIP_NAMES:
-        inline_files = [
-            f for f in children_md
-            if not is_skipped(f.name) and f.name.lower() != "index.md"
-        ]
+        inline_files = [f for f in children_md if not is_skipped(f.name) and f.name.lower() != "index.md"]
         misplaced = [f for f in inline_files if is_misplaced_inline(f.name)]
         if len(misplaced) >= DUMPING_GROUND_THRESHOLD:
             issues.append(
@@ -156,7 +153,7 @@ def has_stacked_frontmatter(file: Path) -> bool:
             for i, line in enumerate(f):
                 if i >= FRONTMATTER_SCAN_LINE_LIMIT:
                     break
-                lines.append(line.rstrip('\n'))
+                lines.append(line.rstrip("\n"))
     except OSError:
         return False
 
@@ -178,7 +175,7 @@ def walk_vault_for_stacked_frontmatter(vault_root: Path) -> list[str]:
     issues: list[str] = []
     for md in vault_root.rglob("*.md"):
         rel_parts = md.relative_to(vault_root).parts
-        if any(part.startswith('.') or part in SCAN_SKIP_DIR_NAMES for part in rel_parts):
+        if any(part.startswith(".") or part in SCAN_SKIP_DIR_NAMES for part in rel_parts):
             continue
         if has_stacked_frontmatter(md):
             issues.append(f"STACKED_FRONTMATTER\t{md}")
@@ -191,10 +188,10 @@ def walk_managed(vault_root: Path, zone: str) -> list[str]:
         return []
 
     all_issues: list[str] = []
-    for folder in sorted([zone_root] + [d for d in zone_root.rglob('*') if d.is_dir()]):
-        if any(part.startswith('.') for part in folder.parts):
+    for folder in sorted([zone_root] + [d for d in zone_root.rglob("*") if d.is_dir()]):
+        if any(part.startswith(".") for part in folder.parts):
             continue
-        if '_sources' in folder.parts:
+        if "_sources" in folder.parts:
             continue
         all_issues.extend(audit_folder(folder))
 
@@ -246,7 +243,7 @@ def main() -> None:
         "STACKED_FRONTMATTER": 0,
     }
     for line in issues:
-        issue_type = line.split('\t')[0]
+        issue_type = line.split("\t")[0]
         if issue_type in counts:
             counts[issue_type] += 1
 

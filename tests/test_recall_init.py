@@ -1,4 +1,5 @@
 """Integration tests for recall-init SessionStart hook."""
+
 import json
 import os
 import subprocess
@@ -64,9 +65,7 @@ class TestRecallInit:
         """vaults.yaml lists 2+ vaults; hook errors with clear message."""
         config_dir = tmp_path / "obsidian-knowledge"
         config_dir.mkdir()
-        (config_dir / "vaults.yaml").write_text(
-            f"vaults:\n  - {tmp_path}/vault1\n  - {tmp_path}/vault2\n"
-        )
+        (config_dir / "vaults.yaml").write_text(f"vaults:\n  - {tmp_path}/vault1\n  - {tmp_path}/vault2\n")
         env = {
             "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(config_dir / "vaults.yaml"),
         }

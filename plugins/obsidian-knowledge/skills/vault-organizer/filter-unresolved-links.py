@@ -17,6 +17,7 @@ Drops entries that:
 Emits the surviving entries one per line:
   <count>\t<link>\t<comma-separated-managed-sources>
 """
+
 from __future__ import annotations
 
 import json
@@ -30,22 +31,23 @@ signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 try:
     import yaml
+
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
 
 DEFAULT_STUB_PATTERNS = [
-    r'^\(PAPER\) ',
-    r'^\(VIDEO\) ',
-    r'^\(POST\) ',
-    r'^\(PODCAST\) ',
-    r'^\(RECIPE\) ',
-    r'^\(BOOK\) ',
-    r'^\(Vision\) ',
-    r'^\(Pillar\) ',
-    r'^@',                  # @Person stubs
+    r"^\(PAPER\) ",
+    r"^\(VIDEO\) ",
+    r"^\(POST\) ",
+    r"^\(PODCAST\) ",
+    r"^\(RECIPE\) ",
+    r"^\(BOOK\) ",
+    r"^\(Vision\) ",
+    r"^\(Pillar\) ",
+    r"^@",  # @Person stubs
 ]
-TEMPLATE_PLACEHOLDER = re.compile(r'\{\{|\<%')
+TEMPLATE_PLACEHOLDER = re.compile(r"\{\{|\<%")
 
 
 def load_config(vault_root: Path) -> tuple[list[str], list[re.Pattern]]:

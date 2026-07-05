@@ -5,6 +5,7 @@ State lives at ~/.cache/obsidian-knowledge/<session-id>/bash-count
 matching Bash; the hook fires its reminder every Nth invocation
 (default N=10), continuously — no per-session suppression.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

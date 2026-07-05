@@ -15,6 +15,7 @@ Usage:
     uv run python scripts/migrate_claude_memory.py            # dry-run
     uv run python scripts/migrate_claude_memory.py --apply    # do it
 """
+
 from __future__ import annotations
 
 import argparse
@@ -165,11 +166,7 @@ def main() -> int:
         else:
             target = resolve_target(cwd, hostname=host)
             target_dir = vault / "wiki" / target.rel_path
-            scope = (
-                f"{target.owner}/{target.repo}"
-                if target.kind == "repo"
-                else f"host:{target.hostname}"
-            )
+            scope = f"{target.owner}/{target.repo}" if target.kind == "repo" else f"host:{target.hostname}"
             print(f"\n[{target.kind.upper()}] {cwd}")
             print(f"  → {target_dir}  ({scope})")
 

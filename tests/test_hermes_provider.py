@@ -1,4 +1,6 @@
+# allow: file-length  (broad lifecycle test surface; splitting tracked in docs/QUALITY.md)
 """Tests for ObsidianKnowledgeProvider lifecycle methods."""
+
 import json
 import os
 import shutil
@@ -9,7 +11,6 @@ import pytest
 
 from lib.vault_index.config import load_config
 from lib.vault_index.indexer import Indexer, default_cache_dir
-
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_vault"
 
@@ -25,12 +26,15 @@ def vault(tmp_path: Path) -> Path:
 def provider(vault: Path, tmp_path: Path):
     # Patch the import of agent.memory_provider so we don't need Hermes installed.
     import sys
+
     sys.modules["agent"] = MagicMock()
     sys.modules["agent.memory_provider"] = MagicMock()
     sys.modules["agent.memory_provider"].MemoryProvider = object  # type: ignore
 
     from importlib import reload
+
     import hermes_plugin
+
     reload(hermes_plugin)
 
     os.environ["OBSIDIAN_VAULT_ROOT"] = str(vault)
@@ -59,6 +63,7 @@ def command_script(cmd: list[str]) -> str:
 
 # ── Task 14: system_prompt_block ─────────────────────────────────────────────
 
+
 def test_system_prompt_block_includes_primer(provider, vault):
     block = provider.system_prompt_block()
     assert "obsidian-knowledge harness" in block
@@ -72,6 +77,7 @@ def test_system_prompt_block_includes_skill_view_directive(provider):
 
 
 # ── Task 15: prefetch uses current-turn vault_search ─────────────────────────
+
 
 def test_prefetch_returns_report_format(provider, vault, monkeypatch):
     import hermes_plugin
@@ -148,13 +154,15 @@ def test_prefetch_uses_bounded_no_rebuild_search(provider, monkeypatch):
     out = provider.prefetch("how should I tune Hermes memory?")
 
     assert "wiki/current.md" in out
-    assert calls == [(
-        "how should I tune Hermes memory?",
-        {
-            "timeout": hermes_plugin._VAULT_PREFETCH_TIMEOUT_SECONDS,
-            "allow_rebuild": False,
-        },
-    )]
+    assert calls == [
+        (
+            "how should I tune Hermes memory?",
+            {
+                "timeout": hermes_plugin._VAULT_PREFETCH_TIMEOUT_SECONDS,
+                "allow_rebuild": False,
+            },
+        )
+    ]
 
 
 def test_prefetch_ignores_stale_background_cache(provider, monkeypatch):
@@ -179,6 +187,7 @@ def test_prefetch_ignores_stale_background_cache(provider, monkeypatch):
 
 # ── Task 16: on_pre_compress ─────────────────────────────────────────────────
 
+
 def test_on_pre_compress_clears_dedup_set(provider, vault):
     provider.injected_paths_this_session.add("wiki/python.md")
     assert len(provider.injected_paths_this_session) > 0
@@ -189,6 +198,7 @@ def test_on_pre_compress_clears_dedup_set(provider, vault):
 
 # ── Task 17: vault_search tool ───────────────────────────────────────────────
 
+
 def test_get_tool_schemas_returns_vault_search_and_memory_redirect(provider):
     schemas = provider.get_tool_schemas()
     by_name = {schema["name"]: schema for schema in schemas}
@@ -197,7 +207,9 @@ def test_get_tool_schemas_returns_vault_search_and_memory_redirect(provider):
 
 
 def test_handle_tool_call_memory_returns_redirect_error(provider):
-    result = json.loads(provider.handle_tool_call("memory", {"action": "add", "target": "memory", "content": "x"}))
+    result = json.loads(
+        provider.handle_tool_call("memory", {"action": "add", "target": "memory", "content": "x"})
+    )
     assert result["success"] is False
     assert "Built-in Hermes memory is disabled" in result["error"]
     assert result["replacement"] == "obsidian-knowledge"
@@ -275,9 +287,7 @@ def test_handle_tool_call_vault_search_returns_json(provider, vault):
 
 def test_handle_tool_call_vault_search_respects_top_k(provider, vault):
     build_index(vault)
-    result = json.loads(
-        provider.handle_tool_call("vault_search", {"query": "python", "top_k": 1})
-    )
+    result = json.loads(provider.handle_tool_call("vault_search", {"query": "python", "top_k": 1}))
     assert len(result) <= 1
 
 
@@ -301,7 +311,12 @@ def test_indexer_does_not_force_rebuild_for_prefingerprint_vector_cache(tmp_path
     with sqlite3.connect(cache / "index.sqlite") as conn:
         conn.execute("CREATE TABLE chunks_vec (id INTEGER PRIMARY KEY)")
 
-    idx = Indexer(vault_root=vault, cache_dir=cache, config=load_config(vault / ".claude" / "obsidian-knowledge.yaml"), skip_probe=True)
+    idx = Indexer(
+        vault_root=vault,
+        cache_dir=cache,
+        config=load_config(vault / ".claude" / "obsidian-knowledge.yaml"),
+        skip_probe=True,
+    )
 
     assert idx._stale_fingerprint() is False
     assert idx._needs_rebuild is False
@@ -316,7 +331,12 @@ def test_indexer_rebuilds_prefingerprint_cache_without_vector_table(tmp_path: Pa
     with sqlite3.connect(cache / "index.sqlite") as conn:
         conn.execute("CREATE TABLE files (id INTEGER PRIMARY KEY)")
 
-    idx = Indexer(vault_root=vault, cache_dir=cache, config=load_config(vault / ".claude" / "obsidian-knowledge.yaml"), skip_probe=True)
+    idx = Indexer(
+        vault_root=vault,
+        cache_dir=cache,
+        config=load_config(vault / ".claude" / "obsidian-knowledge.yaml"),
+        skip_probe=True,
+    )
 
     assert idx._stale_fingerprint() is True
     assert idx._needs_rebuild is True
@@ -391,6 +411,7 @@ def test_sync_turn_runs_indexer_after_vault_markdown_write(monkeypatch, provider
 
 # ── Task 19: queue_prefetch ──────────────────────────────────────────────────
 
+
 def test_queue_prefetch_is_noop(provider, vault, monkeypatch):
     import hermes_plugin
 
@@ -420,13 +441,17 @@ def test_queue_prefetch_does_not_touch_existing_thread(provider, monkeypatch):
 
 # ── Task 20: atexit safety net ───────────────────────────────────────────────
 
+
 def test_atexit_safety_net_registered(monkeypatch, vault):
     # Pattern from OpenViking: a process-global ref + atexit handler ensure
     # shutdown fires even on crash. Verify the handler runs.
     import os
+
     os.environ["OBSIDIAN_VAULT_ROOT"] = str(vault)
     from importlib import reload
+
     import hermes_plugin
+
     reload(hermes_plugin)
 
     p = hermes_plugin.ObsidianKnowledgeProvider()
@@ -494,9 +519,7 @@ def test_pre_tool_call_blocks_terminal_protected_dir(provider, vault):
 def test_pre_tool_call_blocks_write_file_generic_name(provider, vault):
     import hermes_plugin
 
-    (vault / ".claude" / "obsidian-knowledge.yaml").write_text(
-        "generic_filenames:\n  - notes.md\n"
-    )
+    (vault / ".claude" / "obsidian-knowledge.yaml").write_text("generic_filenames:\n  - notes.md\n")
 
     result = hermes_plugin._on_pre_tool_call(
         tool_name="write_file",
@@ -510,9 +533,7 @@ def test_pre_tool_call_blocks_write_file_generic_name(provider, vault):
 def test_pre_tool_call_blocks_patch_mode_publish_guard(provider, vault):
     import hermes_plugin
 
-    (vault / ".claude" / "obsidian-knowledge.yaml").write_text(
-        "publish_allowlist:\n  - wiki/allowed/\n"
-    )
+    (vault / ".claude" / "obsidian-knowledge.yaml").write_text("publish_allowlist:\n  - wiki/allowed/\n")
 
     result = hermes_plugin._on_pre_tool_call(
         tool_name="patch",
@@ -667,7 +688,9 @@ def test_session_finalize_keeps_stop_hooks_scoped_to_same_session(monkeypatch, p
     assert "finalize reminder" in injected["context"]
 
 
-def test_session_finalize_does_not_leak_pending_end_reminders_to_default_queue(monkeypatch, provider, tmp_path):
+def test_session_finalize_does_not_leak_pending_end_reminders_to_default_queue(
+    monkeypatch, provider, tmp_path
+):
     import hermes_plugin
 
     monkeypatch.setenv("OBSIDIAN_VAULT_ROOT", str(tmp_path))

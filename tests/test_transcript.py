@@ -11,14 +11,24 @@ def test_missing_file_yields_nothing(tmp_path):
 
 def test_extracts_tool_uses(tmp_path):
     f = tmp_path / "t.jsonl"
-    f.write_text(json.dumps({
-        "type": "assistant",
-        "message": {"role": "assistant", "content": [
-            {"type": "tool_use", "id": "t1", "name": "Write",
-             "input": {"file_path": "/v/a.md", "content": "hi"}},
-            {"type": "text", "text": "ignored"},
-        ]},
-    }) + "\n")
+    f.write_text(
+        json.dumps({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "t1",
+                        "name": "Write",
+                        "input": {"file_path": "/v/a.md", "content": "hi"},
+                    },
+                    {"type": "text", "text": "ignored"},
+                ],
+            },
+        })
+        + "\n"
+    )
     uses = list(iter_tool_uses(str(f)))
     assert len(uses) == 1
     assert uses[0]["name"] == "Write"
@@ -27,12 +37,18 @@ def test_extracts_tool_uses(tmp_path):
 
 def test_skips_malformed_lines(tmp_path):
     f = tmp_path / "t.jsonl"
-    f.write_text("not json\n" + json.dumps({
-        "type": "assistant",
-        "message": {"content": [
-            {"type": "tool_use", "id": "t2", "name": "Edit", "input": {}},
-        ]},
-    }) + "\n")
+    f.write_text(
+        "not json\n"
+        + json.dumps({
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "t2", "name": "Edit", "input": {}},
+                ]
+            },
+        })
+        + "\n"
+    )
     uses = list(iter_tool_uses(str(f)))
     assert len(uses) == 1
     assert uses[0]["name"] == "Edit"
@@ -57,17 +73,19 @@ def test_count_user_messages_counts_only_genuine(tmp_path):
             for e in [
                 {"type": "user", "message": {"role": "user", "content": "hello"}},
                 # tool_result carrier — not a genuine user message
-                {"type": "user", "message": {"content": [
-                    {"type": "tool_result", "tool_use_id": "t1", "content": "ok"},
-                ]}},
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": "t1", "content": "ok"},
+                        ]
+                    },
+                },
                 # meta entry — excluded
-                {"type": "user", "isMeta": True,
-                 "message": {"content": "system reminder"}},
-                {"type": "assistant", "message": {"content": [
-                    {"type": "text", "text": "hi"}]}},
+                {"type": "user", "isMeta": True, "message": {"content": "system reminder"}},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}},
                 # multimodal user message (list, no tool_result) — counts
-                {"type": "user", "message": {"content": [
-                    {"type": "text", "text": "second"}]}},
+                {"type": "user", "message": {"content": [{"type": "text", "text": "second"}]}},
             ]
         )
         + "\n"

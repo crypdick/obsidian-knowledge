@@ -12,6 +12,7 @@ hit:
 Exit 0 always. Reads ai_managed zones from
 <vault_root>/.claude/obsidian-knowledge.yaml; falls back to ['wiki'].
 """
+
 from __future__ import annotations
 
 import sys
@@ -19,6 +20,7 @@ from pathlib import Path
 
 try:
     import yaml
+
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
@@ -95,7 +97,7 @@ def main() -> None:
             continue
         for md in sorted(zone_root.rglob("*.md")):
             rel_parts = md.relative_to(vault_root).parts
-            if any(part.startswith('.') or part in SCAN_SKIP_DIR_NAMES for part in rel_parts):
+            if any(part.startswith(".") or part in SCAN_SKIP_DIR_NAMES for part in rel_parts):
                 continue
             for line_no, text in scan_file(md):
                 rel = md.relative_to(vault_root)

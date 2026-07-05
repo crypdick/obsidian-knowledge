@@ -364,7 +364,7 @@ Find and replace these three stale passages:
    - **update-changelog.sh** — reminds the agent to append a dated entry to
      `changelog.md` if the session produced edits, decisions, or discoveries
    ```
-   → 
+   →
    ```
    - **update-changelog.sh** — reminds the agent to create a per-session file in
      `changelog/` if the session produced edits, decisions, or discoveries

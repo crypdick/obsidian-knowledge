@@ -39,28 +39,29 @@ model isn't listed, we silently flip vector off for this process and surface
 the reason via ``self.vector_status``. The doctor SessionStart hook reads
 the same probe and prints a one-line reminder.
 """
+
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import fcntl
 import hashlib
+import json
 import os
 import re
 import sqlite3
 import urllib.error
 import urllib.request
-import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import memweave
 import platformdirs
-from pydantic import BaseModel
 
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.filters import path_passes
-
+from lib.vault_index.models import Hit
 
 DEFAULT_EMBEDDING_MODEL = "ollama/bge-m3"
 DEFAULT_EMBEDDING_API_BASE = "http://127.0.0.1:11434"
@@ -126,12 +127,6 @@ def _ollama_probe(api_base: str, model: str) -> tuple[bool, str]:
     return True, f"ok: {bare_name} via {api_base}"
 
 
-class Hit(BaseModel):
-    path: str
-    score: float
-    weight_applied: float = 1.0
-
-
 @dataclass
 class SyncStats:
     indexed: int
@@ -171,8 +166,6 @@ def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
 def _rescale(raw: float) -> float:
     """Multiply raw BM25/hybrid score by 100 for readable digest display."""
     return round(raw * 100, 1)
-
-
 
 
 class Indexer:
@@ -228,9 +221,7 @@ class Indexer:
 
         # Start with an empty-extra_paths store for read-only queries.
         # full_reindex() will replace this with the full allowed-paths store.
-        self._store = memweave.MemWeave(
-            self._make_config(extra_paths=[])
-        )
+        self._store = memweave.MemWeave(self._make_config(extra_paths=[]))
 
     def _embedder_fingerprint(self) -> str:
         """Stable string identifying the current embedding setup.
@@ -252,10 +243,8 @@ class Indexer:
             return None
 
     def _write_fingerprint(self) -> None:
-        try:
+        with contextlib.suppress(OSError):
             self._fingerprint_path().write_text(self._embedder_fingerprint())
-        except OSError:
-            pass
 
     def _stale_fingerprint(self) -> bool:
         """True iff a populated index exists but was built with a different embedder.
@@ -274,9 +263,7 @@ class Indexer:
             # fingerprint marker. For those, synchronous search/prefetch should
             # use the existing cache rather than spending the whole gateway
             # memory-prefetch timeout on a rebuild every turn.
-            if self._vector_table_exists(db):
-                return False
-            return True
+            return not self._vector_table_exists(db)
         return stored != self._embedder_fingerprint()
 
     @staticmethod
@@ -295,9 +282,7 @@ class Indexer:
     def _embedding_settings() -> tuple[str, str, str | None]:
         """Resolve (model, api_base, api_key) from env with bge-m3/Ollama defaults."""
         model = os.environ.get("MEMWEAVE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
-        api_base = os.environ.get(
-            "MEMWEAVE_EMBEDDING_API_BASE", DEFAULT_EMBEDDING_API_BASE
-        )
+        api_base = os.environ.get("MEMWEAVE_EMBEDDING_API_BASE", DEFAULT_EMBEDDING_API_BASE)
         api_key = os.environ.get("MEMWEAVE_EMBEDDING_API_KEY")
         return model, api_base, api_key
 
@@ -319,7 +304,7 @@ class Indexer:
           ``MEMWEAVE_EMBEDDING_API_BASE``, ``MEMWEAVE_EMBEDDING_API_KEY``.
         """
         model, api_base, api_key = self._embedding_settings()
-        embedding_kwargs: dict = {"model": model, "api_base": api_base}
+        embedding_kwargs: dict[str, Any] = {"model": model, "api_base": api_base}
         if api_key is not None:
             embedding_kwargs["api_key"] = api_key
 
@@ -329,9 +314,7 @@ class Indexer:
             progress=False,
             extra_paths=extra_paths,
             embedding=memweave.EmbeddingConfig(**embedding_kwargs),
-            chunking=memweave.ChunkingConfig(
-                tokens=DEFAULT_CHUNK_TOKENS, overlap=DEFAULT_CHUNK_OVERLAP
-            ),
+            chunking=memweave.ChunkingConfig(tokens=DEFAULT_CHUNK_TOKENS, overlap=DEFAULT_CHUNK_OVERLAP),
             vector=memweave.VectorConfig(enabled=self._vector_enabled),
             sync=memweave.SyncConfig(on_search=False),
         )
@@ -435,9 +418,7 @@ class Indexer:
         asyncio.run(self._store.close())
 
         allowed = self._allowed_vault_files()
-        self._store = memweave.MemWeave(
-            self._make_config(extra_paths=allowed)
-        )
+        self._store = memweave.MemWeave(self._make_config(extra_paths=allowed))
         result = asyncio.run(self._store.index(force=force))
         self._write_fingerprint()
         self._needs_rebuild = False
@@ -450,9 +431,10 @@ class Indexer:
     def _auto_rebuild(self, reason: str) -> None:
         """Force-rebuild the index, printing a notice. Used for embedder swaps."""
         import sys
+
         stored = self._read_stored_fingerprint() or "none"
         current = self._embedder_fingerprint()
-        print(
+        print(  # allow: print-statements  (intentional stderr progress line for interactive reindex, not logging)
             f"# vault-index: rebuilding ({reason}; was {stored}, now {current})",
             file=sys.stderr,
             flush=True,
@@ -504,19 +486,15 @@ class Indexer:
         # successful index. Chat prefetch calls can opt out so stale caches do
         # not spend the turn-start budget rebuilding before the model responds.
         if self._needs_rebuild and allow_rebuild:
-            try:
+            with contextlib.suppress(IndexBusyError):
                 self._auto_rebuild(reason="embedder changed")
-            except IndexBusyError:
-                pass
 
         if not self._vector_enabled:
             return filtered(self._sqlite_fts_search(query, candidate_count))
 
         try:
             with index_lock(self.cache_dir, exclusive=False):
-                raw = asyncio.run(
-                    self._store.search(query, max_results=candidate_count, min_score=0.0)
-                )
+                raw = asyncio.run(self._store.search(query, max_results=candidate_count, min_score=0.0))
         except memweave.SearchError as exc:
             # Defensive net: reindex didn't run for some reason but the index
             # is missing chunks_vec. Trigger a rebuild and retry once.
@@ -527,9 +505,7 @@ class Indexer:
                     self._auto_rebuild(reason="chunks_vec missing")
                     with index_lock(self.cache_dir, exclusive=False):
                         raw = asyncio.run(
-                            self._store.search(
-                                query, max_results=candidate_count, min_score=0.0
-                            )
+                            self._store.search(query, max_results=candidate_count, min_score=0.0)
                         )
                 except IndexBusyError:
                     return []
@@ -541,9 +517,6 @@ class Indexer:
             if "database is locked" in str(exc).lower():
                 return []
             raise
-        hits = [
-            Hit(path=self._abs_to_rel(r.path), score=_rescale(r.score), weight_applied=1.0)
-            for r in raw
-        ]
+        hits = [Hit(path=self._abs_to_rel(r.path), score=_rescale(r.score), weight_applied=1.0) for r in raw]
 
         return filtered(hits)

@@ -87,6 +87,7 @@ file itself is excluded from scanning. Add a string here once you've
 discovered a real password leaked into vault narrative — future
 re-introductions of the same string will be flagged immediately.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -94,11 +95,12 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hookslib.stop_hook import emit_block, in_cooldown, read_input  # noqa: E402
-from hookslib.vault_config import is_in_vault, load_vault_roots  # noqa: E402
-from hookslib.vault_policy import find_containing_vault  # noqa: E402
+from hookslib.stop_hook import emit_block, in_cooldown, read_input
+from hookslib.vault_config import is_in_vault, load_vault_roots
+from hookslib.vault_policy import find_containing_vault
 
 # detect_secrets is imported lazily inside run_scan() so this module
 # can be imported in environments that don't have it installed (e.g.
@@ -113,9 +115,20 @@ from hookslib.vault_policy import find_containing_vault  # noqa: E402
 SKIP_NAMED_DIRS = {"_sources", "node_modules"}
 
 EXCLUDE_EXTS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
-    ".pdf", ".mp4", ".mp3", ".zip", ".tar", ".gz",
-    ".woff", ".woff2",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".pdf",
+    ".mp4",
+    ".mp3",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".woff",
+    ".woff2",
 }
 
 KNOWN_LEAKED_FILENAME = ".secrets.known-leaked"
@@ -127,15 +140,32 @@ KNOWN_LEAKED_SAMPLE_LIMIT = 10
 UNAUDITED_SAMPLE_LIMIT = 10
 
 PLUGINS = [
-    "AWSKeyDetector", "ArtifactoryDetector", "AzureStorageKeyDetector",
-    "Base64HighEntropyString", "BasicAuthDetector", "CloudantDetector",
-    "DiscordBotTokenDetector", "GitHubTokenDetector", "GitLabTokenDetector",
-    "HexHighEntropyString", "IbmCloudIamDetector", "IbmCosHmacDetector",
-    "JwtTokenDetector", "KeywordDetector", "MailchimpDetector",
-    "NpmDetector", "OpenAIDetector", "PrivateKeyDetector",
-    "PypiTokenDetector", "SendGridDetector", "SlackDetector",
-    "SoftlayerDetector", "SquareOAuthDetector", "StripeDetector",
-    "TelegramBotTokenDetector", "TwilioKeyDetector",
+    "AWSKeyDetector",
+    "ArtifactoryDetector",
+    "AzureStorageKeyDetector",
+    "Base64HighEntropyString",
+    "BasicAuthDetector",
+    "CloudantDetector",
+    "DiscordBotTokenDetector",
+    "GitHubTokenDetector",
+    "GitLabTokenDetector",
+    "HexHighEntropyString",
+    "IbmCloudIamDetector",
+    "IbmCosHmacDetector",
+    "JwtTokenDetector",
+    "KeywordDetector",
+    "MailchimpDetector",
+    "NpmDetector",
+    "OpenAIDetector",
+    "PrivateKeyDetector",
+    "PypiTokenDetector",
+    "SendGridDetector",
+    "SlackDetector",
+    "SoftlayerDetector",
+    "SquareOAuthDetector",
+    "StripeDetector",
+    "TelegramBotTokenDetector",
+    "TwilioKeyDetector",
 ]
 
 DETECT_SECRETS_CFG = {
@@ -162,10 +192,7 @@ def find_files(root: str, since_mtime: float = 0.0) -> list[str]:
     """
     out: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [
-            d for d in dirnames
-            if not d.startswith(".") and d not in SKIP_NAMED_DIRS
-        ]
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in SKIP_NAMED_DIRS]
         for fn in filenames:
             ext = os.path.splitext(fn)[1].lower()
             if ext in EXCLUDE_EXTS:
@@ -217,7 +244,7 @@ def run_scan(
             try:
                 old_data = ds_baseline.load_from_file(str(baseline_path))
                 old_sc = SecretsCollection.load_from_baseline(old_data)
-            except Exception:
+            except Exception:  # allow: exception-handling  (corrupt/legacy baseline → rescan from scratch)
                 old_sc = None
 
         result_sc = SecretsCollection(root=vault_root)
@@ -256,7 +283,7 @@ def _save_if_changed(result_sc, baseline_path: Path, ds_baseline) -> None:
 
     volatile_keys = {"generated_at"}
 
-    def _normalize(d: dict) -> dict:
+    def _normalize(d: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in d.items() if k not in volatile_keys}
 
     with tempfile.NamedTemporaryFile(
@@ -293,10 +320,7 @@ def count_unaudited(baseline_path: Path) -> tuple[int, list[str]]:
             if f.get("is_secret") is None:
                 count += 1
                 if len(sample) < UNAUDITED_SAMPLE_LIMIT:
-                    sample.append(
-                        f"{filepath}:{f.get('line_number', '?')} "
-                        f"({f.get('type', 'unknown')})"
-                    )
+                    sample.append(f"{filepath}:{f.get('line_number', '?')} ({f.get('type', 'unknown')})")
     return count, sample
 
 
@@ -366,7 +390,7 @@ def scan_known_leaked(
     for rel in rel_paths:
         absolute = os.path.join(vault_root, rel)
         try:
-            with open(absolute, "r", encoding="utf-8", errors="replace") as f:
+            with open(absolute, encoding="utf-8", errors="replace") as f:
                 for lineno, line in enumerate(f, start=1):
                     for literal in literals:
                         if literal in line:
@@ -382,14 +406,16 @@ def scan_known_leaked(
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Scan vault for leaked secrets (Stop hook by default; "
-                    "--manual for slash-command invocation)."
+        "--manual for slash-command invocation)."
     )
     parser.add_argument(
-        "--manual", action="store_true",
+        "--manual",
+        action="store_true",
         help="Manual run: skip cooldown + stdin payload; print findings to stdout.",
     )
     parser.add_argument(
-        "--full", action="store_true",
+        "--full",
+        action="store_true",
         help="Manual mode: delete the baseline first to force a full rescan.",
     )
     return parser.parse_args(argv)
@@ -401,8 +427,7 @@ def main(argv: list[str] | None = None) -> None:
     if not is_in_vault(os.getcwd()):
         if args.manual:
             print(
-                "Not inside a configured vault root. "
-                "Configure ~/.config/obsidian-knowledge/vaults.yaml.",
+                "Not inside a configured vault root. Configure ~/.config/obsidian-knowledge/vaults.yaml.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -443,18 +468,14 @@ def main(argv: list[str] | None = None) -> None:
     # surfaces existing occurrences immediately.
     literals = load_known_leaked(vault_root)
     if literals:
-        leaked_count, leaked_files, leaked_sample = scan_known_leaked(
-            vault_root, all_paths, literals
-        )
+        leaked_count, leaked_files, leaked_sample = scan_known_leaked(vault_root, all_paths, literals)
     else:
         leaked_count, leaked_files, leaked_sample = 0, 0, []
 
     messages: list[str] = []
     if count > 0:
         sample_block = "\n".join(f"  {s}" for s in sample)
-        messages.append(
-            REMINDER_TEMPLATE.format(count=count, sample=sample_block)
-        )
+        messages.append(REMINDER_TEMPLATE.format(count=count, sample=sample_block))
     if leaked_count > 0:
         leaked_block = "\n".join(f"  {s}" for s in leaked_sample)
         messages.append(
@@ -468,8 +489,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.manual:
         if not messages:
             print(
-                f"detect-secrets: clean. Scanned {len(scan_paths)} file(s) "
-                f"out of {len(all_paths)} in vault."
+                f"detect-secrets: clean. Scanned {len(scan_paths)} file(s) out of {len(all_paths)} in vault."
             )
             sys.exit(0)
         print("\n\n".join(messages))

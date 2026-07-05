@@ -1,4 +1,5 @@
 """Tests for build_primer."""
+
 from pathlib import Path
 
 from lib.vault_index.primer import KNOWLEDGE_BASE_INDEX_MAX_CHARS, build_primer

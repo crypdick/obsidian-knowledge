@@ -1,19 +1,27 @@
 """Tests for the changelog migration script."""
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-
 SCRIPTS = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from migrate_changelog import parse_entries, slugify, entry_to_filename, extract_diary_links  # noqa: E402  (needs sys.path insert above)
+from migrate_changelog import (  # noqa: E402  (needs sys.path insert above)
+    entry_to_filename,
+    extract_diary_links,
+    parse_entries,
+    slugify,
+)
 
 
 class TestSlugify:
     def test_lowercases_and_hyphenates(self):
-        assert slugify("Conflict Cleanup Pass After Architectural Flip") == "conflict-cleanup-pass-after-architectural-flip"
+        assert (
+            slugify("Conflict Cleanup Pass After Architectural Flip")
+            == "conflict-cleanup-pass-after-architectural-flip"
+        )
 
     def test_strips_special_chars(self):
         assert slugify("Templater (mac-mini): fix landed") == "templater-mac-mini-fix-landed"

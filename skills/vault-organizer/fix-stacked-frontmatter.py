@@ -15,6 +15,7 @@ Usage:
 
 Exit 0 if no issues or all fixed; exit 1 if files need manual merge.
 """
+
 from __future__ import annotations
 
 import sys

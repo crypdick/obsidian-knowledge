@@ -18,14 +18,14 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from hookslib.patterns import (  # noqa: E402
+from hookslib.patterns import (
     DATE_PREFIX_RE,
     find_wikilink_ext_violations,
     is_in_dated_folder,
     parse_frontmatter,
 )
-from hookslib.vault_config import load_vault_roots  # noqa: E402
-from hookslib.vault_policy import find_containing_vault  # noqa: E402
+from hookslib.vault_config import load_vault_roots
+from hookslib.vault_policy import find_containing_vault
 
 
 def deny(reason: str) -> None:
@@ -100,10 +100,8 @@ def main() -> None:
     if not vault_root:
         sys.exit(0)  # silent outside any configured vault
 
-    if tool_name == "Write":
-        content = tool_input.get("content", "")
-    else:  # Edit
-        content = tool_input.get("new_string", "")
+    # Write carries the full body in "content"; Edit carries it in "new_string".
+    content = tool_input.get("content", "") if tool_name == "Write" else tool_input.get("new_string", "")
 
     for check in (
         lambda: check_wikilink_ext(content),

@@ -1,7 +1,7 @@
 """Tests for vault_index config loading."""
+
 import textwrap
 from pathlib import Path
-
 
 from lib.vault_index.config import (
     VaultIndexConfig,
@@ -39,7 +39,8 @@ def test_vault_index_config_from_dict():
 
 def test_load_config_from_yaml(tmp_path: Path):
     yaml_path = tmp_path / "obsidian-knowledge.yaml"
-    yaml_path.write_text(textwrap.dedent("""
+    yaml_path.write_text(
+        textwrap.dedent("""
         vault_index:
           index:
             deny_regex: ["^Journal/"]
@@ -49,7 +50,8 @@ def test_load_config_from_yaml(tmp_path: Path):
             - regex: "^wiki/"
               multiplier: 1.5
           top_k: 10
-    """))
+    """)
+    )
     cfg = load_config(yaml_path)
     assert cfg.index.deny_regex == ["^Journal/"]
     assert cfg.weights[0].multiplier == 1.5

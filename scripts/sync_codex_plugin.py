@@ -16,6 +16,7 @@ Usage:
     uv run python scripts/sync_codex_plugin.py          # write the copy
     uv run python scripts/sync_codex_plugin.py --check   # CI: fail on drift
 """
+
 from __future__ import annotations
 
 import argparse

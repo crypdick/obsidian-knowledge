@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 .DS_Store
 .worktrees/
+# Coverage artifacts (pytest-cov)
+.coverage
+.coverage.*
+htmlcov/
 .improve-harness/
 # Generated index cache (created by reindex CLI and indexer tests)
 tests/fixtures/sample_vault/.config/

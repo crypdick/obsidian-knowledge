@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import json
-from typing import Iterable
+from collections.abc import Iterable
+from typing import Any
 
 
-def iter_tool_uses(transcript_path: str) -> Iterable[dict]:
+def iter_tool_uses(transcript_path: str) -> Iterable[dict[str, Any]]:
     """Yield tool_use entries from a session transcript JSONL file.
 
     Each yielded dict has keys `id`, `name`, `input`.
     Missing files yield nothing. Malformed lines are skipped silently.
     """
     try:
-        f = open(transcript_path, encoding="utf-8")
+        # opened outside the `with` so only the open() is guarded by this narrow
+        # except; the file is still context-managed by `with f:` below.
+        f = open(transcript_path, encoding="utf-8")  # noqa: SIM115
     except FileNotFoundError:
         return
     with f:
@@ -53,7 +56,9 @@ def count_user_messages(transcript_path: str | None) -> int | None:
     if not transcript_path:
         return None
     try:
-        f = open(transcript_path, encoding="utf-8")
+        # opened outside the `with` so only the open() is guarded by this narrow
+        # except; the file is still context-managed by `with f:` below.
+        f = open(transcript_path, encoding="utf-8")  # noqa: SIM115
     except OSError:
         return None
     n = 0
@@ -69,10 +74,9 @@ def count_user_messages(transcript_path: str | None) -> int | None:
             if entry.get("type") != "user" or entry.get("isMeta"):
                 continue
             content = (entry.get("message") or {}).get("content")
-            if isinstance(content, str):
-                n += 1
-            elif isinstance(content, list) and not any(
-                isinstance(b, dict) and b.get("type") == "tool_result" for b in content
+            if isinstance(content, str) or (
+                isinstance(content, list)
+                and not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
             ):
                 n += 1
     return n

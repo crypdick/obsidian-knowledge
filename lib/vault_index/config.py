@@ -1,4 +1,5 @@
 """Pydantic models + YAML loader for the vault_index config section."""
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -8,12 +8,12 @@ The same checkout exposes:
 - lifecycle hooks via the normal Hermes plugin manager
 - the obsidian-knowledge MemoryProvider via Hermes's memory provider loader
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 from typing import Any
-
 
 PLUGIN_ROOT = Path(__file__).resolve().parent
 if str(PLUGIN_ROOT) not in sys.path:

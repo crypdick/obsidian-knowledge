@@ -4,8 +4,8 @@ import datetime
 
 from hookslib import patterns
 
-
 # Wikilink violations
+
 
 def test_plain_md_wikilink_flagged():
     violations = patterns.find_wikilink_ext_violations("See [[foo.md]] for details.")
@@ -86,6 +86,7 @@ def test_indented_fence_still_recognized():
 
 # Dated-folder detection
 
+
 def test_journal_path_is_dated_folder():
     assert patterns.is_in_dated_folder("Journal/2026-04-21 foo.md")
 
@@ -127,6 +128,7 @@ def test_date_prefix_rejects_invalid_date():
 
 
 # Frontmatter parsing
+
 
 def test_valid_frontmatter_returns_dict():
     content = "---\ntitle: Foo\ndate: 2026-04-21\n---\n\nBody."

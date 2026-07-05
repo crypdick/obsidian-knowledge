@@ -1,4 +1,5 @@
 """Integration tests for Indexer against fixture vault."""
+
 import fcntl
 import hashlib
 import math
@@ -40,9 +41,7 @@ def test_full_reindex_indexes_wiki_files(vault: Path, cfg, tmp_path: Path):
     assert idx.row_count() >= 2
 
 
-def test_full_reindex_refuses_when_index_lock_is_held(
-    vault: Path, cfg, tmp_path: Path
-):
+def test_full_reindex_refuses_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     lock_file = open(cache_dir / ".index.sqlite.lock", "w")
@@ -72,9 +71,7 @@ def test_sync_degrades_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path)
         lock_file.close()
 
 
-def test_degraded_search_reads_fts_when_index_lock_is_held(
-    vault: Path, cfg, tmp_path: Path
-):
+def test_degraded_search_reads_fts_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path):
     cache_dir = tmp_path / "cache"
     idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
     idx.full_reindex()
@@ -128,14 +125,17 @@ def test_search_scores_are_rescaled(vault: Path, cfg, tmp_path: Path):
 def test_search_override_digest_filter_includes_excluded(vault: Path, cfg, tmp_path: Path):
     cache_dir = tmp_path / "cache"
     # Re-create config without index denial to allow Inbox indexing for this test
-    cfg2 = cfg.model_copy(update={
-        "index": cfg.index.model_copy(update={"deny_regex": []}),
-    })
+    cfg2 = cfg.model_copy(
+        update={
+            "index": cfg.index.model_copy(update={"deny_regex": []}),
+        }
+    )
     idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg2)
     idx.full_reindex()
     hits = idx.search("Inbox", override_digest_filter=True)
     paths = [h.path for h in hits]
     assert any("Inbox/" in p for p in paths)
+
 
 def test_make_config_respects_embedding_env_vars(monkeypatch, tmp_path):
     monkeypatch.setenv("MEMWEAVE_EMBEDDING_MODEL", "ollama/mxbai-embed-large")
@@ -143,6 +143,7 @@ def test_make_config_respects_embedding_env_vars(monkeypatch, tmp_path):
     monkeypatch.delenv("MEMWEAVE_EMBEDDING_API_KEY", raising=False)
     from lib.vault_index.config import VaultIndexConfig
     from lib.vault_index.indexer import Indexer
+
     cache = tmp_path / "cache"
     idx = Indexer(vault_root=tmp_path, cache_dir=cache, config=VaultIndexConfig())
     cfg = idx._make_config(extra_paths=[])
@@ -156,6 +157,7 @@ def test_make_config_uses_defaults_when_env_unset(monkeypatch, tmp_path):
     monkeypatch.delenv("MEMWEAVE_EMBEDDING_API_KEY", raising=False)
     from lib.vault_index.config import VaultIndexConfig
     from lib.vault_index.indexer import Indexer
+
     cache = tmp_path / "cache"
     idx = Indexer(vault_root=tmp_path, cache_dir=cache, config=VaultIndexConfig())
     cfg = idx._make_config(extra_paths=[])
@@ -173,6 +175,7 @@ def test_indexer_probe_failure_falls_back_to_fts(monkeypatch, tmp_path):
     )
     from lib.vault_index.config import VaultIndexConfig
     from lib.vault_index.indexer import Indexer
+
     cache = tmp_path / "cache"
     idx = Indexer(vault_root=tmp_path, cache_dir=cache, config=VaultIndexConfig())
     assert idx._vector_enabled is False
@@ -226,6 +229,7 @@ def test_init_auto_rebuilds_on_embedder_change(monkeypatch, vault: Path, cfg, tm
     # live Ollama. Stub the provider's single network boundary with
     # deterministic unit vectors — memweave sizes the vec table from the first
     # embedding's length (store.py), so any consistent dim works offline.
+
     async def _fake_embed_batch(self, texts):
         vecs = []
         for text in texts:
@@ -270,6 +274,7 @@ def test_init_no_rebuild_on_fresh_install(monkeypatch, tmp_path: Path):
         lambda api_base, model: (True, "test-stub: probe ok"),
     )
     from lib.vault_index.config import VaultIndexConfig
+
     cache_dir = tmp_path / "cache"
     idx = Indexer(vault_root=tmp_path, cache_dir=cache_dir, config=VaultIndexConfig())
     assert idx._needs_rebuild is False
@@ -277,6 +282,7 @@ def test_init_no_rebuild_on_fresh_install(monkeypatch, tmp_path: Path):
 
 def asyncio_close(idx: Indexer) -> None:
     import asyncio as _a
+
     _a.run(idx._store.close())
 
 
@@ -284,6 +290,7 @@ def test_indexer_skip_probe_keeps_caller_choice(tmp_path):
     """skip_probe=True must trust caller's vector_enabled flag."""
     from lib.vault_index.config import VaultIndexConfig
     from lib.vault_index.indexer import Indexer
+
     cache = tmp_path / "cache"
     idx = Indexer(
         vault_root=tmp_path,
@@ -309,9 +316,7 @@ def test_default_cache_dir_honors_cache_root_env(tmp_path, monkeypatch):
     assert cache_dir.name.startswith("vault-")
 
 
-def test_default_cache_dir_prefers_existing_user_cache_even_when_unwritable(
-    tmp_path, monkeypatch
-):
+def test_default_cache_dir_prefers_existing_user_cache_even_when_unwritable(tmp_path, monkeypatch):
     vault = tmp_path / "vault"
     vault.mkdir()
     monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", raising=False)

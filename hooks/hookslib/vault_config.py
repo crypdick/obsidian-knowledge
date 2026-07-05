@@ -12,6 +12,7 @@ Config format (`~/.config/obsidian-knowledge/vaults.yaml`):
       - /path/to/your/vault
       - /path/to/another/vault
 """
+
 import os
 import re
 from pathlib import Path

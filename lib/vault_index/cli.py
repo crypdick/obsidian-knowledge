@@ -1,4 +1,8 @@
-"""CLI entry points for obsidian-knowledge tooling."""
+"""CLI entry points for obsidian-knowledge tooling.
+
+# allow: file-length  (CLI surface; decomposition tracked in docs/QUALITY.md)
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -14,6 +18,8 @@ from pathlib import Path
 
 import platformdirs
 import yaml
+
+from lib.vault_index.models import Hit
 
 DEFAULT_VAULT_INDEX_TEMPLATE = """
 # Vault index config — drives memweave retrieval, filtering, and weighting.
@@ -104,9 +110,7 @@ def search_ttl(seconds: int | None, *, label: str = "search"):
             sys.stderr.flush()
             os._exit(124)
 
-    watchdog = threading.Thread(
-        target=_watchdog, name="search-ttl-watchdog", daemon=True
-    )
+    watchdog = threading.Thread(target=_watchdog, name="search-ttl-watchdog", daemon=True)
     watchdog.start()
 
     use_alarm = hasattr(signal, "SIGALRM")
@@ -213,7 +217,7 @@ def resolve_vault(vault: Path | None, cwd: Path | None = None) -> Path:
     return cwd
 
 
-def format_remember_candidates(hits: list) -> str:
+def format_remember_candidates(hits: list[Hit]) -> str:
     """Format scored candidate homes for a memory."""
     if not hits:
         return "Potential homes:\n(no candidates)"
@@ -252,7 +256,7 @@ def run_search_doctor(
     ok = True
     try:
         rows = idx.row_count()
-    except Exception as exc:  # pragma: no cover - defensive CLI boundary
+    except Exception as exc:  # pragma: no cover  # allow: exception-handling
         rows = None
         ok = False
         lines.append(f"rows: ERROR ({type(exc).__name__}: {exc})")
@@ -274,7 +278,7 @@ def run_search_doctor(
                 top_k=top_k,
                 override_digest_filter=override_digest_filter,
             )
-        except Exception as exc:  # pragma: no cover - defensive CLI boundary
+        except Exception as exc:  # pragma: no cover  # allow: exception-handling
             ok = False
             lines.append(f"  hits: ERROR ({type(exc).__name__}: {exc})")
             continue
@@ -321,6 +325,9 @@ def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claud
             "session-start": "recall-init",
         }
         effective_kind = defaults.get(event)
+    if effective_kind is None:
+        print(f"error: unsupported hook event/kind: {event}/{kind}", file=sys.stderr)
+        return 2
     script_name = scripts.get((event, effective_kind))
     if script_name is None:
         print(f"error: unsupported hook event/kind: {event}/{kind}", file=sys.stderr)
@@ -539,7 +546,6 @@ def main() -> int:
         type=Path,
         default=Path.home() / ".hermes" / "memories",
     )
-
 
     args = parser.parse_args()
 

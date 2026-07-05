@@ -6,6 +6,7 @@ additionalContext so it becomes model context immediately.
 
 Multi-vault config not supported.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,9 +15,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hookslib import recall_init_lib  # noqa: E402
-from hookslib import vault_config  # noqa: E402
-from hookslib.stop_hook import session_debounce  # noqa: E402
+from hookslib import (
+    recall_init_lib,
+    vault_config,
+)
+from hookslib.stop_hook import session_debounce
 
 
 def resolve_vaults_config() -> Path:

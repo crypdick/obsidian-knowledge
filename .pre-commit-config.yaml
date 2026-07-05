@@ -1,0 +1,140 @@
+# Run with:      uv run pre-commit run --all-files
+# Install hooks: uv run pre-commit install
+#
+# Cheap/fast hooks first, expensive ones (mypy, pytest) last, so trivial issues
+# surface before the slow gates run. Config for ruff/mypy/vulture/xenon lives in
+# pyproject.toml. See docs/ARCHITECTURE.md for the module map and docs/QUALITY.md
+# for the current scorecard (including deliberately-deferred gates).
+
+# The Codex plugin tree under plugins/obsidian-knowledge is a generated copy of
+# the repo root (scripts/sync_codex_plugin.py) -- never lint the generated copy.
+exclude: '^plugins/obsidian-knowledge/'
+
+repos:
+  # Standard file hygiene -- cheap, repo-agnostic.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: detect-private-key
+      - id: check-added-large-files
+      - id: mixed-line-ending
+
+  # detect-secrets -- entropy-based secret scanning against a reviewed baseline.
+  # Re-audit after intentional changes: uv run detect-secrets audit .secrets.baseline
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: [--baseline, .secrets.baseline]
+        exclude: 'uv\.lock'
+
+  # flynt -- convert %-format / .format() to f-strings (ruff's UP rules cover the
+  # rest of pyupgrade, so pyupgrade itself is omitted as redundant).
+  - repo: https://github.com/ikamensh/flynt/
+    rev: '1.0.6'
+    hooks:
+      - id: flynt
+
+  # Local hooks run against the project's uv environment.
+  - repo: local
+    hooks:
+      # Ruff via the project's pinned dev-dep (single source of truth with CI;
+      # avoids rule-selector skew between a pinned pre-commit rev and uv's ruff).
+      # Rules/exclusions live in pyproject.toml [tool.ruff].
+      - id: ruff-check
+        name: ruff (lint)
+        entry: uv run ruff check --fix --quiet
+        language: system
+        types: [python]
+        require_serial: true
+      - id: ruff-format
+        name: ruff (format)
+        entry: uv run ruff format --quiet
+        language: system
+        types: [python]
+        require_serial: true
+
+      # Dead-code detection (config in pyproject [tool.vulture]).
+      - id: vulture
+        name: vulture (dead code)
+        entry: uv run vulture
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Cyclomatic-complexity ceiling (grade C) across the source packages.
+      - id: xenon
+        name: xenon (complexity)
+        entry: uv run xenon --max-average C --max-modules C --max-absolute C lib hooks hermes_plugin
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Strict static typing (config in pyproject [tool.mypy]). Whole-package run
+      # for cross-module inference, so filenames are not passed.
+      - id: mypy
+        name: mypy (strict)
+        entry: uv run mypy lib hooks hermes_plugin
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Custom taste hooks (scripts/pre_commit_hooks/). Each reports
+      # file:line: message -- remediation and honors `# allow: <hook>`.
+      - id: check-exception-handling
+        name: Check exception handling
+        entry: python scripts/pre_commit_hooks/check_exception_handling.py
+        language: system
+        types: [python]
+
+      # hooks/ talk to the host over stdout/stderr and skills/vault-organizer/*
+      # are standalone CLI tools that print results -- both are legitimate print
+      # boundaries, so they're excluded from the print ban.
+      - id: check-print-statements
+        name: Check print statements
+        entry: python scripts/pre_commit_hooks/check_print_statements.py
+        language: system
+        types: [python]
+        exclude: '^(hooks/|skills/)'
+
+      - id: check-file-length
+        name: Check file length
+        entry: python scripts/pre_commit_hooks/check_file_length.py
+        language: system
+        types: [python]
+
+      - id: check-private-test-imports
+        name: Forbid private imports in tests
+        entry: python scripts/pre_commit_hooks/check_private_test_imports.py
+        language: system
+        types: [python]
+
+      - id: fix-future-annotations
+        name: Fix future annotations
+        entry: python scripts/pre_commit_hooks/fix_future_annotations.py
+        language: system
+        types: [python]
+
+      # Keep the generated Codex plugin tree in sync with the repo root.
+      - id: codex-plugin-sync
+        name: Codex plugin in sync
+        entry: uv run python scripts/sync_codex_plugin.py --check
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # MUST be last: full test suite + coverage ratchet after cheaper gates pass.
+      # --cov lives here (not in addopts) so ad-hoc `uv run pytest` stays fast.
+      - id: pytest
+        name: pytest (+ coverage gate)
+        entry: uv run pytest --cov --cov-report=term-missing
+        language: system
+        pass_filenames: false
+        always_run: true

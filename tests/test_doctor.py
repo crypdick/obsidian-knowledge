@@ -63,9 +63,7 @@ def test_counts_needs_attention_entries(subprocess_vault):
     vault, env = subprocess_vault
     state_dir = vault / "Utility" / "obsidian-knowledge"
     state_dir.mkdir(parents=True)
-    (state_dir / "needs-attention.md").write_text(
-        "# Needs Attention\n\n- [ ] foo\n- [ ] bar\n"
-    )
+    (state_dir / "needs-attention.md").write_text("# Needs Attention\n\n- [ ] foo\n- [ ] bar\n")
     out = run_hook(str(vault), env=env)
     assert "needs-attention" in out
     assert "2" in out

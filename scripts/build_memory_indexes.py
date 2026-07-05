@@ -6,6 +6,7 @@ Scans <vault>/wiki/repos/**/memory/ and <vault>/wiki/systems/machines/*/memory/
 writes/refreshes MEMORY.md with one line per fact file, parsed from each file's
 frontmatter `description`.
 """
+
 from __future__ import annotations
 
 import re
@@ -58,8 +59,7 @@ def find_memory_dirs(vault: Path) -> list[Path]:
 
 def build_index(memory_dir: Path) -> str:
     facts = sorted(
-        p for p in memory_dir.iterdir()
-        if p.is_file() and p.suffix == ".md" and p.name != "MEMORY.md"
+        p for p in memory_dir.iterdir() if p.is_file() and p.suffix == ".md" and p.name != "MEMORY.md"
     )
     lines = [f"- [{p.name}]({p.name}) — {parse_description(p)}" for p in facts]
     return "\n".join(lines) + "\n" if lines else "_(empty)_\n"

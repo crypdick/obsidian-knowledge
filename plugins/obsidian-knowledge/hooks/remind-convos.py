@@ -9,12 +9,13 @@ happened to be inside — even ones outside the user's allowlist.
 Cooldown: at most one block per session per 5 minutes, tracked via
 a /tmp marker file's mtime.
 """
+
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hookslib.stop_hook import emit_block, in_cooldown, read_input  # noqa: E402
-from hookslib.vault_config import matching_vault_root  # noqa: E402
+from hookslib.stop_hook import emit_block, in_cooldown, read_input
+from hookslib.vault_config import matching_vault_root
 
 
 def build_reason(vault_root: str) -> str:

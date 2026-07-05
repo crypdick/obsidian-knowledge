@@ -19,10 +19,12 @@ Exit 0 always. Issues printed to stdout, one per line, tab-separated:
 Header block at top of output points to lib/state-files.md for the
 needs-attention.md entry format.
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+
 
 # Import shared patterns module from hooks/lib/. Installed plugin layout is:
 #   <plugin>/hooks/hookslib/patterns.py
@@ -39,9 +41,7 @@ def _find_hooks_dir() -> Path:
     for candidate in candidates:
         if (candidate / "hookslib" / "patterns.py").exists():
             return candidate
-    raise ModuleNotFoundError(
-        "Could not locate hooks/hookslib/patterns.py from convention-sweep.py"
-    )
+    raise ModuleNotFoundError("Could not locate hooks/hookslib/patterns.py from convention-sweep.py")
 
 
 sys.path.insert(0, str(_find_hooks_dir()))
@@ -74,9 +74,12 @@ def sweep(vault_root: Path) -> list[str]:
         if is_in_dated_folder(rel_str):
             basename = md.name
             is_journal = rel_str.startswith("Journal/")
-            if basename != "index.md" and not DATE_PREFIX_RE.match(basename):
-                if not (is_journal and PERIODIC_NOTE_RE.match(basename)):
-                    issues.append(f"UNDATED_FILE\t{rel_str}")
+            if (
+                basename != "index.md"
+                and not DATE_PREFIX_RE.match(basename)
+                and not (is_journal and PERIODIC_NOTE_RE.match(basename))
+            ):
+                issues.append(f"UNDATED_FILE\t{rel_str}")
 
         try:
             content = md.read_text(encoding="utf-8", errors="replace")

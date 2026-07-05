@@ -1,8 +1,8 @@
 """Tests for path filtering and weighting."""
+
 from lib.vault_index.config import DigestFilter, IndexFilter, VaultIndexConfig, WeightRule
 from lib.vault_index.filters import apply_filters, path_passes, score_path
 from lib.vault_index.indexer import Hit
-
 
 # ---------------------------------------------------------------------------
 # Task 4: score_path

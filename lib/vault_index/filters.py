@@ -1,9 +1,11 @@
 """Path-based filtering and weighting."""
+
 from __future__ import annotations
 
 import re
 
 from lib.vault_index.config import DigestFilter, IndexFilter, VaultIndexConfig
+from lib.vault_index.models import Hit
 
 
 def score_path(path: str, config: VaultIndexConfig) -> float:
@@ -42,11 +44,11 @@ def path_passes(path: str, filt: IndexFilter | DigestFilter) -> bool:
 
 
 def apply_filters(
-    hits: list,
+    hits: list[Hit],
     config: VaultIndexConfig,
     *,
     override_digest_filter: bool = False,
-) -> list:
+) -> list[Hit]:
     """Apply digest filters + path weights to a list of hits.
 
     Pipeline:
@@ -56,19 +58,19 @@ def apply_filters(
       4. Truncate to `config.top_k`.
       5. (If `min_score` set) drop weighted scores below threshold.
     """
-    from lib.vault_index.indexer import Hit
-
     if not override_digest_filter:
         hits = [h for h in hits if path_passes(h.path, config.digest)]
 
     weighted: list[Hit] = []
     for h in hits:
         w = score_path(h.path, config)
-        weighted.append(Hit(
-            path=h.path,
-            score=h.score * w,
-            weight_applied=w,
-        ))
+        weighted.append(
+            Hit(
+                path=h.path,
+                score=h.score * w,
+                weight_applied=w,
+            )
+        )
 
     # Dedup by path — keep highest-scoring chunk per path so a note with
     # multiple matching paragraphs doesn't crowd out other results.

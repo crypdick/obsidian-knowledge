@@ -9,6 +9,7 @@ The script is intentionally conservative. It auto-fixes only unique exact
 filename/alias/path recoveries. Ambiguous and fuzzy-looking items are reported
 for human review instead of rewritten.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,13 +18,15 @@ import re
 import signal
 import sys
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Literal
 
 try:
     import yaml as yaml_module
+
     HAS_YAML = True
 except ImportError:  # pragma: no cover - exercised in packaged fallback contexts
     yaml_module = None
@@ -68,7 +71,7 @@ class UnresolvedItem:
     sources: str = ""
 
     @classmethod
-    def from_json(cls, value: object) -> "UnresolvedItem":
+    def from_json(cls, value: object) -> UnresolvedItem:
         if not isinstance(value, dict):
             raise ValueError(f"expected unresolved item object, got {type(value).__name__}")
         return cls(
@@ -104,17 +107,27 @@ class RecoveryDecision:
 
     @property
     def auto_fixable(self) -> bool:
-        return self.classification in {
-            "exact filename recovery",
-            "high-confidence moved/renamed file",
-        } and len(self.candidates) == 1
+        return (
+            self.classification
+            in {
+                "exact filename recovery",
+                "high-confidence moved/renamed file",
+            }
+            and len(self.candidates) == 1
+        )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("vault_root", type=Path)
-    parser.add_argument("--apply", action="store_true", help="rewrite exact/high-confidence recoveries in source files")
-    parser.add_argument("--include-stubs", action="store_true", help="show items matching configured stub patterns instead of dropping them")
+    parser.add_argument(
+        "--apply", action="store_true", help="rewrite exact/high-confidence recoveries in source files"
+    )
+    parser.add_argument(
+        "--include-stubs",
+        action="store_true",
+        help="show items matching configured stub patterns instead of dropping them",
+    )
     parser.add_argument("--format", choices=("tsv", "json"), default="tsv")
     return parser.parse_args()
 
@@ -127,7 +140,9 @@ def load_config(vault_root: Path) -> Config:
             raw = yaml_module.safe_load(handle) or {}
         return Config(
             ai_managed=tuple(str(zone) for zone in raw.get("ai_managed", ("wiki",))),
-            stub_link_patterns=tuple(str(pattern) for pattern in raw.get("stub_link_patterns", DEFAULT_STUB_PATTERNS)),
+            stub_link_patterns=tuple(
+                str(pattern) for pattern in raw.get("stub_link_patterns", DEFAULT_STUB_PATTERNS)
+            ),
         )
     return Config()
 
@@ -153,9 +168,7 @@ def link_stem(link: str) -> str:
 def looks_real_file_reference(link: str) -> bool:
     if any(char in link for char in ("/", ".")):
         return True
-    if DATEISH.search(link):
-        return True
-    return False
+    return bool(DATEISH.search(link))
 
 
 def is_stub(link: str, patterns: Iterable[re.Pattern[str]]) -> bool:
@@ -176,7 +189,7 @@ def frontmatter_aliases(text: str) -> tuple[str, ...]:
     try:
         assert yaml_module is not None
         frontmatter = yaml_module.safe_load(text[4:end]) or {}
-    except Exception:
+    except yaml_module.YAMLError:
         return ()
     aliases = frontmatter.get("aliases", [])
     if isinstance(aliases, str):
@@ -233,7 +246,9 @@ def unique(candidates: Iterable[NoteCandidate]) -> tuple[NoteCandidate, ...]:
     return tuple(seen.values())
 
 
-def best_fuzzy_candidates(name: str, all_candidates: tuple[NoteCandidate, ...]) -> tuple[float, tuple[NoteCandidate, ...]]:
+def best_fuzzy_candidates(
+    name: str, all_candidates: tuple[NoteCandidate, ...]
+) -> tuple[float, tuple[NoteCandidate, ...]]:
     normalized = normalize_name(name)
     if not normalized:
         return 0.0, ()
@@ -250,42 +265,97 @@ def best_fuzzy_candidates(name: str, all_candidates: tuple[NoteCandidate, ...]) 
     return top_score, top
 
 
-def classify(item: UnresolvedItem, sources: tuple[str, ...], index: CandidateIndex, patterns: tuple[re.Pattern[str], ...]) -> RecoveryDecision | None:
+def classify(
+    item: UnresolvedItem,
+    sources: tuple[str, ...],
+    index: CandidateIndex,
+    patterns: tuple[re.Pattern[str], ...],
+) -> RecoveryDecision | None:
     link = item.link.strip()
     if not sources:
         return None
     if is_stub(link, patterns):
-        return RecoveryDecision("likely intentional concept stub", link, sources, rationale="matches configured stub/template pattern")
+        return RecoveryDecision(
+            "likely intentional concept stub",
+            link,
+            sources,
+            rationale="matches configured stub/template pattern",
+        )
 
     if "/" in link:
         path_key = link[:-3] if link.endswith(".md") else link
         path_candidate = index.by_link_target.get(path_key)
         if path_candidate is not None:
-            return RecoveryDecision("exact filename recovery", link, sources, (path_candidate,), 1.0, "unique relative-path match")
+            return RecoveryDecision(
+                "exact filename recovery", link, sources, (path_candidate,), 1.0, "unique relative-path match"
+            )
         if looks_real_file_reference(link):
-            return RecoveryDecision("missing-note/date/path reference", link, sources, score=0.0, rationale="path-shaped target with no exact relative-path match")
+            return RecoveryDecision(
+                "missing-note/date/path reference",
+                link,
+                sources,
+                score=0.0,
+                rationale="path-shaped target with no exact relative-path match",
+            )
 
     stem = link_stem(link)
     exact_stem = unique(index.by_stem.get(stem, ()))
     if len(exact_stem) == 1:
-        return RecoveryDecision("exact filename recovery", link, sources, exact_stem, 1.0, "unique basename match")
+        return RecoveryDecision(
+            "exact filename recovery", link, sources, exact_stem, 1.0, "unique basename match"
+        )
     if len(exact_stem) > 1:
-        return RecoveryDecision("ambiguous candidate", link, sources, exact_stem, 1.0, "multiple basename matches")
+        return RecoveryDecision(
+            "ambiguous candidate", link, sources, exact_stem, 1.0, "multiple basename matches"
+        )
 
     norm = normalize_name(stem)
     normalized_candidates = unique((*index.by_norm.get(norm, ()), *index.by_alias_norm.get(norm, ())))
     if len(normalized_candidates) == 1:
-        return RecoveryDecision("high-confidence moved/renamed file", link, sources, normalized_candidates, 1.0, "unique normalized stem/alias match")
+        return RecoveryDecision(
+            "high-confidence moved/renamed file",
+            link,
+            sources,
+            normalized_candidates,
+            1.0,
+            "unique normalized stem/alias match",
+        )
     if len(normalized_candidates) > 1:
-        return RecoveryDecision("ambiguous candidate", link, sources, normalized_candidates, 1.0, "multiple normalized stem/alias matches")
+        return RecoveryDecision(
+            "ambiguous candidate",
+            link,
+            sources,
+            normalized_candidates,
+            1.0,
+            "multiple normalized stem/alias matches",
+        )
 
     fuzzy_score, fuzzy_candidates = best_fuzzy_candidates(stem, index.all_candidates)
     if fuzzy_candidates:
-        return RecoveryDecision("ambiguous candidate", link, sources, fuzzy_candidates, fuzzy_score, "near fuzzy filename match; manual review required")
+        return RecoveryDecision(
+            "ambiguous candidate",
+            link,
+            sources,
+            fuzzy_candidates,
+            fuzzy_score,
+            "near fuzzy filename match; manual review required",
+        )
 
     if looks_real_file_reference(link):
-        return RecoveryDecision("missing-note/date/path reference", link, sources, score=0.0, rationale="date/path/extension-shaped target with no candidate")
-    return RecoveryDecision("likely intentional concept stub", link, sources, score=0.0, rationale="plain concept-shaped target with no candidate")
+        return RecoveryDecision(
+            "missing-note/date/path reference",
+            link,
+            sources,
+            score=0.0,
+            rationale="date/path/extension-shaped target with no candidate",
+        )
+    return RecoveryDecision(
+        "likely intentional concept stub",
+        link,
+        sources,
+        score=0.0,
+        rationale="plain concept-shaped target with no candidate",
+    )
 
 
 def replacement_for(decision: RecoveryDecision) -> str:

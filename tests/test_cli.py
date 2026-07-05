@@ -1,4 +1,5 @@
 """Tests for the obsidian-knowledge CLI."""
+
 import json
 import os
 import shutil
@@ -19,7 +20,7 @@ from lib.vault_index.cli import (
     run_search_doctor,
     search_ttl,
 )
-
+from lib.vault_index.models import Hit
 
 # ---------------------------------------------------------------------------
 # Task 10 — init-vault-index
@@ -95,15 +96,9 @@ def test_resolve_vault_prefers_containing_configured_vault(tmp_path: Path, monke
 
 def test_format_remember_candidates_prints_scored_paths():
     """remember reports potential homes with scores and does not write anything."""
-
-    class Hit:
-        def __init__(self, score, path):
-            self.score = score
-            self.path = path
-
     text = format_remember_candidates([
-        Hit(42.25, "wiki/repos/acme/app/memory/project_codex.md"),
-        Hit(9.5, "wiki/codex.md"),
+        Hit(path="wiki/repos/acme/app/memory/project_codex.md", score=42.25),
+        Hit(path="wiki/codex.md", score=9.5),
     ])
 
     assert "Potential homes:" in text
@@ -123,9 +118,7 @@ def test_default_cache_dir_for_vault_honors_cache_root_env(tmp_path: Path, monke
     assert cache_dir.name.startswith("vault-")
 
 
-def test_default_cache_dir_for_vault_falls_back_when_cache_unwritable(
-    tmp_path: Path, monkeypatch
-):
+def test_default_cache_dir_for_vault_falls_back_when_cache_unwritable(tmp_path: Path, monkeypatch):
     vault = tmp_path / "vault"
     vault.mkdir()
     monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", raising=False)
@@ -179,8 +172,7 @@ def test_search_ttl_hard_kills_when_signal_is_swallowed():
     )
     elapsed = _time.monotonic() - t0
     assert result.returncode == 124, (
-        f"expected hard-timeout exit 124, got {result.returncode}; "
-        f"stderr={result.stderr!r}"
+        f"expected hard-timeout exit 124, got {result.returncode}; stderr={result.stderr!r}"
     )
     assert elapsed < 25, f"watchdog should fire within seconds, took {elapsed:.1f}s"
 
@@ -353,15 +345,11 @@ def test_claude_marketplace_uses_string_local_source():
     are met by .agents/plugins/marketplace.json, so this file only has to
     satisfy Claude.
     """
-    marketplace = json.loads(
-        (Path(__file__).parents[1] / ".claude-plugin" / "marketplace.json").read_text()
-    )
+    marketplace = json.loads((Path(__file__).parents[1] / ".claude-plugin" / "marketplace.json").read_text())
     plugin = marketplace["plugins"][0]
 
     assert plugin["source"] == "./"
-    package = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())[
-        "project"
-    ]
+    package = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())["project"]
     assert plugin["version"] == package["version"]
 
 
