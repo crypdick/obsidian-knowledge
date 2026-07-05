@@ -79,5 +79,12 @@ def subprocess_vault(tmp_path):
     cfg = home / ".config" / "obsidian-knowledge"
     cfg.mkdir(parents=True)
     (cfg / "vaults.yaml").write_text(f"vaults:\n  - {vault}\n")
-    env = {**os.environ, "HOME": str(home)}
+    # Skip the doctor's live Ollama probe: this hook runs as a subprocess, so
+    # the in-process `_disable_ollama_probe` monkeypatch doesn't reach it, and
+    # CI has no Ollama. The env flag is the subprocess analog of that fixture.
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "OBSIDIAN_KNOWLEDGE_SKIP_OLLAMA_PROBE": "1",
+    }
     return vault, env

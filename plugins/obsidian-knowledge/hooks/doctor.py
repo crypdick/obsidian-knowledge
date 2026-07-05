@@ -96,7 +96,13 @@ def check_ollama(vault_root: str) -> str | None:
 
     Cache lives in the per-host XDG cache directory (same place the embedding
     DB lives) so it is not synced across machines via Syncthing.
+
+    Set ``OBSIDIAN_KNOWLEDGE_SKIP_OLLAMA_PROBE`` to suppress the probe entirely
+    (for FTS-only setups that don't want the recurring nag, and for tests that
+    run the hook as a subprocess without a live Ollama).
     """
+    if os.environ.get("OBSIDIAN_KNOWLEDGE_SKIP_OLLAMA_PROBE"):
+        return None
     try:
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
         from vault_index.indexer import default_cache_dir  # type: ignore

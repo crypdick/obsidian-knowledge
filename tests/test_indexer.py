@@ -1,5 +1,7 @@
 """Integration tests for Indexer against fixture vault."""
 import fcntl
+import hashlib
+import math
 import shutil
 from pathlib import Path
 
@@ -219,6 +221,23 @@ def test_init_auto_rebuilds_on_embedder_change(monkeypatch, vault: Path, cfg, tm
     monkeypatch.setattr(
         "lib.vault_index.indexer._ollama_probe",
         lambda api_base, model: (True, "test-stub: probe ok"),
+    )
+    # Vector search is forced on above, so both reindex and query would hit a
+    # live Ollama. Stub the provider's single network boundary with
+    # deterministic unit vectors — memweave sizes the vec table from the first
+    # embedding's length (store.py), so any consistent dim works offline.
+    async def _fake_embed_batch(self, texts):
+        vecs = []
+        for text in texts:
+            raw = hashlib.sha256(text.encode()).digest()[:8]
+            vec = [b / 255.0 for b in raw]
+            norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+            vecs.append([x / norm for x in vec])
+        return vecs
+
+    monkeypatch.setattr(
+        "memweave.embedding.provider.LiteLLMEmbeddingProvider._embed_one_batch",
+        _fake_embed_batch,
     )
     cache_dir = tmp_path / "cache"
     # First pass: build index with current embedder.
