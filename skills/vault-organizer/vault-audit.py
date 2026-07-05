@@ -207,7 +207,7 @@ def print_header(lib_dir: Path, counts: dict[str, int]) -> None:
         return
     summary = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
     print(f"# vault-audit: {summary}")
-    print(f"# Fix guides (read only what you need):")
+    print("# Fix guides (read only what you need):")
     print(f"#   MISSING_INDEX, NOT_INDEXED   → {lib_dir}/index-format.md")
     print(f"#   DUMPING_GROUND               → {lib_dir}/note-types.md")
     print(f"#   STACKED_FRONTMATTER          → {lib_dir}/stacked-frontmatter.md")

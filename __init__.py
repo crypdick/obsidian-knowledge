@@ -21,8 +21,8 @@ if str(PLUGIN_ROOT) not in sys.path:
 
 
 def register(ctx: Any) -> None:
-    from hermes_plugin import ObsidianKnowledgeProvider  # noqa: WPS433
-    from hermes_plugin import register as register_hooks  # noqa: WPS433
+    from hermes_plugin import ObsidianKnowledgeProvider
+    from hermes_plugin import register as register_hooks
 
     register_hooks(ctx)
 

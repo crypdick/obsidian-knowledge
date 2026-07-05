@@ -2,12 +2,8 @@
 import textwrap
 from pathlib import Path
 
-import pytest
 
 from lib.vault_index.config import (
-    IndexFilter,
-    DigestFilter,
-    WeightRule,
     VaultIndexConfig,
     load_config,
 )

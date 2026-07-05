@@ -213,7 +213,7 @@ def main() -> int:
             pointer_text + ("\n---\n# Pre-migration index\n\n" + original if original.strip() else "")
         )
 
-    print(f"\n--- summary ---")
+    print("\n--- summary ---")
     print(f"  files moved:   {total_moved}")
     print(f"  files skipped: {total_skipped}")
     print(f"  orphan files:  {total_orphan}")

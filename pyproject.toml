@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-knowledge"
-version = "3.22.19"
+version = "3.22.20"
 description = "Obsidian vault knowledge integration for Claude Code and Hermes Agent CLI"
 requires-python = ">=3.12"
 dependencies = [
@@ -29,7 +29,14 @@ hermes_plugin = "hermes_plugin"
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.0",
+    "ruff>=0.12",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+# The Codex plugin tree is a generated copy of the root (see
+# scripts/sync_codex_plugin.py); lint the source of truth only.
+extend-exclude = ["plugins/obsidian-knowledge"]

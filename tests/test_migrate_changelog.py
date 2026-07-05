@@ -4,12 +4,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 SCRIPTS = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from migrate_changelog import parse_entries, slugify, entry_to_filename, extract_diary_links
+from migrate_changelog import parse_entries, slugify, entry_to_filename, extract_diary_links  # noqa: E402  (needs sys.path insert above)
 
 
 class TestSlugify:
@@ -149,7 +148,7 @@ class TestMigration:
 
         files = list((vault / "Utility" / "obsidian-knowledge" / "changelog").glob("*.md"))
         content = files[0].read_text()
-        lines = [l for l in content.strip().splitlines() if l.strip()]
+        lines = [line for line in content.strip().splitlines() if line.strip()]
         # 1-liner + optional diary pointer = at most 2 lines
         assert len(lines) <= 2
         assert "2026-05-09" in lines[0]
@@ -172,7 +171,7 @@ class TestMigration:
         migrate(vault, apply=True)
 
         files = list((vault / "Utility" / "obsidian-knowledge" / "changelog").glob("*.md"))
-        lines = [l for l in files[0].read_text().strip().splitlines() if l.strip()]
+        lines = [line for line in files[0].read_text().strip().splitlines() if line.strip()]
         assert len(lines) == 1
         assert "→ [[wiki/systems/diary/2026-05-09-thing]]" in lines[0]
         assert "→ [[wiki/research/convos/2026-05-09-other]]" in lines[0]

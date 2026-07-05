@@ -15,6 +15,10 @@ If unset, defaults to `~/Documents/Obsidian Vault`.
 
 Note: Vault paths may contain spaces - always quote them.
 
+## Frontmatter timestamps
+
+Do **not** manually edit `updated:` timestamps in Obsidian notes. The vault linter manages `updated` metadata automatically; content edits should leave existing timestamp fields alone unless the user explicitly asks for timestamp repair.
+
 ## Pitfall: macOS TCC silently returns zero results
 
 On macOS, `~/Documents` is TCC-protected. If the calling process (Terminal, the Hermes agent's parent python, etc.) hasn't been granted Documents/Full Disk Access, `find` and `grep -r` return **0 results with no error** — they look like a clean miss. Permissions can also be transient (e.g. just-granted, or revoked by a recent OS update).

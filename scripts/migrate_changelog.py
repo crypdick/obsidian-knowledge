@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -53,7 +53,7 @@ def entry_to_filename(date: str, title: str) -> str:
 
 def extract_diary_links(body: str) -> list[str]:
     all_links = re.findall(r'\[\[[^\]]+\]\]', body)
-    return [l for l in all_links if '/diary/' in l or '/convos/' in l]
+    return [link for link in all_links if '/diary/' in link or '/convos/' in link]
 
 
 def parse_entries(content: str) -> list[Entry]:
@@ -114,7 +114,7 @@ def migrate(vault_root: Path, apply: bool = False) -> MigrateResult:
     if apply:
         if result.created > 0:
             changelog_md.rename(archive)
-            print(f"\nRenamed changelog.md → changelog-archive.md")
+            print("\nRenamed changelog.md → changelog-archive.md")
         print(f"Done: {result.created} created, {result.skipped} skipped.")
     else:
         print(f"\nDry run: {result.would_create} entries would be created. Pass --apply to execute.")

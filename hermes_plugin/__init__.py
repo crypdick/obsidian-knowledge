@@ -30,7 +30,7 @@ _VAULT_PRIMER_TIMEOUT_SECONDS = 5.0
 _VAULT_SYNC_TIMEOUT_SECONDS = 45.0
 _SYNC_FINGERPRINT_FILENAME = "last-sync-fingerprint.txt"
 
-from agent.memory_provider import MemoryProvider  # type: ignore
+from agent.memory_provider import MemoryProvider  # type: ignore  # noqa: E402  (Hermes runtime module; imported after config constants)
 
 
 # Path to the installed plugin root. OBSIDIAN_KNOWLEDGE_ROOT is a dev override
@@ -629,7 +629,7 @@ def _on_post_tool_call(
         return
     try:
         _import_hookslib()
-        from hookslib import reflect_counter  # type: ignore  # noqa: WPS433
+        from hookslib import reflect_counter  # type: ignore
 
         count = reflect_counter.increment(_cache_root() / key)
         if reflect_counter.should_fire(count):

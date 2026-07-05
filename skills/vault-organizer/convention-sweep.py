@@ -102,7 +102,7 @@ def print_header(lib_dir: Path, counts: dict[str, int]) -> None:
         return
     summary = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
     print(f"# convention-sweep: {summary}")
-    print(f"# All checks shared with enforce-conventions.py + doctor.py via hooks/hookslib/patterns.py.")
+    print("# All checks shared with enforce-conventions.py + doctor.py via hooks/hookslib/patterns.py.")
     print(f"# needs-attention.md entry format → {lib_dir}/state-files.md")
     print()
 

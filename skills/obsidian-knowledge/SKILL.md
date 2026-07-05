@@ -5,13 +5,6 @@ description: Read, search, and create notes in the Obsidian vault/wiki memory st
 
 # Obsidian Vault / Wiki Memory
 
-## Telegram Topic Behavior
-
-When this skill is auto-loaded in the `obsidian` Telegram topic, treat that topic as the place for using the `obsidian-knowledge` skill. Read this `SKILL.md` and use it as the operating guide for the session.
-
-If Ricardo refers to prior vault context that is not present in the current Telegram thread, search the vault first instead of guessing. Use `obsidian-knowledge search "<query>"` for semantic lookup, then read the relevant notes before answering or editing.
-
-
 **Primary memory store:** `/Users/ricardo/Documents/obsidian/wiki/`
 
 Use the Obsidian wiki as the durable memory/source-of-truth for non-trivial context, project knowledge, and conversation outcomes. Use `obsidian-knowledge search "<query>"` to find relevant notes.

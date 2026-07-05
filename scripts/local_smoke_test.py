@@ -31,7 +31,7 @@ sys.modules["agent.memory_provider"].MemoryProvider = object
 repo_root = Path(__file__).parents[1]
 plugin_path = repo_root / "hermes_plugin" / "__init__.py"
 
-import importlib.util
+import importlib.util  # noqa: E402  (must follow the agent-module mock above)
 spec = importlib.util.spec_from_file_location("hermes_plugin", plugin_path)
 mod = importlib.util.module_from_spec(spec)  # type: ignore
 spec.loader.exec_module(mod)  # type: ignore
