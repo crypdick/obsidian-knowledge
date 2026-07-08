@@ -14,6 +14,7 @@ from lib.vault_index.cli import (
     SearchTimeoutError,
     default_cache_dir_for_vault,
     format_remember_candidates,
+    format_search_hits,
     init_vault_index,
     link_hermes_memories,
     resolve_vault,
@@ -104,6 +105,21 @@ def test_format_remember_candidates_prints_scored_paths():
     assert "Potential homes:" in text
     assert "42.2  wiki/repos/acme/app/memory/project_codex.md" in text
     assert " 9.5  wiki/codex.md" in text
+
+
+def test_format_search_hits_prints_snippets_under_paths():
+    text = format_search_hits([
+        Hit(
+            path="wiki/python.md",
+            score=42.25,
+            snippet="Python is a high-level programming language.",
+        ),
+        Hit(path="wiki/empty.md", score=9.5),
+    ])
+
+    assert "42.2  wiki/python.md" in text
+    assert "      Python is a high-level programming language." in text
+    assert " 9.5  wiki/empty.md" in text
 
 
 def test_default_cache_dir_for_vault_honors_cache_root_env(tmp_path: Path, monkeypatch):

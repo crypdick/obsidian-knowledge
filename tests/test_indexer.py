@@ -103,6 +103,19 @@ def test_search_returns_relevant_results(vault: Path, cfg, tmp_path: Path):
     assert any("python" in h.path.lower() for h in hits)
 
 
+def test_search_hits_include_snippet_from_matching_file(vault: Path, cfg, tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
+    idx.full_reindex()
+
+    hits = idx.search("python programming language")
+
+    python_hit = next(hit for hit in hits if hit.path == "wiki/python.md")
+    assert python_hit.snippet == (
+        "Python is a high-level programming language used for scripting, web, data, and AI."
+    )
+
+
 def test_search_applies_digest_filter(vault: Path, cfg, tmp_path: Path):
     cache_dir = tmp_path / "cache"
     idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)

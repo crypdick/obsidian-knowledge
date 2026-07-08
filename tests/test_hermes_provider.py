@@ -85,12 +85,19 @@ def test_prefetch_returns_report_format(provider, vault, monkeypatch):
     monkeypatch.setattr(
         hermes_plugin,
         "_run_vault_search",
-        lambda query, **kwargs: [{"score": 100.0, "path": "wiki/python.md"}],
+        lambda query, **kwargs: [
+            {
+                "score": 100.0,
+                "path": "wiki/python.md",
+                "snippet": "Python is a high-level programming language.",
+            }
+        ],
     )
 
     out = provider.prefetch("python")
     assert "Results for vault_search('python')" in out
     assert "wiki/python.md" in out
+    assert "Python is a high-level programming language." in out
     assert "long-term memory" in out
     assert "vault_search" in out
 
@@ -283,6 +290,7 @@ def test_handle_tool_call_vault_search_returns_json(provider, vault):
     if result:
         assert "score" in result[0]
         assert "path" in result[0]
+        assert "snippet" in result[0]
 
 
 def test_handle_tool_call_vault_search_respects_top_k(provider, vault):

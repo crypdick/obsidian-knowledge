@@ -81,7 +81,7 @@ def _run_vault_search(
     timeout: float = _VAULT_SEARCH_TIMEOUT_SECONDS,
     allow_rebuild: bool = True,
 ) -> list[dict[str, Any]]:
-    """Run vault_search via uv venv subprocess, return list of {score, path}."""
+    """Run vault_search via uv venv subprocess, return list of search hits."""
     script = (
         "import asyncio, json, sys, os\n"
         f"sys.path.insert(0, {str(_PLUGIN_REPO)!r})\n"
@@ -94,7 +94,7 @@ def _run_vault_search(
         "cache = default_cache_dir(vault)\n"
         "idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)\n"
         f"hits = idx.search({query!r}, top_k={top_k!r}, min_score={min_score!r}, override_digest_filter={override_digest_filter!r}, allow_rebuild={allow_rebuild!r})\n"
-        "print(json.dumps([{'score': h.score, 'path': h.path} for h in hits]))\n"
+        "print(json.dumps([{'score': h.score, 'path': h.path, 'snippet': h.snippet} for h in hits]))\n"
         "sys.stdout.flush()\n"
         "os._exit(0)\n"  # bypass daemon thread cleanup hang (asyncio threads don't exit cleanly)
     )
@@ -889,6 +889,8 @@ class ObsidianKnowledgeProvider(MemoryProvider):  # type: ignore[misc]  # Memory
         lines = [f"Results for vault_search({shown_query!r}):"]
         for h in hits:
             lines.append(f"  {h['score']:.1f}  {h['path']}")
+            if h.get("snippet"):
+                lines.append(f"      {h['snippet']}")
         return "\n".join(lines) + self.NUDGE
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
