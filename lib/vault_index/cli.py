@@ -226,6 +226,16 @@ def format_remember_candidates(hits: list[Hit]) -> str:
     return "\n".join(lines)
 
 
+def format_search_hits(hits: list[Hit]) -> str:
+    """Format vault search hits with an optional snippet under each path."""
+    lines: list[str] = []
+    for hit in hits:
+        lines.append(f"{hit.score:6.1f}  {hit.path}")
+        if hit.snippet:
+            lines.append(f"      {hit.snippet}")
+    return "\n".join(lines)
+
+
 DEFAULT_DOCTOR_QUERIES = (
     "hermes-agent-operating-profile",
     "automated-systems-review",
@@ -631,8 +641,7 @@ def main() -> int:
         if args.cmd == "remember":
             print(format_remember_candidates(hits))
             return 0
-        for h in hits:
-            print(f"{h.score:6.1f}  {h.path}")
+        print(format_search_hits(hits))
 
     return 0
 

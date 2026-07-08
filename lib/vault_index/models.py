@@ -15,3 +15,4 @@ class Hit(BaseModel):
     path: str
     score: float
     weight_applied: float = 1.0
+    snippet: str = ""

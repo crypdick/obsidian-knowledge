@@ -72,6 +72,7 @@ FINGERPRINT_FILENAME = "embedder-fingerprint.txt"
 APP_NAME = "obsidian-knowledge"
 CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
 SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
+SNIPPET_MAX_CHARS = 240
 
 
 def _cache_base_dir() -> Path:
@@ -332,6 +333,70 @@ class Indexer:
         terms = re.findall(r"[\w-]+", query)
         return " OR ".join(f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms)
 
+    @staticmethod
+    def _query_terms(query: str) -> list[str]:
+        """Return normalized query tokens used for snippet selection."""
+        return [term.lower() for term in re.findall(r"[\w-]+", query) if term.strip()]
+
+    @staticmethod
+    def _collapse_snippet_text(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    @staticmethod
+    def _crop_snippet(line: str, terms: list[str]) -> str:
+        """Crop a single-line snippet around the earliest query-term match."""
+        if len(line) <= SNIPPET_MAX_CHARS:
+            return line
+
+        lowered = line.lower()
+        positions = [lowered.find(term) for term in terms if lowered.find(term) >= 0]
+        anchor = min(positions) if positions else 0
+        start = max(0, anchor - SNIPPET_MAX_CHARS // 3)
+        end = start + SNIPPET_MAX_CHARS
+        if end > len(line):
+            end = len(line)
+            start = max(0, end - SNIPPET_MAX_CHARS)
+        snippet = line[start:end].strip()
+        if start > 0:
+            snippet = "..." + snippet
+        if end < len(line):
+            snippet += "..."
+        return snippet
+
+    def _snippet_for_path(self, rel_path: str, terms: list[str]) -> str:
+        """Read a vault-relative markdown file and return a one-line search snippet."""
+        candidate = self.vault_root / rel_path
+        try:
+            candidate.resolve().relative_to(self.vault_root.resolve())
+        except (OSError, ValueError):
+            return ""
+
+        try:
+            text = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
+        lines = [self._collapse_snippet_text(line) for line in text.splitlines()]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+
+        def score(line: str) -> tuple[int, int]:
+            lowered = line.lower()
+            matched = sum(1 for term in terms if term in lowered)
+            return (matched, -len(line))
+
+        if terms:
+            best = max(lines, key=score)
+            if score(best)[0] > 0:
+                return self._crop_snippet(best, terms)
+
+        return self._crop_snippet(lines[0], terms)
+
+    def _with_snippets(self, hits: list[Hit], query: str) -> list[Hit]:
+        terms = self._query_terms(query)
+        return [hit.model_copy(update={"snippet": self._snippet_for_path(hit.path, terms)}) for hit in hits]
+
     def _sqlite_fts_search(self, query: str, candidate_count: int) -> list[Hit]:
         """Use the persisted FTS table directly when vector retrieval is degraded.
 
@@ -490,7 +555,7 @@ class Indexer:
                 self._auto_rebuild(reason="embedder changed")
 
         if not self._vector_enabled:
-            return filtered(self._sqlite_fts_search(query, candidate_count))
+            return self._with_snippets(filtered(self._sqlite_fts_search(query, candidate_count)), query)
 
         try:
             with index_lock(self.cache_dir, exclusive=False):
@@ -500,7 +565,10 @@ class Indexer:
             # is missing chunks_vec. Trigger a rebuild and retry once.
             if "chunks_vec" in str(exc) and self._vector_enabled:
                 if not allow_rebuild:
-                    return filtered(self._sqlite_fts_search(query, candidate_count))
+                    return self._with_snippets(
+                        filtered(self._sqlite_fts_search(query, candidate_count)),
+                        query,
+                    )
                 try:
                     self._auto_rebuild(reason="chunks_vec missing")
                     with index_lock(self.cache_dir, exclusive=False):
@@ -519,4 +587,4 @@ class Indexer:
             raise
         hits = [Hit(path=self._abs_to_rel(r.path), score=_rescale(r.score), weight_applied=1.0) for r in raw]
 
-        return filtered(hits)
+        return self._with_snippets(filtered(hits), query)
