@@ -29,8 +29,8 @@ The only code with real domain logic; everything else is an adapter over it.
 - **`primer.py`** — `build_primer`, the session-start context string.
 - **`cli.py`** — the `obsidian-knowledge` console entrypoint (argparse): reindex,
   search, papercut logging, doctor, hook dispatch, vault registry.
-- **`papercuts.py`** — immutable, concurrency-safe workflow-friction reports and
-  their vault indexes; deliberately separate from the retrieval/indexing stack.
+- **`papercuts.py`** — scoped, append-only, concurrency-safe workflow-friction
+  logs; deliberately separate from the retrieval/indexing stack.
 - **`__init__.py`** — activates **beartype** for the whole `lib` package
   (`beartype_this_package()`); runtime type checking on all of `lib.vault_index`.
 

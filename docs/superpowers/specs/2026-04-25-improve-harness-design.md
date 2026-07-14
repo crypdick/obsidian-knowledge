@@ -2,7 +2,7 @@
 
 > **Superseded 2026-07-13.** This historical design must not be implemented.
 > `obsidian-knowledge papercut "what happened"` now records friction as a
-> lightweight, durable report; investigation and implementation remain explicit
+> lightweight, durable log entry; investigation and implementation remain explicit
 > user-directed work.
 
 **Status:** Draft (awaiting user review)

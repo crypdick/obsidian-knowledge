@@ -157,9 +157,15 @@ and log any observed workflow friction as a papercut.
 
 ### obsidian-knowledge papercut "<description>"
 
-Records an immutable report at `wiki/systems/knowledge-base/papercuts/` with
-the current working directory, then refreshes that folder's index. It logs
-friction only—it does not diagnose the issue or modify the harness.
+Appends the friction to `wiki/repos/<owner>/<repo>/PAPERCUTS.md` when the current
+directory belongs to a Git repository with an identifiable `origin`. Outside such
+a repository, it falls back to `wiki/systems/knowledge-base/PAPERCUTS.md`. The
+log is lock-protected for concurrent agents. It records friction only—it does not
+diagnose the issue or modify the harness.
+
+Reports created by v3.22.24 remain untouched under
+`wiki/systems/knowledge-base/papercuts/`; they are not automatically assigned to a
+repository because their original scope may be ambiguous.
 
 ### obsidian-knowledge search "<query>"
 

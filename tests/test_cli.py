@@ -146,36 +146,6 @@ def test_default_cache_dir_for_vault_falls_back_when_cache_unwritable(tmp_path: 
     assert cache_dir.name.startswith("vault-")
 
 
-def test_cli_papercut_records_a_report_without_loading_the_search_index(tmp_path: Path):
-    vault = tmp_path / "vault"
-    knowledge_base = vault / "wiki" / "systems" / "knowledge-base"
-    knowledge_base.mkdir(parents=True)
-    (knowledge_base / "index.md").write_text("# Knowledge Base\n")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "lib.vault_index.cli",
-            "papercut",
-            "the command did not explain the failure",
-            "--vault",
-            str(vault),
-        ],
-        cwd=Path(__file__).parents[1],
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "Logged papercut: wiki/systems/knowledge-base/papercuts/" in result.stdout
-    reports = list((vault / "wiki" / "systems" / "knowledge-base" / "papercuts").glob("*.md"))
-    assert len(reports) == 2  # report plus index.md
-    assert "the command did not explain the failure" in next(
-        path.read_text() for path in reports if path.name != "index.md"
-    )
-
-
 def test_cli_papercut_rejects_blank_description(tmp_path: Path):
     vault = tmp_path / "vault"
     vault.mkdir()

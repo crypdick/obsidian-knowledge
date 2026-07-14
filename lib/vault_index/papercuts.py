@@ -6,26 +6,35 @@ import contextlib
 import fcntl
 import os
 import re
-import tempfile
-import uuid
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
-PAPERCUTS_RELATIVE_DIR = Path("wiki/systems/knowledge-base/papercuts")
-PAPERCUTS_INDEX_NAME = "index.md"
+PAPERCUTS_FILENAME = "PAPERCUTS.md"
+GLOBAL_PAPERCUTS_RELATIVE_PATH = Path("wiki/systems/knowledge-base") / PAPERCUTS_FILENAME
+REPO_PAPERCUTS_ROOT = Path("wiki/repos")
+
+_NETWORK_REMOTE_SCHEMES = {"git", "git+ssh", "http", "https", "ssh"}
+_SCP_STYLE_REMOTE_RE = re.compile(r"^(?:[^@/\s:]+@)?[^/\s:]+:(?P<path>[^/\s:].*)$")
+_SAFE_REPOSITORY_COMPONENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+@dataclass(frozen=True)
+class _PapercutScope:
+    """Vault-relative destination and metadata for one papercut log."""
+
+    relative_path: Path
+    kind: str
+    repository: str | None = None
 
 
 @dataclass(frozen=True)
 class PapercutRecord:
-    """Result of recording a papercut.
-
-    ``index_error`` is intentionally non-fatal: the immutable report is the
-    primary outcome, while its directory index can be rebuilt on a later run.
-    """
+    """The append-only papercut log updated by one command invocation."""
 
     path: Path
-    index_error: str | None = None
 
 
 def record_papercut(
@@ -35,7 +44,7 @@ def record_papercut(
     cwd: Path | None = None,
     now: datetime | None = None,
 ) -> PapercutRecord:
-    """Create one immutable papercut report under ``vault_root``.
+    """Append one papercut to the repository-specific log under ``vault_root``.
 
     This deliberately does not diagnose, deduplicate, or implement a fix.
     Repeated reports are useful evidence that a friction point recurs.
@@ -50,57 +59,84 @@ def record_papercut(
 
     timestamp = (now or datetime.now(UTC)).astimezone(UTC)
     working_directory = (cwd or Path.cwd()).expanduser().resolve()
-    papercuts_dir = vault / PAPERCUTS_RELATIVE_DIR
-    papercuts_dir.mkdir(parents=True, exist_ok=True)
+    scope = _scope_for(working_directory)
+    log_path = vault / scope.relative_path
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    report_path = papercuts_dir / _filename_for(report, timestamp)
-    while True:
-        try:
-            with report_path.open("x", encoding="utf-8") as report_file:
-                report_file.write(_format_report(report, timestamp, working_directory))
-            break
-        except FileExistsError:
-            report_path = papercuts_dir / _filename_for(report, timestamp)
+    with _log_lock(log_path):
+        _ensure_log_header(log_path, scope)
+        _append_papercut(log_path, report, timestamp, working_directory)
 
-    try:
-        with _index_lock(papercuts_dir):
-            _rebuild_papercuts_index(papercuts_dir)
-    except OSError as exc:
-        return PapercutRecord(path=report_path, index_error=str(exc))
-    return PapercutRecord(path=report_path)
+    return PapercutRecord(path=log_path)
 
 
-def _filename_for(report: str, timestamp: datetime) -> str:
-    return f"{timestamp:%Y-%m-%d-%H%M%S}-{_slugify(report)}-{uuid.uuid4().hex[:8]}.md"
+def _scope_for(working_directory: Path) -> _PapercutScope:
+    """Prefer a stable per-repository log, with a central fallback."""
+    repository = _repository_from_origin(working_directory)
+    if repository is None:
+        return _PapercutScope(relative_path=GLOBAL_PAPERCUTS_RELATIVE_PATH, kind="global")
 
-
-def _slugify(text: str) -> str:
-    words = re.findall(r"[a-z0-9]+", text.casefold())
-    slug = "-".join(words)[:72].strip("-")
-    return slug or "papercut"
-
-
-def _format_report(report: str, timestamp: datetime, working_directory: Path) -> str:
-    created = timestamp.isoformat(timespec="seconds").replace("+00:00", "Z")
-    safe_cwd = str(working_directory).replace("`", "\\`")
-    return (
-        "---\n"
-        f"created: {created}\n"
-        "type: papercut\n"
-        "status: open\n"
-        "---\n\n"
-        "# Papercut\n\n"
-        "## Friction\n\n"
-        f"{report}\n\n"
-        "## Context\n\n"
-        f"- Working directory: `{safe_cwd}`\n"
+    owner, repo = repository
+    return _PapercutScope(
+        relative_path=REPO_PAPERCUTS_ROOT / owner / repo / PAPERCUTS_FILENAME,
+        kind="repo",
+        repository=f"{owner}/{repo}",
     )
 
 
+def _repository_from_origin(working_directory: Path) -> tuple[str, str] | None:
+    """Return a path-safe owner/repo identity for the enclosing Git repo."""
+    git_directory = working_directory if working_directory.is_dir() else working_directory.parent
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(git_directory), "remote", "get-url", "origin"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return _parse_repository_identity(result.stdout)
+
+
+def _parse_repository_identity(remote_url: str) -> tuple[str, str] | None:
+    """Extract a safe final owner/repo pair from a standard Git remote URL."""
+    path = _repository_path_from_remote(remote_url)
+    if path is None:
+        return None
+    components = path.strip("/").split("/")
+    if len(components) < 2 or any(not component for component in components):
+        return None
+    owner, repo = components[-2], components[-1].removesuffix(".git")
+    if not (_is_safe_repository_component(owner) and _is_safe_repository_component(repo)):
+        return None
+    return owner, repo
+
+
+def _repository_path_from_remote(remote_url: str) -> str | None:
+    """Return the repository path from a canonical hosted or scp-style remote."""
+    url = remote_url.strip()
+    parsed = urlparse(url)
+    if parsed.scheme in _NETWORK_REMOTE_SCHEMES and parsed.netloc:
+        return parsed.path
+
+    match = _SCP_STYLE_REMOTE_RE.fullmatch(url)
+    if match is None:
+        return None
+    return match.group("path")
+
+
+def _is_safe_repository_component(component: str) -> bool:
+    return component not in {".", ".."} and bool(_SAFE_REPOSITORY_COMPONENT_RE.fullmatch(component))
+
+
 @contextlib.contextmanager
-def _index_lock(papercuts_dir: Path):
-    """Serialize local index rewrites while keeping reports independently safe."""
-    lock_path = papercuts_dir / ".papercuts.lock"
+def _log_lock(log_path: Path):
+    """Serialize appends so concurrent agents cannot interleave entries."""
+    lock_path = log_path.with_name(f".{log_path.name}.lock")
     with lock_path.open("a", encoding="utf-8") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         try:
@@ -109,28 +145,45 @@ def _index_lock(papercuts_dir: Path):
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
-def _rebuild_papercuts_index(papercuts_dir: Path) -> None:
-    reports = sorted(
-        (path for path in papercuts_dir.glob("*.md") if path.name != PAPERCUTS_INDEX_NAME),
-        key=lambda path: path.name,
-        reverse=True,
-    )
-    entries = [f"- [[{path.stem}]] — agent-observed workflow friction" for path in reports]
-    body = "# Papercuts\n"
-    if entries:
-        body += "\n" + "\n".join(entries) + "\n"
-    _atomic_write(papercuts_dir / PAPERCUTS_INDEX_NAME, body)
-
-
-def _atomic_write(path: Path, text: str) -> None:
-    """Replace ``path`` atomically, preserving a complete index on interruption."""
-    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent, text=True)
-    temp_path = Path(temp_name)
+def _ensure_log_header(log_path: Path, scope: _PapercutScope) -> None:
+    """Create the log once without ever rewriting a pre-existing user file."""
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as temporary:
-            temporary.write(text)
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        os.replace(temp_path, path)
-    finally:
-        temp_path.unlink(missing_ok=True)
+        with log_path.open("x", encoding="utf-8") as log_file:
+            log_file.write(_format_log_header(scope))
+            log_file.flush()
+            os.fsync(log_file.fileno())
+    except FileExistsError:
+        pass
+
+
+def _append_papercut(
+    log_path: Path,
+    report: str,
+    timestamp: datetime,
+    working_directory: Path,
+) -> None:
+    """Durably append one independently readable record to a papercut log."""
+    with log_path.open("a", encoding="utf-8") as log_file:
+        log_file.write(_format_entry(report, timestamp, working_directory))
+        log_file.flush()
+        os.fsync(log_file.fileno())
+
+
+def _format_log_header(scope: _PapercutScope) -> str:
+    repository_line = f"repository: {scope.repository}\n" if scope.repository else ""
+    title = f"# Papercuts — {scope.repository}" if scope.repository else "# Papercuts"
+    return (
+        "---\n"
+        "type: papercut-log\n"
+        f"scope: {scope.kind}\n"
+        f"{repository_line}"
+        "---\n\n"
+        f"{title}\n\n"
+        "> Append-only agent-observed workflow friction. Investigate or fix entries separately.\n"
+    )
+
+
+def _format_entry(report: str, timestamp: datetime, working_directory: Path) -> str:
+    created = timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")
+    safe_cwd = str(working_directory).replace("`", "\\`")
+    return f"\n## {created}\n\n- Status: open\n- Working directory: `{safe_cwd}`\n\n{report}\n"

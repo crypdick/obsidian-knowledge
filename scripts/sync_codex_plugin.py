@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import filecmp
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -73,11 +74,39 @@ def _actual_files() -> set[Path]:
     return found
 
 
+def _sync_manifest_version(check: bool) -> list[str]:
+    """Keep the packaged manifest's release prefix aligned with the source.
+
+    The packaged plugin intentionally carries a ``+codex.<timestamp>`` suffix to
+    bust Codex's local plugin cache. Preserve that suffix here; the cachebuster
+    script refreshes it after a source version bump.
+    """
+    source_manifest = REPO_ROOT / ".codex-plugin" / "plugin.json"
+    packaged_manifest = CODEX_ROOT / ".codex-plugin" / "plugin.json"
+    source = json.loads(source_manifest.read_text(encoding="utf-8"))
+    packaged = json.loads(packaged_manifest.read_text(encoding="utf-8"))
+    source_version = source["version"]
+    packaged_version = packaged["version"]
+    if not isinstance(source_version, str) or not isinstance(packaged_version, str):
+        raise ValueError("Codex plugin manifests must contain string versions.")
+
+    suffix = packaged_version.partition("+")[2]
+    expected_version = f"{source_version}+{suffix}" if suffix else source_version
+    if packaged_version == expected_version:
+        return []
+
+    drift = [f"  out of sync: {packaged_manifest.relative_to(REPO_ROOT)} version"]
+    if not check:
+        packaged["version"] = expected_version
+        packaged_manifest.write_text(json.dumps(packaged, indent=2) + "\n", encoding="utf-8")
+    return drift
+
+
 def sync(check: bool) -> int:
     pairs = _expected_pairs()
     expected = {dest for _, dest in pairs}
 
-    drift: list[str] = []
+    drift = _sync_manifest_version(check)
     for src, dest in pairs:
         if not dest.exists() or not filecmp.cmp(src, dest, shallow=False):
             drift.append(f"  out of sync: {dest.relative_to(REPO_ROOT)}")

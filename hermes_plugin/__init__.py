@@ -52,7 +52,7 @@ _SYNC_DIRTY_SESSIONS: set[str] = set()
 
 _REFLECT_REMINDER = (
     "Step back: did the harness or workflow create friction? Log it with "
-    '`obsidian-knowledge papercut "what happened"`; it records the report only. '
+    '`obsidian-knowledge papercut "what happened"`; it records the log entry only. '
     "If knowledge is worth preserving, also use the `remember-conversations` skill."
 )
 

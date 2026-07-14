@@ -478,14 +478,9 @@ def run_papercut(*, vault: Path, description: str, parser: argparse.ArgumentPars
 
     try:
         record = record_papercut(vault, description)
-    except ValueError as exc:
+    except (OSError, ValueError) as exc:
         parser.error(str(exc))
     print(f"Logged papercut: {record.path.relative_to(vault)}")
-    if record.index_error:
-        print(
-            f"warning: papercut was logged, but its index could not be updated: {record.index_error}",
-            file=sys.stderr,
-        )
     return 0
 
 

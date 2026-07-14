@@ -82,7 +82,7 @@ def build_primer(
         "- Reflect on friction: if you struggle with the harness, hit unexpected "
         "blocks, or repeat the same workaround, log it immediately with "
         '`obsidian-knowledge papercut "what happened"`. This only records a '
-        "durable report; continue the requested work rather than turning it into "
+        "durable log entry; continue the requested work rather than turning it into "
         "a side quest."
         f"{kb_block}"
     )

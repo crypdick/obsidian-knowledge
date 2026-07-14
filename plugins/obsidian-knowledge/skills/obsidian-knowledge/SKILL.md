@@ -18,10 +18,11 @@ starting an implementation side quest:
 obsidian-knowledge papercut "search hung after an automatic rebuild"
 ```
 
-The command creates an immutable report under
-`wiki/systems/knowledge-base/papercuts/`, including the working directory and an
-index entry. It records the papercut only; continue the task unless the user asks to
-investigate or fix it.
+The command appends an entry to `wiki/repos/<owner>/<repo>/PAPERCUTS.md` when the
+current directory has an identifiable Git `origin`; otherwise it falls back to
+`wiki/systems/knowledge-base/PAPERCUTS.md`. The log records the working directory
+and is lock-protected for concurrent agents. It records the papercut only; continue
+the task unless the user asks to investigate or fix it.
 
 **Location:** Set via `OBSIDIAN_VAULT_PATH` environment variable (e.g. in `~/.hermes/.env`).
 
