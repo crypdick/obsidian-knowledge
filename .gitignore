@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 .DS_Store
 .worktrees/
+.new-feature/
+*.local.toml
 # Coverage artifacts (pytest-cov)
 .coverage
 .coverage.*

@@ -43,6 +43,13 @@ dev = [
     "xenon>=0.9.3",
 ]
 
+[tool.new-feature]
+target_branch = "main"
+setup = ["uv sync --group dev"]
+pre_merge = ["uv run pre-commit run --all-files --show-diff-on-failure"]
+post_merge = ["uv run pre-commit run --all-files --show-diff-on-failure"]
+teardown = []
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
