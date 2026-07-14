@@ -9,6 +9,20 @@ description: Read, search, and create notes in the Obsidian vault/wiki memory st
 
 Use the Obsidian wiki as the durable memory/source-of-truth for non-trivial context, project knowledge, and conversation outcomes. Use `obsidian-knowledge search "<query>"` to find relevant notes.
 
+## Log workflow friction
+
+When the harness, a tool, or a repeated workaround gets in the way, record it without
+starting an implementation side quest:
+
+```bash
+obsidian-knowledge papercut "search hung after an automatic rebuild"
+```
+
+The command creates an immutable report under
+`wiki/systems/knowledge-base/papercuts/`, including the working directory and an
+index entry. It records the papercut only; continue the task unless the user asks to
+investigate or fix it.
+
 **Location:** Set via `OBSIDIAN_VAULT_PATH` environment variable (e.g. in `~/.hermes/.env`).
 
 If unset, defaults to `~/Documents/Obsidian Vault`.

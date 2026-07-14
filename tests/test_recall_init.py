@@ -49,6 +49,7 @@ class TestRecallInit:
         context = out["hookSpecificOutput"]["additionalContext"]
         assert out["hookSpecificOutput"]["hookEventName"] == "SessionStart"
         assert "harness" in context.lower()
+        assert "obsidian-knowledge papercut" in context
         assert "/improve-harness" not in context
 
     def test_no_output_when_no_vault_config(self, tmp_path):

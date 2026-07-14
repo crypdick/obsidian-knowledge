@@ -472,6 +472,23 @@ def setup(vault: Path) -> None:
     print("\nSetup complete.")
 
 
+def run_papercut(*, vault: Path, description: str, parser: argparse.ArgumentParser) -> int:
+    """Record a papercut without loading the search/indexing stack."""
+    from lib.vault_index.papercuts import record_papercut
+
+    try:
+        record = record_papercut(vault, description)
+    except ValueError as exc:
+        parser.error(str(exc))
+    print(f"Logged papercut: {record.path.relative_to(vault)}")
+    if record.index_error:
+        print(
+            f"warning: papercut was logged, but its index could not be updated: {record.index_error}",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="obsidian-knowledge")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -520,6 +537,13 @@ def main() -> int:
         action="store_true",
         help="Override digest filter (include paths normally hidden from prefetch).",
     )
+
+    p_papercut = sub.add_parser(
+        "papercut",
+        help="Record workflow friction in the vault; does not diagnose or change anything",
+    )
+    p_papercut.add_argument("description", help="What caused friction; quote multi-word descriptions")
+    p_papercut.add_argument("--vault", type=Path, default=None, help="Vault root")
 
     p_doctor = sub.add_parser(
         "doctor",
@@ -600,6 +624,12 @@ def main() -> int:
     elif args.cmd == "link-hermes-memories":
         vault = resolve_vault(args.vault)
         link_hermes_memories(vault, args.hermes_memories_dir)
+    elif args.cmd == "papercut":
+        return run_papercut(
+            vault=resolve_vault(args.vault),
+            description=args.description,
+            parser=parser,
+        )
     elif args.cmd == "doctor":
         from lib.vault_index.config import load_config
         from lib.vault_index.indexer import Indexer, default_cache_dir

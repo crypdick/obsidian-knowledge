@@ -38,18 +38,6 @@ history:
 - **Stop hook integration** — a reminder nudges the agent to file
   sessions at the end of each conversation
 
-### improve-harness
-
-Disabled as of `3.22.15`. The command shim and skill index are retained
-as `.disabled` files for reference, but they are no longer discoverable by
-the plugin runtime.
-
-### deploy-harness
-
-Single-purpose skill: merge an approved `improve/<slug>` branch into
-main, bump patch version, push to origin. Invokable manually for
-approved harness changes.
-
 ## Hooks
 
 ### Vault protection (PreToolUse)
@@ -163,14 +151,15 @@ to operate within the harness.
 
 `reflect-nudge.py` fires every 10 bash invocations within a session.
 Continuous — no per-session suppression. Reminds the agent to step back
-and consider whether observed friction warrants a harness improvement.
+and log any observed workflow friction as a papercut.
 
 ## Commands
 
-### /improve-harness <description>
+### obsidian-knowledge papercut "<description>"
 
-Disabled as of `3.22.15`. The old command body lives at
-`commands/improve-harness.md.disabled` for reference.
+Records an immutable report at `wiki/systems/knowledge-base/papercuts/` with
+the current working directory, then refreshes that folder's index. It logs
+friction only—it does not diagnose the issue or modify the harness.
 
 ### obsidian-knowledge search "<query>"
 

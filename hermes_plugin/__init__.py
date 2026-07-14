@@ -51,8 +51,9 @@ _SESSION_WIKI_INDEX_FOLDERS: dict[str, set[str]] = {}
 _SYNC_DIRTY_SESSIONS: set[str] = set()
 
 _REFLECT_REMINDER = (
-    "Step back: any insight worth saving to the knowledge base? If knowledge "
-    "worth preserving, use the `remember-conversations` skill."
+    "Step back: did the harness or workflow create friction? Log it with "
+    '`obsidian-knowledge papercut "what happened"`; it records the report only. '
+    "If knowledge is worth preserving, also use the `remember-conversations` skill."
 )
 
 _STOP_REMINDER = (

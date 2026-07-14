@@ -19,8 +19,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hookslib import reflect_counter
 
 REMINDER = (
-    "Step back: any insight worth saving to the knowledge base? "
-    "If knowledge worth preserving, invoke the `remember-conversations` skill."
+    "Step back: did the harness or workflow create friction? Log it with "
+    '`obsidian-knowledge papercut "what happened"`; it records the report only. '
+    "If knowledge is worth preserving, also invoke the `remember-conversations` skill."
 )
 
 

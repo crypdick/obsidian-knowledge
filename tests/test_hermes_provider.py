@@ -581,6 +581,7 @@ def test_post_tool_call_reflection_queues_next_pre_llm(monkeypatch, provider, tm
 
     assert injected is not None
     assert "remember-conversations" in injected["context"]
+    assert "obsidian-knowledge papercut" in injected["context"]
     assert "/improve-harness" not in injected["context"]
     assert "or describe it" not in injected["context"]
     assert "auto-invokes improve-harness" not in injected["context"]

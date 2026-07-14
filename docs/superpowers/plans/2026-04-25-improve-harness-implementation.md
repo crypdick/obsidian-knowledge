@@ -1,5 +1,9 @@
 # Improve-Harness Implementation Plan
 
+> **Superseded 2026-07-13.** This historical plan must not be implemented.
+> `obsidian-knowledge papercut "what happened"` replaces the proposed
+> multi-phase workflow with lightweight, durable friction logging.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a SessionStart harness primer hook, a continuous reflect-nudge hook, a one-time `/setup-harness` migration command, and an `improve-harness` skill (with deploy-harness companion) that orchestrates a multi-phase headless side-quest workflow for self-improving the harness.

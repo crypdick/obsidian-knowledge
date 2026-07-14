@@ -1,5 +1,10 @@
 # Improve-Harness: Design Spec
 
+> **Superseded 2026-07-13.** This historical design must not be implemented.
+> `obsidian-knowledge papercut "what happened"` now records friction as a
+> lightweight, durable report; investigation and implementation remain explicit
+> user-directed work.
+
 **Status:** Draft (awaiting user review)
 **Date:** 2026-04-25
 **Scope:** v1 — additive changes to the `obsidian-knowledge` plugin

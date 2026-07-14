@@ -6,6 +6,5 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
-.improve-harness/
 # Generated index cache (created by reindex CLI and indexer tests)
 tests/fixtures/sample_vault/.config/

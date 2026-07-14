@@ -50,6 +50,7 @@ class TestReflectNudge:
         assert code == 0
         assert "systemMessage" in out
         assert "remember-conversations" in out["systemMessage"]
+        assert "obsidian-knowledge papercut" in out["systemMessage"]
         assert "/improve-harness" not in out["systemMessage"]
 
     def test_fires_continuously_at_multiples(self, tmp_path):

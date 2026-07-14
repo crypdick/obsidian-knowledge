@@ -12,6 +12,7 @@ class TestBuildPrimer:
         assert "memory" in primer.lower()
         assert "obsidian-knowledge search" in primer
         assert "remember-conversations" in primer
+        assert "obsidian-knowledge papercut" in primer
         assert "/improve-harness" not in primer
         assert "frustration" not in primer.lower()
 

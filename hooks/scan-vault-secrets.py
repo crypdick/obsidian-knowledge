@@ -110,7 +110,7 @@ from hookslib.vault_policy import find_containing_vault
 
 # Hidden dirs (anything starting with '.') are tooling/state, not user
 # content — skipping them avoids torrents of false positives in
-# `.improve-harness/`, `.foam/`, etc. _sources/ holds read-only
+# `.foam/`, etc. _sources/ holds read-only
 # originals (tax, legal); not scannable by hook policy anyway.
 SKIP_NAMED_DIRS = {"_sources", "node_modules"}
 
