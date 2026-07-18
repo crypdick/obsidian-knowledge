@@ -396,6 +396,16 @@ def test_codex_marketplace_points_to_packaged_plugin():
     assert (plugin_root / "hooks" / "hooks.json").exists()
 
 
+def test_python_range_excludes_unsupported_pyo3_python_3_14():
+    """Tool installs must not select Python 3.14 while LiteLLM pins PyO3 0.23."""
+    root = Path(__file__).parents[1]
+    package = tomllib.loads((root / "pyproject.toml").read_text())["project"]
+    agent_instructions = (root / "AGENTS.md").read_text()
+
+    assert package["requires-python"] == ">=3.12,<3.14"
+    assert 'uv tool install --reinstall --python 3.13 "$(pwd)"' in agent_instructions
+
+
 def test_claude_marketplace_uses_string_local_source():
     """Claude Code's marketplace must use the bare string source "./".
 

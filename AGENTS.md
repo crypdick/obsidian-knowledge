@@ -19,7 +19,7 @@ codex plugin marketplace upgrade obsidian-knowledge
 This plugin's Codex hooks call the installed `obsidian-knowledge` CLI, so keep the uv tool install in sync with the source package:
 
 ```bash
-uv tool install --reinstall "$(pwd)"
+uv tool install --reinstall --python 3.13 "$(pwd)"
 ```
 
 Then restart Codex and use `/plugins` or `/hooks` for install, enablement, and hook trust review. If `obsidian-knowledge _hook ...` fails, fix or reinstall the CLI; do not treat the plugin cache as the source of truth.
