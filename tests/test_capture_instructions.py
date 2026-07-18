@@ -45,6 +45,7 @@ def test_changelog_capture_never_requires_a_shared_index() -> None:
 
 def test_papercut_instructions_do_not_downgrade_bugs() -> None:
     surfaces = (
+        "README.md",
         "hooks/reflect-nudge.py",
         "skills/obsidian-knowledge/SKILL.md",
         "lib/vault_index/primer.py",

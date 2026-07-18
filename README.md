@@ -143,25 +143,29 @@ conversations.
 
 `recall-init.py` runs at every session start. Injects the harness
 primer: a compact context block covering memory location, recall
-via `obsidian-knowledge search`, capture at session end, and friction
-reflection. The primer stands alone — agents that read only this know how
-to operate within the harness.
+via `obsidian-knowledge search`, capture at session end, and reflection on
+minor, non-blocking workflow friction. The primer stands alone — agents that
+read only this know how to operate within the harness.
 
 ### reflect-nudge (PostToolUse on Bash)
 
 `reflect-nudge.py` fires every 10 bash invocations within a session.
 Continuous — no per-session suppression. Reminds the agent to step back
-and log any observed workflow friction as a papercut.
+and log minor, non-blocking workflow friction as a papercut. Reproducible false
+success, wrong writes, data risk, and incorrect decisions are bugs: fix them
+when in scope or report them plainly; do not downgrade them to papercuts.
 
 ## Commands
 
 ### obsidian-knowledge papercut "<description>"
 
-Appends the friction to `wiki/repos/<owner>/<repo>/PAPERCUTS.md` when the current
-directory belongs to a Git repository with an identifiable `origin`. Outside such
-a repository, it falls back to `wiki/systems/knowledge-base/PAPERCUTS.md`. The
-log is lock-protected for concurrent agents. It records friction only—it does not
-diagnose the issue or modify the harness.
+Appends a minor, non-blocking ergonomic issue to
+`wiki/repos/<owner>/<repo>/PAPERCUTS.md` when the current directory belongs to a
+Git repository with an identifiable `origin`. Outside such a repository, it
+falls back to `wiki/systems/knowledge-base/PAPERCUTS.md`. The log is
+lock-protected for concurrent agents. It records the papercut only—it does not
+diagnose the issue or modify the harness. Do not use this command to reclassify
+a correctness bug as friction.
 
 Reports created by v3.22.24 remain untouched under
 `wiki/systems/knowledge-base/papercuts/`; they are not automatically assigned to a
