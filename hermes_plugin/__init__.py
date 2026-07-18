@@ -51,8 +51,10 @@ _SESSION_WIKI_INDEX_FOLDERS: dict[str, set[str]] = {}
 _SYNC_DIRTY_SESSIONS: set[str] = set()
 
 _REFLECT_REMINDER = (
-    "Step back: did the harness or workflow create friction? Log it with "
+    "Step back: did the harness or workflow create minor, non-blocking friction? Log it with "
     '`obsidian-knowledge papercut "what happened"`; it records the log entry only. '
+    "A reproducible false success, wrong write, data risk, or incorrect decision is a bug: "
+    "fix it when in scope or report it plainly; do not downgrade it to a papercut. "
     "If knowledge is worth preserving, also use the `remember-conversations` skill."
 )
 

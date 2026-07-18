@@ -12,11 +12,11 @@ Per-session files. Create one new file per agent session, never append to an exi
 
 **Contents:** one terse line per significant action. No H2 headers. No narrative. No code blocks.
 
-**Indexing:** every new changelog file must be added immediately to `Utility/obsidian-knowledge/changelog/index.md` in the same session. Do not rely on the next vault-gardener run to discover it as `NOT_INDEXED`; that creates avoidable orphan churn. Entry format:
-
-```markdown
-- [[YYYY-MM-DD-HHMMSS-slug]] — short orientation phrase
-```
+**No shared index:** do not create or update `changelog/index.md`. The Utility
+zone is excluded from structural index enforcement, and these per-session files
+are intentionally discovered by filename and search. A shared index recreates
+the concurrent-write race this directory was designed to remove. Any existing
+legacy index is non-authoritative.
 
 
 ```

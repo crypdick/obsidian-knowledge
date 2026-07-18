@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.4.6
+version: 1.4.7
 ---
 
 # Vault Organizer
@@ -22,7 +22,7 @@ Maintain Obsidian vault structure. Single-pass pipeline. Never edit primary file
 
 - Obsidian CLI installed + configured (`Settings → General → Command line interface`)
 - "Use [[Wikilinks]]" + "Automatically update internal links" enabled in Obsidian settings
-- Always pass `vault="<name>"` to every CLI call — default resolves to most recently focused vault, which may be wrong.
+- Always pass `vault="<name>"` before the subcommand (`obsidian vault="<name>" <command> ...`). It is a global option; after the subcommand it can be silently ignored, causing a wrong-vault write that still reports success.
 
 ## Sync-conflict exclusion
 
@@ -121,4 +121,4 @@ Remove resolved entries. Add new unresolvable issues. Read `lib/state-files.md` 
 
 ### Step 8: Create changelog entry
 
-Create `$VAULT/Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`. Read `lib/state-files.md` for format. Add the new changelog file to `$VAULT/Utility/obsidian-knowledge/changelog/index.md` in the same pass. Skip if no actions taken.
+Create `$VAULT/Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`. Read `lib/state-files.md` for format. Do not edit a shared changelog index; per-session files are the concurrency-safe audit record. Skip if no actions taken.

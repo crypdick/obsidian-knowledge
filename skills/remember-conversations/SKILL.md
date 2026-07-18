@@ -8,7 +8,7 @@ description: >-
   hook reminder, by the user saying "file this", "save this conversation",
   "remember this", or at agent discretion when a response deserves to
   outlive chat history.
-version: 0.9.4
+version: 0.9.5
 ---
 
 # Remember Conversations
@@ -21,7 +21,7 @@ Each session up to two outputs. Pick combo by what happened.
 
 ### Changelog entry
 
-Create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` if session produced substance — edits, decisions, discoveries, dead ends. Filename example: `2026-05-12-143022-vault-organizer.md`. Contents: one terse line per significant action, format `YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]`. No narrative, no code blocks — pointers only. Immediately add the new file to `Utility/obsidian-knowledge/changelog/index.md` with `- [[YYYY-MM-DD-HHMMSS-slug]] — short orientation phrase`; do not leave it for vault-gardener to discover as an orphan. Skip if nothing meaningful or already logged.
+Create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` if session produced substance — edits, decisions, discoveries, dead ends. Filename example: `2026-05-12-143022-vault-organizer.md`. Contents: one terse line per significant action, format `YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]`. No narrative, no code blocks — pointers only. Do not edit a shared changelog index: per-session files are intentionally discovered by filename and search so concurrent agents never contend on one file. Skip if nothing meaningful or already logged.
 
 ### Session notes
 
@@ -148,11 +148,19 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
 
 3. **Search for existing page** — within chosen subtree, look for page already covering concept. Check by concept name (`find <subtree> -iname '*concept*'`) + via search from step 2. Found → step 5 (append). Not found → step 4 (create).
 
-4. **Create new page** via Obsidian CLI:
+4. **Create new page** via Obsidian CLI. `vault=` is a global option and must
+   precede the subcommand; when placed after `create`, Obsidian silently ignores
+   it and may write to the most recently focused vault. Confirm the selected
+   root first, create the empty file, then write rich Markdown with a structured
+   file-editing tool so shell quoting cannot execute backticks:
    ```bash
-   obsidian create path="<subtree>/<concept>.md" content="..." vault="<vault-name>"
+   obsidian vault="<vault-name>" vault info=path
+   obsidian vault="<vault-name>" create path="<subtree>/<concept>.md"
    ```
-   Initial content: one-paragraph definition + Q&A material organized as wiki prose, not transcript. Add page to subtree's `index.md`. New subtree → also link from parent `index.md`.
+   Verify the file exists under the reported root before writing. Initial content:
+   one-paragraph definition + Q&A material organized as wiki prose, not
+   transcript. Add page to subtree's `index.md`. New subtree → also link from
+   parent `index.md`.
 
 5. **Append to existing page** — read current content. Integrate new Q&A into wiki narrative — don't paste transcript. New heading section if question covered new ground; extend existing section if refined existing material. Preserve verbatim user question as `> **Q:** "..."` blockquote when framing matters (most cases).
 
@@ -172,11 +180,17 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
    ```
    (Use `# Diary` for diary folders.)
 
-4. **Write note** — create file via Obsidian CLI so Obsidian link index stays in sync:
+4. **Write note** — create the empty file via Obsidian CLI so Obsidian's file
+   index stays in sync, then write content with a structured file-editing tool.
+   `vault=` is global and must precede `create`; verify the selected root and the
+   created file before continuing:
    ```bash
-   obsidian create path="{subtree}/convos/YYYY-MM-DD-slug.md" content="..." vault="<vault-name>"
+   obsidian vault="<vault-name>" vault info=path
+   obsidian vault="<vault-name>" create path="{subtree}/convos/YYYY-MM-DD-slug.md"
    ```
-   Use `\n` for newlines in content value. Always specify vault name if more than one vault registered.
+   Always specify the vault name when more than one vault is registered. Do not
+   put rich Markdown in a shell `content=` argument; backticks inside the content
+   can be executed by the shell before Obsidian receives it.
 
 5. **Update subfolder's `index.md`** — add entry for new note.
 
@@ -188,4 +202,4 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
 
 ### Always
 
-**Update changelog** — create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` summarizing actions as terse 1-liners. Link to session notes, not inline detail. No narrative in changelog itself. Add the same file to `Utility/obsidian-knowledge/changelog/index.md` before finishing.
+**Update changelog** — create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` summarizing actions as terse 1-liners. Link to session notes, not inline detail. No narrative in changelog itself, and do not edit a shared changelog index.

@@ -26,7 +26,6 @@ def build_reason(vault_root: str) -> str:
     sessions write to `wiki/Utility/obsidian-knowledge/changelog/` instead.
     """
     changelog_dir = os.path.join(vault_root, "Utility", "obsidian-knowledge", "changelog")
-    index_path = os.path.join(changelog_dir, "index.md")
     return (
         "Reminder: if this session produced anything valuable for future agents to "
         "know (edits, decisions, discoveries, context, dead ends), create a new file "
@@ -36,11 +35,10 @@ def build_reason(vault_root: str) -> str:
         "under wiki/. "
         "Write one terse line per significant action: "
         "'YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]'. "
-        "No narrative, no code blocks — pointers only. "
-        f"Immediately add that new file to {index_path} as "
-        "'- [[YYYY-MM-DD-HHMMSS-slug]] — short orientation phrase' so it is not "
-        "left as an orphan for vault-gardener. "
-        "If nothing substantive happened or you already logged and indexed it, carry on."
+        "No narrative, no code blocks — pointers only. Do not edit a shared "
+        "changelog index: per-session files are intentionally discovered by "
+        "filename and search so concurrent agents never contend on one file. "
+        "If nothing substantive happened or you already logged it, carry on."
     )
 
 

@@ -9,10 +9,16 @@ description: Read, search, and create notes in the Obsidian vault/wiki memory st
 
 Use the Obsidian wiki as the durable memory/source-of-truth for non-trivial context, project knowledge, and conversation outcomes. Use `obsidian-knowledge search "<query>"` to find relevant notes.
 
-## Log workflow friction
+## Bugs versus workflow friction
 
-When the harness, a tool, or a repeated workaround gets in the way, record it without
-starting an implementation side quest:
+A papercut is minor, non-blocking workflow friction or an ergonomic rough edge.
+A reproducible false success, wrong-vault write, data corruption/loss risk, or
+incorrect safety decision is a bug. Do not downgrade a bug to a papercut and
+move on: diagnose and fix it when the current task and repository authorize the
+change; otherwise report it plainly as a bug.
+
+For actual papercuts, record the issue without starting an implementation side
+quest:
 
 ```bash
 obsidian-knowledge papercut "search hung after an automatic rebuild"
