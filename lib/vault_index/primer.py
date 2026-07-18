@@ -79,12 +79,10 @@ def build_primer(
         "syncs across hosts, and is searchable. Read MEMORY.md there at session "
         "start; append new feedback/project/reference facts there, not under "
         "~/.claude/projects/*/memory/ (a PreToolUse hook will block that).\n"
-        "- Reflect on minor workflow friction: log non-blocking ergonomic rough edges with "
+        "- Reflect on friction: if you struggle with the harness, hit unexpected "
+        "blocks, or repeat the same workaround, log it immediately with "
         '`obsidian-knowledge papercut "what happened"`. This only records a '
         "durable log entry; continue the requested work rather than turning it into "
-        "a side quest. A reproducible false success, wrong write, data risk, or "
-        "incorrect safety decision is a bug: fix it when the current task and "
-        "repository authorize the change, or report it plainly; do not downgrade "
-        "it to a papercut."
+        "a side quest."
         f"{kb_block}"
     )

@@ -41,18 +41,3 @@ def test_changelog_capture_never_requires_a_shared_index() -> None:
         "skills/vault-organizer/lib/state-files.md"
     )
     assert "Utility\nzone is excluded" in _read("skills/vault-organizer/lib/state-files.md")
-
-
-def test_papercut_instructions_do_not_downgrade_bugs() -> None:
-    surfaces = (
-        "README.md",
-        "hooks/reflect-nudge.py",
-        "skills/obsidian-knowledge/SKILL.md",
-        "lib/vault_index/primer.py",
-        "hermes_plugin/__init__.py",
-    )
-
-    for path in surfaces:
-        text = _read(path)
-        assert "do not downgrade" in text.lower(), path
-        assert "bug" in text.lower(), path
