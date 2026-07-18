@@ -22,6 +22,16 @@ def test_build_primer_instructs_agents_to_log_papercuts(tmp_path: Path):
     assert "/improve-harness" not in text
 
 
+def test_build_primer_keeps_capture_and_memory_selective(tmp_path: Path):
+    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+
+    assert "durable, novel delta" in text
+    assert "filing nothing as success" in text
+    assert "Never store PIDs, job IDs" in text
+    assert "at most 20 bullets or 6000 characters" in text
+    assert "Do not create a second generated memory/index.md" in text
+
+
 def test_build_primer_injects_knowledge_base_index_with_cap(tmp_path: Path):
     index = tmp_path / "wiki" / "systems" / "knowledge-base" / "index.md"
     index.parent.mkdir(parents=True)

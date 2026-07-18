@@ -323,8 +323,11 @@ def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claud
         ("pre-tool-use", "protect-vault"): "protect-vault.py",
         ("post-tool-use", "reflect-nudge"): "reflect-nudge.py",
         ("session-start", "recall-init"): "recall-init.py",
-        ("stop", "update-changelog"): "update-changelog.py",
-        ("stop", "remind-convos"): "remind-convos.py",
+        ("stop", "capture-session"): "capture-session.py",
+        # Rolling-compatibility aliases for older cached hook manifests. Both
+        # wrappers use the consolidated capture-session cooldown marker.
+        ("stop", "update-changelog"): "capture-session.py",
+        ("stop", "remind-convos"): "capture-session.py",
         ("stop", "nudge-index-sync"): "nudge-index-sync.py",
     }
     effective_kind = kind

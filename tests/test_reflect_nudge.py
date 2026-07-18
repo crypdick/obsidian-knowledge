@@ -49,7 +49,7 @@ class TestReflectNudge:
         code, out = run_hook(make_payload(), tmp_path)
         assert code == 0
         assert "systemMessage" in out
-        assert "remember-conversations" in out["systemMessage"]
+        assert "remember-conversations" not in out["systemMessage"]
         assert "obsidian-knowledge papercut" in out["systemMessage"]
         assert "/improve-harness" not in out["systemMessage"]
 

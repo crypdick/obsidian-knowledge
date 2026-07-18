@@ -1,5 +1,6 @@
 """Tests for the obsidian-knowledge CLI."""
 
+import io
 import json
 import os
 import shutil
@@ -18,6 +19,7 @@ from lib.vault_index.cli import (
     init_vault_index,
     link_hermes_memories,
     resolve_vault,
+    run_hook_entrypoint,
     run_search_doctor,
     search_ttl,
 )
@@ -334,6 +336,28 @@ def test_private_hook_entrypoint_runs_existing_hook(tmp_path: Path):
 
     assert result.returncode == 0
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize("kind", ["capture-session", "update-changelog", "remind-convos"])
+def test_capture_hook_kinds_dispatch_to_consolidated_script(kind, monkeypatch):
+    """Legacy uv-tool kinds remain rolling-compatible without duplicate policy."""
+    dispatched = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_hook_script_path(script_name):
+        dispatched.append(script_name)
+        return Path("/plugin/hooks") / script_name
+
+    monkeypatch.setattr("lib.vault_index.cli.hook_script_path", fake_hook_script_path)
+    monkeypatch.setattr("lib.vault_index.cli.subprocess.run", lambda *args, **kwargs: Result())
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+
+    assert run_hook_entrypoint("stop", kind=kind, agent="codex") == 0
+    assert dispatched == ["capture-session.py"]
 
 
 def test_codex_hooks_template_uses_installed_cli():

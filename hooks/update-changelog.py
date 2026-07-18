@@ -1,56 +1,14 @@
 #!/usr/bin/env python3
-"""Stop hook: remind the agent to update CHANGELOG.md in the vault.
-
-Vault detection: cwd must be inside a configured vault root from
-~/.config/obsidian-knowledge/vaults.yaml. Replaces the older walk-up
-heuristic, which fired on any `.obsidian/` directory the agent
-happened to be inside — even ones outside the user's allowlist.
-
-Cooldown: at most one block per session per 5 minutes, tracked via
-a /tmp marker file's mtime.
-"""
+"""Deprecated Stop-hook alias for the consolidated capture decision."""
 
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hookslib.stop_hook import emit_block, in_cooldown, read_input
-from hookslib.vault_config import matching_vault_root
+from hookslib.capture import build_reason, main
 
-
-def build_reason(vault_root: str) -> str:
-    """Build the changelog reminder with an absolute, vault-root-anchored path.
-
-    Emitting the absolute changelog directory (rather than a cwd-relative
-    `Utility/obsidian-knowledge/changelog/`) removes the ambiguity that let
-    sessions write to `wiki/Utility/obsidian-knowledge/changelog/` instead.
-    """
-    changelog_dir = os.path.join(vault_root, "Utility", "obsidian-knowledge", "changelog")
-    return (
-        "Reminder: if this session produced anything valuable for future agents to "
-        "know (edits, decisions, discoveries, context, dead ends), create a new file "
-        f"in {changelog_dir}/ named YYYY-MM-DD-HHMMSS-<slug>.md "
-        "(e.g. 2026-05-12-143022-vault-organizer.md). "
-        "This is the canonical changelog location — always write it there, never "
-        "under wiki/. "
-        "Write one terse line per significant action: "
-        "'YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]'. "
-        "No narrative, no code blocks — pointers only. Do not edit a shared "
-        "changelog index: per-session files are intentionally discovered by "
-        "filename and search so concurrent agents never contend on one file. "
-        "If nothing substantive happened or you already logged it, carry on."
-    )
-
-
-def main() -> None:
-    vault_root = matching_vault_root(os.getcwd())
-    if vault_root is None:
-        sys.exit(0)
-    payload = read_input()
-    if in_cooldown(payload, marker_basename="changelog"):
-        sys.exit(0)
-    emit_block(build_reason(vault_root))
+__all__ = ["build_reason", "main"]
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

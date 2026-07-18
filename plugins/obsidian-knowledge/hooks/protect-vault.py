@@ -605,8 +605,13 @@ def block_memory_file_creation(tool_name: str, tool_input: dict[str, Any]) -> st
         "Auto-memory is a per-project silo — invisible to other sessions, other tools, and vault search.",
         hint=(
             "\n\nWhere to write instead:\n"
-            "  - Behavioral rules + project facts (per-repo or per-host scope) → vault path below\n"
+            "  - First decide whether the fact is stable, in scope, likely to change future action, "
+            "and not already authoritative in code, tracked docs, git, or runtime. If not, write nothing.\n"
+            "  - Never persist PIDs, job IDs, transient status, temporary worktrees, routine "
+            "commit/test results, or per-cycle handoffs as eager memory.\n"
+            "  - Durable behavioral rules + project facts (per-repo or per-host scope) → vault path below\n"
             "  - User-profile / world-knowledge → wiki/ wherever it semantically fits (or CLAUDE.md)\n"
+            "  - Search and consolidate before writing; keep vault MEMORY.md a thin current-state index.\n"
             "  - Only MEMORY.md is permitted in ~/.claude/projects/*/memory/; use it as a pointer.\n"
             f"\n{target_lines}\n"
             "\n(The I_AM_BEING_CAREFUL=1 escape hatch does not apply to this rule — there is no bypass.)"

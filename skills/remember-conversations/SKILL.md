@@ -1,46 +1,88 @@
 ---
 name: remember-conversations
 description: >-
-  File valuable conversation outputs as permanent vault notes and update
-  the changelog. Use when a conversation produced a synthesis, analysis,
-  comparison, decision rationale, research summary, narrative account,
-  educational Q&A, or discovery worth preserving. Triggered by the Stop
-  hook reminder, by the user saying "file this", "save this conversation",
-  "remember this", or at agent discretion when a response deserves to
-  outlive chat history.
-version: 0.9.5
+  Selectively file durable, novel conversation outcomes as canonical vault
+  notes. Use when a result will materially change future action or prevent
+  repeated work and is not already recoverable elsewhere, or when the user
+  explicitly asks to preserve it. Triggered by the Stop-hook decision gate or
+  requests such as "file this", "save this conversation", and "remember this".
+version: 0.10.0
 ---
 
 # Remember Conversations
 
-Capture valuable conversation output as permanent vault notes. Log so insights compound, not vanish into chat.
+Capture durable, novel conversation output as canonical vault knowledge.
+Skipping is a successful result when no qualifying delta exists.
+
+## Acceptance gate
+
+Before writing anything:
+
+1. Search the vault for the topic and inspect the best existing canonical note.
+2. State the one-sentence durable delta that note lacks.
+3. File only if the delta will materially change a future decision or prevent
+   repeated work and is not cheaply recoverable from code, tracked docs, git,
+   an issue, operational logs, or current runtime state.
+
+Qualifying examples:
+
+- An explicit user request to preserve the result.
+- A durable user preference, constraint, or decision rationale.
+- A reusable procedure verified successfully end to end.
+- An evidence-backed, non-obvious failure mode with its cause and recovery.
+- A sourced synthesis whose conclusion is expensive to reconstruct.
+
+Do not file:
+
+- Routine edits, commits, releases, test results, or deployment progress.
+- PIDs, job IDs, temporary branches/worktrees, health snapshots, or running status.
+- Quick factual lookups, generic educational answers, acknowledgements, or commands.
+- Per-iteration monitoring handoffs, raw/generated output, or facts already filed.
+- A transcript that did not converge on a reusable result.
+
+Volatile technical/product facts need a source and verification date. Medical,
+legal, and financial claims need sources and explicit uncertainty.
 
 ## Outputs
 
-Each session up to two outputs. Pick combo by what happened.
+Normally create or materially update at most one durable wiki note. A second
+note requires an explicit user request or two independently reusable topics.
+Never create a diary, convo, and learning page containing the same facts.
 
 ### Changelog entry
 
-Create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` if session produced substance — edits, decisions, discoveries, dead ends. Filename example: `2026-05-12-143022-vault-organizer.md`. Contents: one terse line per significant action, format `YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo filed]`. No narrative, no code blocks — pointers only. Do not edit a shared changelog index: per-session files are intentionally discovered by filename and search so concurrent agents never contend on one file. Skip if nothing meaningful or already logged.
+A changelog fragment is conditional audit metadata, not a standalone capture
+target. Only after this skill materially creates or updates durable vault
+content, create or reuse one same-session file at
+`Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`. Record only
+the vault mutation as a terse pointer in the form
+`YYYY-MM-DD HH:MM — <vault change> [→ [[wikilink]]]`. Do not log code, git,
+host, test, release, or deployment activity by itself. No narrative, code
+blocks, duplicate same-session fragments, or shared changelog index.
+When the Stop hook supplies a capture key, search for
+`*-session-<capture-key>.md`, reuse it if present, and otherwise end the new
+filename with `-session-<capture-key>.md`. Without a key, search current-day
+fragments for the canonical note wikilink before creating another file.
 
 ### Session notes
 
-Create session note when convo produced something future agent or user benefit finding later. Three types, **separate locations**:
+When the acceptance gate passes, choose one canonical note type:
 
-- **Learning page** — wiki-style topic note. Built by accretion: each Q&A on a topic enriches same topic page. Use for educational Q&A — concept explanations, technical deep-dives, "explain X" exchanges, things user learned. Synthesize answer into wiki prose; preserve key user questions verbatim as `> **Q:** ...` blockquotes when framing load-bearing. **Default output for any Q&A with meaningful answer** — even quick concept lookup, accrete it. Filing topic-driven: page goes in existing wiki subtree covering topic. Dedicated learning subtree (if vault has one, e.g. `wiki/learning/`) is fallback when no better home. See "Filing location" below for search procedure.
-- **Convo note** — analytical synthesis: option comparisons, decision rationales, research summaries, discoveries, non-obvious connections. **Always preserve user's questions verbatim alongside answers** — question is half the value (frames problem, surfaces what user actually wanted to know). Lives in `convos/` subfolder of relevant area.
+- **Learning page** — a reusable concept synthesis that adds a durable conclusion,
+  derivation, or sourced explanation to the canonical topic page. Quick or generic
+  Q&A does not qualify merely because it is educational.
+- **Convo note** — analytical synthesis: option comparisons, decision rationales,
+  research summaries, discoveries, or non-obvious connections. Quote user wording
+  only when it carries a durable constraint, preference, or rationale.
 - **Diary note** — narrative: what happened, what tried, what worked or not, why. Use for processes, incidents, debug sessions, event sequences worth retell. Lives in `diary/` subfolder of relevant area.
 
-Single session can produce multiple types (e.g., debug session that also taught a concept → diary + learning page).
+Prefer extending an existing note over creating a new one. Do not create a
+suffixed duplicate when the canonical filename already exists.
 
-Do **not** create session notes for:
-- Pure factual lookups, no conceptual content ("what time is it", "what's path to X")
-- Edits to existing pages (already persisted)
-- Back-and-forth that didn't converge on anything useful
-
-In doubt for educational Q&A: file learning page. Cost of extra short page low; cost of losing synthesis high.
-
-**Never write to CLAUDE.md.** That file user-owned, edited only by explicit user request. Agent-generated knowledge → `wiki/`. Behavioral rules → `wiki/` too, pointer in CLAUDE.md only if user explicitly says "add this to CLAUDE.md". In doubt, wiki note wins.
+**Never write to CLAUDE.md.** That file is user-owned and edited only by explicit
+user request. Agent-generated durable knowledge that passes the gate goes in
+`wiki/`. Behavioral rules go there too; add a CLAUDE.md pointer only when the
+user explicitly asks.
 
 ## Note structure
 
@@ -57,18 +99,16 @@ Every session note follow this structure:
 
 {Narrative or analysis. Section heading + structure fit content —
 "What happened" for diaries, "Analysis" or "Comparison" for convos,
-etc. As long as it needs to be.}
+etc. Keep only the evidence, reasoning, and result needed for reuse.}
 
-{Convo notes especially: capture user's actual questions verbatim
-(quoted) followed by substantive answer. Q&A format preserves framing
-user brought, often load-bearing — paraphrasing destroys nuance.
-Pattern:
+{When the user's exact wording carries a durable constraint, preference, or
+decision rationale, preserve only that load-bearing wording. Optional pattern:
 
 > **Q:** "{exact user question}"
 >
-> **A:** {full answer with reasoning, not just conclusion}
+> **A:** {durable synthesis and necessary reasoning}
 
-Use whenever conversation driven by user asking things.}
+Omit this block for acknowledgements, commands, or ordinary questions.}
 
 ## Key takeaways
 
@@ -79,7 +119,8 @@ Use whenever conversation driven by user asking things.}
 - [[wikilinks to relevant vault pages]]
 ```
 
-Adapt sections to fit — not every note needs every section.
+Adapt sections to fit; not every note needs every section. Prefer 150-350 words
+and rarely exceed 500 unless a verified runbook genuinely requires more.
 
 ## Filing location
 
@@ -126,7 +167,12 @@ area/topic/
 
 ### Choosing the right subtree
 
-Place note in most specific subtree covering topic. For learning pages, see procedure below — consult wiki's top-level `index.md` + run vault search before defaulting to learning subtree. Spans multiple domains: pick primary, add wikilinks to others in Related.
+Place note in most specific subtree covering topic. Codebase architecture and
+implementation decisions belong under `wiki/repos/<owner>/<repo>/`; deployed
+state, operational procedures, and runbooks belong under `wiki/systems/<system>/`.
+For learning pages, consult the top-level `index.md` and vault search before
+defaulting to a learning subtree. Spans multiple domains: pick one primary home
+and add wikilinks to the others.
 
 ### Filename convention
 
@@ -139,7 +185,8 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
 
 ### For learning pages
 
-1. **Identify concept** — what did this Q&A teach? One concept per page. Multi-concept session → file separately under each.
+1. **Identify concept** — what durable delta did this Q&A add? Pick the single
+   highest-value canonical topic. A second page must satisfy the output cap.
 
 2. **Find the right home** — route by topic, not by default location. Run all three checks before deciding:
    1. **Read wiki's top-level `index.md`** — scan for domain that fits concept.
@@ -158,11 +205,14 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
    obsidian vault="<vault-name>" create path="<subtree>/<concept>.md"
    ```
    Verify the file exists under the reported root before writing. Initial content:
-   one-paragraph definition + Q&A material organized as wiki prose, not
+   one-paragraph definition plus the durable delta organized as wiki prose, not
    transcript. Add page to subtree's `index.md`. New subtree → also link from
    parent `index.md`.
 
-5. **Append to existing page** — read current content. Integrate new Q&A into wiki narrative — don't paste transcript. New heading section if question covered new ground; extend existing section if refined existing material. Preserve verbatim user question as `> **Q:** "..."` blockquote when framing matters (most cases).
+5. **Append to existing page** — read current content. Integrate the durable
+   delta into wiki narrative; do not paste a transcript. Add a heading only when
+   the concept genuinely needs one. Preserve a verbatim user question only when
+   its framing is load-bearing.
 
 6. **Cross-link** — add `[[wikilinks]]` to related concept pages encountered. Search results from step 2 good candidates.
 
@@ -200,6 +250,8 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
    - [[diary/index|Diary]] — narrative session accounts
    ```
 
-### Always
+### After a durable vault mutation
 
-**Update changelog** — create `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md` summarizing actions as terse 1-liners. Link to session notes, not inline detail. No narrative in changelog itself, and do not edit a shared changelog index.
+Create or reuse one same-session changelog fragment as described under
+"Changelog entry." If the acceptance gate failed or no durable vault content
+changed, create no note and no changelog fragment.

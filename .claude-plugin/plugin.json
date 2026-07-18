@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.22.29",
+  "version": "3.22.30",
   "description": "Claude Code plugin that manages an Obsidian knowledge vault: capture, organize, index, and garden",
   "author": {
     "name": "Ricardo Decal"
@@ -38,11 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/update-changelog.py"
-          },
-          {
-            "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/remind-convos.py"
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/capture-session.py"
           },
           {
             "type": "command",

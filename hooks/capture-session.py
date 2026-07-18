@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deprecated Stop-hook alias for the consolidated capture decision."""
+"""Stop hook: make one selective durable-knowledge capture decision."""
 
 import os
 import sys

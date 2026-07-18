@@ -20,8 +20,7 @@ from hookslib import reflect_counter
 
 REMINDER = (
     "Step back: did the harness or workflow create friction? Log it with "
-    '`obsidian-knowledge papercut "what happened"`; it records the log entry only. '
-    "If knowledge is worth preserving, also invoke the `remember-conversations` skill."
+    '`obsidian-knowledge papercut "what happened"`; it records the log entry only.'
 )
 
 

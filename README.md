@@ -24,19 +24,18 @@ Maintains vault organization through a single-pass pipeline:
 
 ### remember-conversations
 
-Files valuable conversation outputs as permanent vault notes and updates
-the changelog, so insights compound rather than disappearing into chat
-history:
+Selectively files durable, novel conversation outputs as permanent vault
+notes, so insights compound without turning routine activity into prompt
+overhead:
 
-- **Session notes** — two types: `-diary` for narrative accounts (what
-  happened, what was tried) and `-convo` for analytical synthesis
-  (comparisons, decision rationales, research summaries)
-- **Changelog updates** — creates a terse per-session file in `changelog/`
-  summarizing actions taken
-- **Automatic placement** — notes filed in `sessions/` subfolders within
-  the relevant subtree, preserving progressive disclosure
-- **Stop hook integration** — a reminder nudges the agent to file
-  sessions at the end of each conversation
+- **Canonical notes** — learning pages for reusable concepts, diary notes for
+  reusable incident/process accounts, and convo notes for analytical synthesis
+- **Changelog updates** — after an actual durable vault mutation, creates or
+  reuses one terse same-session file in `changelog/`
+- **Automatic placement** — learning pages use the canonical topic location;
+  analytical and narrative notes use `convos/` and `diary/` subfolders
+- **Stop hook integration** — one reminder asks the agent to search first and
+  file at most one canonical note only when a durable delta qualifies
 
 ## Hooks
 
@@ -95,15 +94,13 @@ for memory location, read/write conventions, and session-start recall.
 
 ### Stop hooks
 
-Stop hooks fire at the end of each Claude Code turn. Each checks
-whether the working directory is inside a configured vault root. They
-have a 5-minute cooldown per session to avoid being noisy in long
-conversations.
+Stop hooks fire at the end of each Claude Code turn. Each checks whether the
+working directory is inside a configured vault root and uses a per-session
+cooldown to avoid repeated blocks.
 
-- **update-changelog.py** — reminds the agent to create a per-session file in
-  `changelog/` if the session produced edits, decisions, or discoveries
-- **remind-convos.py** — reminds the agent to preserve session outputs
-  (diary notes, convo notes, guides, changelog entries, gotchas)
+- **capture-session.py** — makes one selective capture decision. The default is
+  to file nothing; qualifying information must be durable, novel, reusable,
+  searched for first, and not cheaply recoverable from another source
 - **scan-vault-secrets.py** — runs `detect-secrets` against the vault
   and surfaces unaudited findings to the agent. The plugin makes no
   assumptions about which password manager you use — agents are told
@@ -298,7 +295,7 @@ Or set up a scheduled run for routine maintenance.
 The skill stores its state in your vault at
 `Utility/obsidian-knowledge/`:
 
-- `changelog/` — per-session terse logs (one file per agent session, 1-liners only)
+- `changelog/` — terse same-session audit pointers created only after durable vault mutations
 - `needs-attention.md` — human-resolved worklist
 - `reports/open-questions.md` — regenerated dashboard of `> [!question]` callouts
 

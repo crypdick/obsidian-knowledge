@@ -39,10 +39,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "obsidian-knowledge _hook stop --kind update-changelog --agent codex"
-          },
-          {
-            "type": "command",
             "command": "obsidian-knowledge _hook stop --kind remind-convos --agent codex"
           },
           {

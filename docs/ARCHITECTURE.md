@@ -37,10 +37,10 @@ The only code with real domain logic; everything else is an adapter over it.
 ### `hooks/` — the Claude Code adapter
 
 Thin entrypoint scripts (`doctor.py`, `enforce-conventions.py`, `protect-vault.py`,
-`recall-init.py`, `reflect-nudge.py`, `remind-convos.py`, `nudge-index-sync.py`,
-`scan-vault-secrets.py`, `update-changelog.py`) that read a hook JSON payload on
+`recall-init.py`, `reflect-nudge.py`, `capture-session.py`, `nudge-index-sync.py`,
+`scan-vault-secrets.py`, plus deprecated capture aliases) that read a hook JSON payload on
 stdin and emit a decision/message on stdout. Shared logic lives in **`hooks/hookslib/`**
-(`patterns`, `vault_config`, `vault_policy`, `stop_hook`, `transcript`,
+(`capture`, `patterns`, `vault_config`, `vault_policy`, `stop_hook`, `transcript`,
 `reflect_counter`, `repo_memory`, `recall_init_lib`). `protect-vault.py`'s
 `destructive_vault_ops` is the vault-write guard (decomposed per destructive-op
 check: `_check_rm_mv`, `_check_find_delete`, `_check_rsync_delete`, `_check_shred`,

@@ -580,7 +580,7 @@ def test_post_tool_call_reflection_queues_next_pre_llm(monkeypatch, provider, tm
     injected = hermes_plugin._on_pre_llm_call(session_id=key)
 
     assert injected is not None
-    assert "remember-conversations" in injected["context"]
+    assert "remember-conversations" not in injected["context"]
     assert "obsidian-knowledge papercut" in injected["context"]
     assert "/improve-harness" not in injected["context"]
     assert "or describe it" not in injected["context"]
@@ -670,9 +670,8 @@ def test_session_end_uses_packaged_stop_hook_reasons(monkeypatch, provider, tmp_
     injected = hermes_plugin._on_pre_llm_call(session_id="session-stop")
 
     assert injected is not None
-    assert "reason from update-changelog.py" in injected["context"]
-    assert "reason from remind-convos.py" in injected["context"]
-    assert calls
+    assert "reason from capture-session.py" in injected["context"]
+    assert len(calls) == 1
     assert all(call[1]["cwd"] == str(tmp_path) for call in calls)
 
 

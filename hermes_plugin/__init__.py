@@ -52,15 +52,15 @@ _SYNC_DIRTY_SESSIONS: set[str] = set()
 
 _REFLECT_REMINDER = (
     "Step back: did the harness or workflow create friction? Log it with "
-    '`obsidian-knowledge papercut "what happened"`; it records the log entry only. '
-    "If knowledge is worth preserving, also use the `remember-conversations` skill."
+    '`obsidian-knowledge papercut "what happened"`; it records the log entry only.'
 )
 
 _STOP_REMINDER = (
-    "Previous turn ended under the obsidian-knowledge harness. If it produced "
-    "edits, decisions, discoveries, or durable context, file a terse changelog "
-    "entry and any useful diary/convo/guide note in the vault wiki. If nothing "
-    "worth preserving happened, carry on."
+    "Previous turn ended under the obsidian-knowledge harness. Default: file nothing. "
+    "Use remember-conversations only for a durable, novel delta that will change a future "
+    "decision or prevent repeated work and is not already recoverable from code, git, logs, "
+    "or an existing note. Skip routine progress, transient state, quick Q&A, acknowledgements, "
+    "generated output, and duplicates; search first and prefer one canonical note."
 )
 
 
@@ -275,7 +275,7 @@ def _run_stop_hook_reasons(session_id: str = "") -> list[str]:
     env = os.environ.copy()
     env["OBSIDIAN_KNOWLEDGE_HOOK_AGENT"] = "hermes"
     payload = _hook_payload(session_id=session_id)
-    for script_name in ("update-changelog.py", "remind-convos.py"):
+    for script_name in ("capture-session.py",):
         script = _HOOKS_DIR / script_name
         if not script.exists():
             continue
