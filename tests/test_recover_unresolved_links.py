@@ -35,6 +35,16 @@ def test_classifies_unique_normalized_match_without_applying(tmp_path: Path) -> 
     assert (tmp_path / "wiki" / "source.md").read_text(encoding="utf-8") == "See [[renamed_file]].\n"
 
 
+def test_skips_broken_markdown_symlinks(tmp_path: Path) -> None:
+    (tmp_path / "wiki").mkdir()
+    (tmp_path / "wiki" / "valid.md").write_text("# Valid\n", encoding="utf-8")
+    (tmp_path / "wiki" / "broken.md").symlink_to(tmp_path / "missing.md")
+
+    result = run_recover(tmp_path, [])
+
+    assert result.returncode == 0
+
+
 def test_apply_rewrites_only_auto_fixable_links(tmp_path: Path) -> None:
     (tmp_path / ".claude").mkdir()
     (tmp_path / ".claude" / "obsidian-knowledge.yaml").write_text("ai_managed: [wiki]\n", encoding="utf-8")

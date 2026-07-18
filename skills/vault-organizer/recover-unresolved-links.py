@@ -207,7 +207,12 @@ def iter_notes(vault_root: Path) -> Iterable[NoteCandidate]:
             continue
         if ".sync-conflict-" in rel_path:
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            # Vaults can contain broken cross-host symlinks, and files can
+            # disappear while a live sync or organizer pass is running.
+            continue
         yield NoteCandidate(rel_path=rel_path, stem=path.stem, aliases=frontmatter_aliases(text))
 
 
