@@ -569,7 +569,7 @@ def test_post_tool_call_reflection_queues_next_pre_llm(monkeypatch, provider, tm
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path))
     key = "session-reflect"
 
-    for _ in range(10):
+    for _ in range(100):
         hermes_plugin._on_post_tool_call(
             tool_name="terminal",
             args={"command": "pwd"},

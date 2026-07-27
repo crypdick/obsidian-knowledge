@@ -146,7 +146,7 @@ to operate within the harness.
 
 ### reflect-nudge (PostToolUse on Bash)
 
-`reflect-nudge.py` fires every 10 bash invocations within a session.
+`reflect-nudge.py` fires every 100 bash invocations within a session.
 Continuous — no per-session suppression. Reminds the agent to step back
 and log any observed workflow friction as a papercut.
 

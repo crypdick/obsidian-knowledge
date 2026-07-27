@@ -3,14 +3,15 @@
 State lives at ~/.cache/obsidian-knowledge/<session-id>/bash-count
 (integer in plain text). Counter is incremented on each PostToolUse
 matching Bash; the hook fires its reminder every Nth invocation
-(default N=10), continuously — no per-session suppression.
+(default N=100), continuously — no per-session suppression.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-DEFAULT_THRESHOLD = 10
+# NOTE: keep in sync with README.md § "reflect-nudge (PostToolUse on Bash)".
+DEFAULT_THRESHOLD = 100
 
 
 def increment(session_state_dir: Path) -> int:

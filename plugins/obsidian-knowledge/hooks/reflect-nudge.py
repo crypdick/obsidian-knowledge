@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PostToolUse hook (matcher: Bash): continuous reflection nudge.
 
-Fires every 10 bash invocations within a session. State lives at
+Fires every 100 bash invocations within a session. State lives at
 ~/.cache/obsidian-knowledge/<session-id>/bash-count. Continuous — no
 per-session suppression. The continuous cadence is intentional: it
 builds reflection into the agent's working rhythm, not a one-time

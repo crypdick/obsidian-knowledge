@@ -36,15 +36,15 @@ def make_payload(session_id: str = "test-session") -> dict:
 
 class TestReflectNudge:
     def test_does_not_fire_before_threshold(self, tmp_path):
-        """First 9 calls produce no systemMessage."""
-        for i in range(9):
+        """First 99 calls produce no systemMessage."""
+        for i in range(99):
             code, out = run_hook(make_payload(), tmp_path)
             assert code == 0
             assert "systemMessage" not in out, f"fired prematurely at call {i + 1}"
 
-    def test_fires_at_tenth_call(self, tmp_path):
-        """10th call produces a reflection nudge."""
-        for _ in range(9):
+    def test_fires_at_hundredth_call(self, tmp_path):
+        """100th call produces a reflection nudge."""
+        for _ in range(99):
             run_hook(make_payload(), tmp_path)
         code, out = run_hook(make_payload(), tmp_path)
         assert code == 0
@@ -54,21 +54,21 @@ class TestReflectNudge:
         assert "/improve-harness" not in out["systemMessage"]
 
     def test_fires_continuously_at_multiples(self, tmp_path):
-        """Fires at 10, 20, 30 — no per-session suppression."""
+        """Fires at 100, 200, 300 — no per-session suppression."""
         fire_counts = []
-        for i in range(1, 31):
+        for i in range(1, 301):
             code, out = run_hook(make_payload(), tmp_path)
             if "systemMessage" in out:
                 fire_counts.append(i)
-        assert fire_counts == [10, 20, 30]
+        assert fire_counts == [100, 200, 300]
 
     def test_isolates_per_session(self, tmp_path):
         """Different session_ids have independent counters."""
-        for _ in range(9):
+        for _ in range(99):
             run_hook(make_payload("session-A"), tmp_path)
         # Session B at call 1 should NOT fire
         code, out = run_hook(make_payload("session-B"), tmp_path)
         assert "systemMessage" not in out
-        # Session A at call 10 SHOULD fire
+        # Session A at call 100 SHOULD fire
         code, out = run_hook(make_payload("session-A"), tmp_path)
         assert "systemMessage" in out

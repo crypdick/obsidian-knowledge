@@ -18,15 +18,15 @@ class TestCounter:
         assert n == 3
 
     def test_should_fire_at_threshold_multiples(self):
-        assert reflect_counter.should_fire(10) is True
-        assert reflect_counter.should_fire(20) is True
-        assert reflect_counter.should_fire(30) is True
+        assert reflect_counter.should_fire(100) is True
+        assert reflect_counter.should_fire(200) is True
+        assert reflect_counter.should_fire(300) is True
 
     def test_should_not_fire_off_threshold(self):
         assert reflect_counter.should_fire(0) is False
         assert reflect_counter.should_fire(5) is False
-        assert reflect_counter.should_fire(11) is False
-        assert reflect_counter.should_fire(19) is False
+        assert reflect_counter.should_fire(10) is False
+        assert reflect_counter.should_fire(99) is False
 
     def test_custom_threshold(self):
         assert reflect_counter.should_fire(5, threshold=5) is True
