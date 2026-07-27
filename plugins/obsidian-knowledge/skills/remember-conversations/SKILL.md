@@ -6,7 +6,7 @@ description: >-
   repeated work and is not already recoverable elsewhere, or when the user
   explicitly asks to preserve it. Triggered by the Stop-hook decision gate or
   requests such as "file this", "save this conversation", and "remember this".
-version: 0.10.0
+version: 0.10.1
 ---
 
 # Remember Conversations
@@ -121,6 +121,11 @@ Omit this block for acknowledgements, commands, or ordinary questions.}
 
 Adapt sections to fit; not every note needs every section. Prefer 150-350 words
 and rarely exceed 500 unless a verified runbook genuinely requires more.
+
+Every durable note must be hermetic: explain any local label or scoped reference
+(for example, "category 15" or "scenario 9") with the relevant system or taxonomy
+and meaning. Wikilinks may add detail, but cannot replace the context needed to
+understand and reuse the note without its originating conversation.
 
 ## Filing location
 

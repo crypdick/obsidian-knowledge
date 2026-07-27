@@ -75,6 +75,7 @@ def test_capture_policy_reverses_old_overcapture_defaults() -> None:
     assert "Default: file nothing" in reason
     assert "If you cannot state it, do not file" in reason
     assert "Default output for any Q&A" not in skill
+    assert "Every durable note must be hermetic" in skill
     assert "In doubt for educational Q&A" not in skill
     assert "Always preserve user's questions" not in skill
     assert "Single session can produce multiple types" not in skill

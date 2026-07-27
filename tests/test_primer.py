@@ -28,6 +28,8 @@ def test_build_primer_keeps_capture_and_memory_selective(tmp_path: Path):
     assert "durable, novel delta" in text
     assert "filing nothing as success" in text
     assert "Never store PIDs, job IDs" in text
+    assert "Every saved note must be hermetic" in text
+    assert "category 15" in text
     assert "at most 20 bullets or 6000 characters" in text
     assert "Do not create a second generated memory/index.md" in text
 
