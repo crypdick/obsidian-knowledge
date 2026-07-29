@@ -14,13 +14,25 @@ def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_remember_conversations_places_global_vault_option_before_command() -> None:
+def test_capture_uses_verified_filesystem_writes_without_cli_placeholders() -> None:
     skill = _read("skills/remember-conversations/SKILL.md")
 
-    assert 'obsidian vault="<vault-name>" create' in skill
-    assert "obsidian create path=" not in skill
-    assert 'create path="<subtree>/<concept>.md" content=' not in skill
-    assert 'create path="{subtree}/convos/YYYY-MM-DD-slug.md" content=' not in skill
+    assert "obsidian-knowledge write" in skill
+    assert "Wrote and verified" in skill
+    assert "note first" in skill
+    assert "obsidian vault=" not in skill
+    assert "create the empty file" not in skill
+    assert "content=" not in skill
+
+
+def test_general_skill_uses_configured_verified_vault_io() -> None:
+    skill = _read("skills/obsidian-knowledge/SKILL.md")
+
+    assert "obsidian-knowledge read" in skill
+    assert "obsidian-knowledge write" in skill
+    assert "/Users/ricardo/" not in skill
+    assert "cat >" not in skill
+    assert "echo " not in skill
 
 
 def test_changelog_capture_never_requires_a_shared_index() -> None:

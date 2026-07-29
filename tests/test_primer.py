@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+import pytest
+from hookslib.repo_memory import MemoryTarget
+
 from lib.vault_index.primer import KNOWLEDGE_BASE_INDEX_MAX_CHARS, build_primer
 
 
@@ -57,3 +60,47 @@ def test_build_primer_truncates_large_knowledge_base_index(tmp_path: Path):
 
     assert "[truncated — open the vault note for the full index]" in injected
     assert len(injected) < KNOWLEDGE_BASE_INDEX_MAX_CHARS + 500
+
+
+def test_build_primer_treats_missing_repo_memory_as_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = MemoryTarget(
+        kind="repo",
+        rel_path="repos/acme/project/memory",
+        owner="acme",
+        repo="project",
+        hostname=None,
+        remote_url="git@github.com:acme/project.git",
+    )
+    monkeypatch.setattr("lib.vault_index.primer._resolve_memory_target", lambda _cwd: target)
+
+    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+
+    assert "No MEMORY.md exists yet" in text
+    assert "treat repo memory as empty" in text
+    assert "Do not report its absence as a papercut" in text
+
+
+def test_build_primer_reads_existing_repo_memory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = MemoryTarget(
+        kind="repo",
+        rel_path="repos/acme/project/memory",
+        owner="acme",
+        repo="project",
+        hostname=None,
+        remote_url="git@github.com:acme/project.git",
+    )
+    memory_file = tmp_path / "wiki" / target.rel_path / "MEMORY.md"
+    memory_file.parent.mkdir(parents=True)
+    memory_file.write_text("- durable fact\n")
+    monkeypatch.setattr("lib.vault_index.primer._resolve_memory_target", lambda _cwd: target)
+
+    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+
+    assert f"Read {memory_file} at session start" in text
+    assert "No MEMORY.md exists yet" not in text

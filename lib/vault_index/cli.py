@@ -20,6 +20,7 @@ import platformdirs
 import yaml
 
 from lib.vault_index.models import Hit
+from lib.vault_index.vault_files import read_vault_file, write_vault_file
 
 DEFAULT_VAULT_INDEX_TEMPLATE = """
 # Vault index config — drives memweave retrieval, filtering, and weighting.
@@ -487,6 +488,28 @@ def run_papercut(*, vault: Path, description: str, parser: argparse.ArgumentPars
     return 0
 
 
+def run_vault_file_command(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> int:
+    """Run the lightweight read/write commands without loading the indexer."""
+    try:
+        vault = resolve_vault(args.vault)
+        if args.cmd == "read":
+            sys.stdout.buffer.write(read_vault_file(vault, args.path))
+            return 0
+        target = write_vault_file(
+            vault,
+            args.path,
+            sys.stdin.buffer.read(),
+            replace=args.replace,
+        )
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
+    print(f"Wrote and verified: {target}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="obsidian-knowledge")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -502,6 +525,22 @@ def main() -> int:
         help="Add vault_index template to .claude/obsidian-knowledge.yaml",
     )
     p_init.add_argument("--vault", type=Path, default=None, help="Vault root")
+
+    p_read = sub.add_parser("read", help="Read exact bytes from a vault-relative file")
+    p_read.add_argument("path", type=Path, help="Path relative to the vault root")
+    p_read.add_argument("--vault", type=Path, default=None, help="Vault root")
+
+    p_write = sub.add_parser(
+        "write",
+        help="Atomically write stdin to a vault-relative file and verify final bytes",
+    )
+    p_write.add_argument("path", type=Path, help="Path relative to the vault root")
+    p_write.add_argument("--vault", type=Path, default=None, help="Vault root")
+    p_write.add_argument(
+        "--replace",
+        action="store_true",
+        help="Replace an existing file; new files are create-only by default",
+    )
 
     p_reindex = sub.add_parser("reindex", help="Run a full re-index of the vault")
     p_reindex.add_argument("--vault", type=Path, default=None)
@@ -588,6 +627,8 @@ def main() -> int:
     elif args.cmd == "init-vault-index":
         vault = resolve_vault(args.vault)
         init_vault_index(vault / ".claude" / "obsidian-knowledge.yaml")
+    elif args.cmd in {"read", "write"}:
+        return run_vault_file_command(args, parser)
     elif args.cmd == "reindex":
         from lib.vault_index.config import load_config
         from lib.vault_index.indexer import IndexBusyError, Indexer

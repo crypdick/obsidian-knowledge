@@ -27,8 +27,11 @@ The only code with real domain logic; everything else is an adapter over it.
 - **`indexer.py`** — `Indexer`, the memweave (FTS5 + Ollama/dense) wrapper. Owns
   the per-vault SQLite cache, the Ollama probe/fail-soft, and `index_lock`.
 - **`primer.py`** — `build_primer`, the session-start context string.
+- **`vault_files.py`** — confined, atomic, fsync-backed vault file reads/writes
+  with final byte verification.
 - **`cli.py`** — the `obsidian-knowledge` console entrypoint (argparse): reindex,
-  search, papercut logging, doctor, hook dispatch, vault registry.
+  search, verified file I/O, papercut logging, doctor, hook dispatch, vault
+  registry.
 - **`papercuts.py`** — scoped, append-only, concurrency-safe workflow-friction
   logs; deliberately separate from the retrieval/indexing stack.
 - **`__init__.py`** — activates **beartype** for the whole `lib` package

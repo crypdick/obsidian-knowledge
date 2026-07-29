@@ -49,6 +49,15 @@ def build_primer(
     wiki = vault_root / "wiki"
     target = _resolve_memory_target(cwd or os.getcwd())
     memory_dir = wiki / target.rel_path
+    memory_file = memory_dir / "MEMORY.md"
+    if memory_file.is_file():
+        memory_start = f"Read {memory_file} at session start. "
+    else:
+        memory_start = (
+            f"No MEMORY.md exists yet at {memory_file}; treat repo memory as empty. "
+            "Do not report its absence as a papercut. Create it only when a stable, "
+            "in-scope fact passes the memory criteria below. "
+        )
     kb_index_path = vault_root / KNOWLEDGE_BASE_INDEX_REL
     kb_index = _read_capped(kb_index_path, KNOWLEDGE_BASE_INDEX_MAX_CHARS)
     kb_block = ""
@@ -79,8 +88,8 @@ def build_primer(
         f"- Agent memory for {scope_desc} lives at "
         f"{memory_dir}/. Use the same MEMORY.md + per-fact .md file layout as "
         "Claude's native auto-memory, but stored in the vault so it's portable, "
-        "syncs across hosts, and is searchable. Read MEMORY.md there at session "
-        "start. Write only stable, in-scope facts expected to remain useful after "
+        f"syncs across hosts, and is searchable. {memory_start}"
+        "Write only stable, in-scope facts expected to remain useful after "
         "the current process ends and not already authoritative in code, tracked "
         "docs, or runtime. Never store PIDs, job IDs, transient status, temporary "
         "worktrees, commit/test transcripts, or per-cycle handoffs. Search and "

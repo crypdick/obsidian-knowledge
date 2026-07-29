@@ -51,4 +51,7 @@ Always use obsidian CLI, never raw filesystem `mv`:
 ```bash
 obsidian vault="<vault>" move path="old/path.md" to="new/folder/file.md" silent
 ```
-After each move, grep vault for old filename — verify Obsidian updated all refs. Fix any stale wikilinks found.
+After each move, verify the new path exists and the old path does not under the
+configured filesystem root; CLI success text alone is insufficient. Then grep
+the vault for the old filename to verify Obsidian updated all refs. Fix any stale
+wikilinks found.

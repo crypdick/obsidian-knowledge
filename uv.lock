@@ -970,7 +970,7 @@ wheels = [
 
 [[package]]
 name = "obsidian-knowledge"
-version = "3.22.32"
+version = "3.22.33"
 source = { editable = "." }
 dependencies = [
     { name = "beartype" },

@@ -30,6 +30,7 @@ messages.
 import json
 import os
 import re
+import shlex
 import sys
 from collections.abc import Callable
 from typing import Any
@@ -101,38 +102,175 @@ def protected_dirs_file(tool_name: str, tool_input: dict[str, Any]) -> str | Non
     return None
 
 
+_HEREDOC_RE = re.compile(r"<<(?P<tabs>-)?\s*(?P<quote>['\"]?)(?P<delimiter>[A-Za-z_][A-Za-z0-9_]*)(?P=quote)")
+_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_COMMAND_WRAPPERS = {"command", "exec", "nohup"}
+_PRIVILEGE_WRAPPERS = {"doas", "sudo"}
+_WRAPPER_VALUE_FLAGS = {"-g", "--group", "-h", "--host", "-u", "--user"}
+_REDIRECTIONS = {"<", "<<", "<<<", ">", ">>", "<>", "<&", ">&"}
+
+
+def _without_heredoc_bodies(command: str) -> str:
+    """Remove heredoc payloads, which are data or input to another process."""
+    kept: list[str] = []
+    pending: list[tuple[str, bool]] = []
+    for line in command.splitlines():
+        if pending:
+            delimiter, strip_tabs = pending[0]
+            candidate = line.lstrip("\t") if strip_tabs else line
+            if candidate == delimiter:
+                pending.pop(0)
+            continue
+        kept.append(line)
+        pending.extend(
+            (match.group("delimiter"), match.group("tabs") == "-") for match in _HEREDOC_RE.finditer(line)
+        )
+    # ponytail: heredoc payloads are opaque input; use a shell AST if local
+    # shell-heredoc enforcement becomes necessary.
+    return "\n".join(kept)
+
+
+def _shell_pipelines(command: str) -> list[list[list[str]]]:
+    """Tokenize local shell commands while preserving quoted argument text."""
+    lexer = shlex.shlex(
+        _without_heredoc_bodies(command),
+        posix=True,
+        punctuation_chars="|&;<>\n",
+    )
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return []
+
+    pipelines: list[list[list[str]]] = []
+    pipeline: list[list[str]] = []
+    simple_command: list[str] = []
+
+    def finish_command() -> None:
+        if simple_command:
+            pipeline.append(simple_command.copy())
+            simple_command.clear()
+
+    def finish_pipeline() -> None:
+        finish_command()
+        if pipeline:
+            pipelines.append(pipeline.copy())
+            pipeline.clear()
+
+    for token in tokens:
+        if token == "|":
+            finish_command()
+        elif token in {"&", "&&", "||", ";", "\n"}:
+            finish_pipeline()
+        else:
+            simple_command.append(token)
+    finish_pipeline()
+    return pipelines
+
+
+def _command_parts(tokens: list[str]) -> tuple[str, list[str]]:
+    """Return the executable basename and args for one simple command."""
+    index = 0
+    while index < len(tokens) and _ASSIGNMENT_RE.match(tokens[index]):
+        index += 1
+
+    while index < len(tokens):
+        executable = os.path.basename(tokens[index])
+        if executable == "env":
+            index += 1
+            while index < len(tokens) and (
+                tokens[index].startswith("-") or _ASSIGNMENT_RE.match(tokens[index])
+            ):
+                index += 1
+            continue
+        if executable in _COMMAND_WRAPPERS:
+            index += 1
+            while index < len(tokens) and tokens[index].startswith("-"):
+                index += 1
+            continue
+        if executable in _PRIVILEGE_WRAPPERS:
+            index += 1
+            while index < len(tokens) and tokens[index].startswith("-"):
+                flag = tokens[index]
+                index += 1
+                if flag in _WRAPPER_VALUE_FLAGS and index < len(tokens):
+                    index += 1
+            continue
+        return executable, tokens[index + 1 :]
+    return "", []
+
+
+def _flags_and_paths(args: list[str]) -> tuple[list[str], list[str]]:
+    """Separate flags from positional paths, excluding redirection targets."""
+    flags: list[str] = []
+    paths: list[str] = []
+    end_options = False
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token in _REDIRECTIONS:
+            index += 2
+            continue
+        if token == "--":
+            end_options = True
+        elif not end_options and token.startswith("-"):
+            flags.append(token)
+        else:
+            paths.append(token)
+        index += 1
+    return flags, paths
+
+
+def _obsidian_knowledge_write_target(executable: str, args: list[str]) -> str | None:
+    """Resolve an `obsidian-knowledge write` path for existing Bash guards."""
+    if executable != "obsidian-knowledge" or not args or args[0] != "write":
+        return None
+
+    relative_path: str | None = None
+    explicit_vault: str | None = None
+    index = 1
+    while index < len(args):
+        token = args[index]
+        if token == "--vault" and index + 1 < len(args):
+            explicit_vault = args[index + 1]
+            index += 2
+            continue
+        if token.startswith("--vault="):
+            explicit_vault = token.split("=", 1)[1]
+        elif not token.startswith("-") and relative_path is None:
+            relative_path = token
+        index += 1
+    if relative_path is None:
+        return None
+
+    vault = explicit_vault or find_containing_vault(os.getcwd(), VAULT_ROOTS)
+    if vault is None and VAULT_ROOTS:
+        vault = VAULT_ROOTS[0]
+    return os.path.join(vault, relative_path) if vault else None
+
+
 def _bash_write_targets(command: str) -> list[str]:
-    """Return paths targeted by destructive operations in a bash command.
-
-    Walks each write operation (redirect, rm/mv/etc., sed -i) and collects
-    the actual *target* paths. Avoids the old "any write pattern + zone
-    name anywhere in command" trap that false-positived on benign cases
-    like `ls _sources/ 2>/dev/null && rm /tmp/x` (rm targets /tmp, not
-    _sources, but both tokens were present).
-    """
+    """Return paths targeted by actual local write commands."""
     targets: list[str] = []
+    destructive = {"chmod", "chown", "mv", "rm", "rmdir", "shred", "truncate", "unlink"}
+    for pipeline in _shell_pipelines(command):
+        for tokens in pipeline:
+            for index, token in enumerate(tokens[:-1]):
+                if token in {">", ">>"} and tokens[index + 1] != "/dev/null":
+                    targets.append(tokens[index + 1])
 
-    # Stdout/stderr redirects: > target, >> target. Skip /dev/null.
-    # Lookbehind avoids matching `<<` heredocs and `2>&1`.
-    for m in re.finditer(r"(?<![<>&])>>?\s*(\S+)", command):
-        target = m.group(1)
-        if target != "/dev/null":
-            targets.append(target)
-
-    # Destructive commands: collect non-flag args until next |;& or EOL.
-    destructive_cmd = r"\b(?:rm|mv|rmdir|unlink|truncate|shred|chmod|chown)\b"
-    for m in re.finditer(rf"{destructive_cmd}([^|;&]*)", command):
-        for tok in m.group(1).split():
-            if not tok.startswith("-"):
-                targets.append(tok)
-
-    # sed -i (in-place edit): file args after -i.
-    for m in re.finditer(r"\bsed\b[^|;&]*\s-i\b([^|;&]*)", command):
-        for tok in m.group(1).split():
-            if tok.startswith(("-", "'", '"')):
-                continue
-            targets.append(tok)
-
+            executable, args = _command_parts(tokens)
+            flags, paths = _flags_and_paths(args)
+            cli_target = _obsidian_knowledge_write_target(executable, args)
+            if cli_target is not None:
+                targets.append(cli_target)
+            elif executable in destructive:
+                targets.extend(paths)
+            elif executable == "sed" and any("i" in flag.lstrip("-") for flag in flags):
+                targets.extend(paths[1:])
     return targets
 
 
@@ -155,15 +293,16 @@ def protected_dirs_bash(tool_name: str, tool_input: dict[str, Any]) -> str | Non
     # alone misses this because `foo` doesn't contain `_sources`. Since
     # _sources/ holds irreplaceable originals, defense-in-depth is worth
     # the occasional friction.
-    has_destructive = bool(
-        re.search(
-            r"\b(?:rm|mv|rmdir|unlink|truncate|shred|chmod|chown|sed\s+-i)\b",
-            command,
-        )
+    commands = [_command_parts(tokens) for pipeline in _shell_pipelines(command) for tokens in pipeline]
+    destructive = {"chmod", "chown", "mv", "rm", "rmdir", "shred", "truncate", "unlink"}
+    has_destructive = any(
+        executable in destructive
+        or (executable == "sed" and any("i" in flag.lstrip("-") for flag in args if flag.startswith("-")))
+        for executable, args in commands
     )
     if has_destructive:
-        for m in re.finditer(r"\bcd\s+(\S+)", command):
-            if path_hits_protected_dir(m.group(1)):
+        for executable, args in commands:
+            if executable == "cd" and args and path_hits_protected_dir(args[0]):
                 dirs = ", ".join(PROTECTED_DIRS)
                 return deny(
                     "protected-dir-bash",
@@ -209,133 +348,132 @@ def block_published_file_edits(tool_name: str, tool_input: dict[str, Any]) -> st
     )
 
 
-def _find_path_args(segment: str) -> list[str]:
-    """Return the leading PATH args of a `find PATH... [predicates...]` call."""
-    m = re.search(r"\bfind\b\s+(.*)", segment)
-    if not m:
-        return []
-    paths: list[str] = []
-    for tok in m.group(1).split():
-        if tok.startswith(("-", "(", ")", "!")):
-            break
-        paths.append(tok)
-    return paths
-
-
-def _rsync_dest(segment: str) -> str | None:
-    """Return the last positional arg (= destination) of an `rsync ...` call."""
-    m = re.search(r"\brsync\b\s+(.*)", segment)
-    if not m:
-        return None
-    positional = [a for a in m.group(1).split() if not a.startswith("-")]
-    return positional[-1] if positional else None
-
-
-def _shred_path_args(segment: str) -> list[str]:
-    """Return positional path args of `shred ...`."""
-    m = re.search(r"\bshred\b\s+(.*)", segment)
-    if not m:
-        return []
-    return [a for a in m.group(1).split() if not a.startswith("-")]
-
-
-def strip_quoted(s: str) -> str:
-    """Remove double-quoted string content to avoid false positives.
-
-    Prevents 'mv' or 'rm' inside commit messages, grep patterns, etc.
-    from triggering the check.  Paths actually quoted with spaces
-    (mv "vault dir/file" dest) still fire on the unquoted destination.
-    """
-    return re.sub(r'"[^"]*"', '""', s)
-
-
-def _check_rm_mv(seg: str, target_in_vault: Callable[[str], bool]) -> str | None:
+def _check_rm_mv(
+    executable: str,
+    args: list[str],
+    target_in_vault: Callable[[str], bool],
+) -> str | None:
     """Block recursive `rm` or any `mv` whose target is a vault path."""
-    for m in re.finditer(r"\b(rm|mv)\b([^|;&]*)", seg):
-        cmd = m.group(1)
-        tokens = m.group(2).split()
-        flags = [t for t in tokens if t.startswith("-")]
-        paths = [t for t in tokens if not t.startswith("-")]
-
-        if cmd == "rm":
-            if not any(re.search(r"[rR]", f) for f in flags):
-                continue
-            for p in paths:
-                if target_in_vault(p):
-                    return deny(
-                        "destructive-rm",
-                        "Recursive rm on a path that appears to be in an Obsidian vault.",
-                    )
-
-        if cmd == "mv":
-            for p in paths:
-                if target_in_vault(p):
-                    return deny(
-                        "destructive-mv",
-                        "mv on a path that appears to be in an Obsidian vault. "
-                        "Use the Obsidian CLI for moves to preserve internal links.",
-                    )
-    return None
-
-
-def _check_find_delete(seg: str, target_in_vault: Callable[[str], bool]) -> str | None:
-    """Block `find -delete` / `find -exec rm` whose path arg is a vault path."""
-    if re.search(r"\bfind\b", seg) and (re.search(r"-delete\b", seg) or re.search(r"-exec\s+rm\b", seg)):
-        label = "find -delete" if re.search(r"-delete\b", seg) else "find -exec rm"
-        for p in _find_path_args(seg):
-            if target_in_vault(p):
-                return deny(
-                    "destructive-find",
-                    f"{label} on a path that appears to be in an Obsidian vault.",
-                )
-    return None
-
-
-def _check_rsync_delete(seg: str, target_in_vault: Callable[[str], bool]) -> str | None:
-    """Block `rsync --delete` whose destination is a vault path."""
-    if re.search(r"\brsync\b", seg) and re.search(r"--delete\b", seg):
-        dest = _rsync_dest(seg)
-        if dest and target_in_vault(dest):
+    if executable not in {"rm", "mv"}:
+        return None
+    flags, paths = _flags_and_paths(args)
+    if executable == "rm":
+        if not any(flag == "--recursive" or re.search(r"[rR]", flag.lstrip("-")) for flag in flags):
+            return None
+        if any(target_in_vault(path) for path in paths):
             return deny(
-                "destructive-rsync-delete",
-                "rsync --delete with a destination in an Obsidian vault.",
+                "destructive-rm",
+                "Recursive rm on a path that appears to be in an Obsidian vault.",
             )
+    elif any(target_in_vault(path) for path in paths):
+        return deny(
+            "destructive-mv",
+            "mv on a path that appears to be in an Obsidian vault. "
+            "Use the Obsidian CLI for moves to preserve internal links.",
+        )
     return None
 
 
-def _check_shred(seg: str, target_in_vault: Callable[[str], bool]) -> str | None:
+def _check_find_delete(
+    executable: str,
+    args: list[str],
+    target_in_vault: Callable[[str], bool],
+) -> str | None:
+    """Block `find -delete` / `find -exec rm` whose path arg is a vault path."""
+    if executable != "find":
+        return None
+    has_delete = "-delete" in args
+    has_exec_rm = any(
+        token == "-exec" and index + 1 < len(args) and os.path.basename(args[index + 1]) == "rm"
+        for index, token in enumerate(args)
+    )
+    if not (has_delete or has_exec_rm):
+        return None
+    paths: list[str] = []
+    for token in args:
+        if token.startswith(("-", "(", ")", "!")):
+            break
+        paths.append(token)
+    if any(target_in_vault(path) for path in (paths or ["."])):
+        label = "find -delete" if has_delete else "find -exec rm"
+        return deny(
+            "destructive-find",
+            f"{label} on a path that appears to be in an Obsidian vault.",
+        )
+    return None
+
+
+def _check_rsync_delete(
+    executable: str,
+    args: list[str],
+    target_in_vault: Callable[[str], bool],
+) -> str | None:
+    """Block `rsync --delete` whose destination is a vault path."""
+    if executable != "rsync" or not any(flag.startswith("--delete") for flag in args):
+        return None
+    _flags, paths = _flags_and_paths(args)
+    if paths and target_in_vault(paths[-1]):
+        return deny(
+            "destructive-rsync-delete",
+            "rsync --delete with a destination in an Obsidian vault.",
+        )
+    return None
+
+
+def _check_shred(
+    executable: str,
+    args: list[str],
+    target_in_vault: Callable[[str], bool],
+) -> str | None:
     """Block `shred` whose path arg is a vault path."""
-    if re.search(r"\bshred\b", seg):
-        for p in _shred_path_args(seg):
-            if target_in_vault(p):
-                return deny(
-                    "destructive-shred",
-                    "shred on a path that appears to be in an Obsidian vault.",
-                )
+    if executable != "shred":
+        return None
+    _flags, paths = _flags_and_paths(args)
+    if any(target_in_vault(path) for path in paths):
+        return deny(
+            "destructive-shred",
+            "shred on a path that appears to be in an Obsidian vault.",
+        )
     return None
 
 
-def _check_xargs_rm(segments: list[str], cwd_in_vault: bool) -> str | None:
+def _xargs_executable(args: list[str]) -> str:
+    """Return the executable selected by xargs, excluding its own options."""
+    options_with_values = {"-E", "-I", "-L", "-P", "-S", "-a", "-d", "-n", "-s"}
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--":
+            index += 1
+            break
+        if not token.startswith("-"):
+            break
+        index += 2 if token in options_with_values else 1
+    return os.path.basename(args[index]) if index < len(args) else ""
+
+
+def _check_xargs_rm(pipeline: list[list[str]], cwd_in_vault: bool) -> str | None:
     """Block `xargs rm` fed by a pipeline rooted in / referencing a vault.
 
     rm gets its targets from stdin, so check upstream pipe segments
     (and cwd) for vault-path references.
     """
-    for i, seg in enumerate(segments):
-        if not (re.search(r"\bxargs\b", seg) and re.search(r"\brm\b", seg)):
+    for index, tokens in enumerate(pipeline):
+        executable, args = _command_parts(tokens)
+        if executable != "xargs" or _xargs_executable(args) != "rm":
             continue
         if cwd_in_vault:
             return deny(
                 "destructive-xargs-rm",
                 "xargs rm in a pipeline rooted in an Obsidian vault (cwd).",
             )
-        upstream_tokens = " ".join(segments[:i]).split()
-        for tok in upstream_tokens:
-            if tok.startswith(("/", "~")) and is_in_vault(tok, VAULT_ROOTS):
-                return deny(
-                    "destructive-xargs-rm",
-                    "xargs rm in a pipeline that references an Obsidian vault path.",
-                )
+        for upstream in pipeline[:index]:
+            for token in upstream:
+                if token.startswith(("/", "~")) and is_in_vault(token, VAULT_ROOTS):
+                    return deny(
+                        "destructive-xargs-rm",
+                        "xargs rm in a pipeline that references an Obsidian vault path.",
+                    )
     return None
 
 
@@ -370,25 +508,18 @@ def destructive_vault_ops(tool_name: str, tool_input: dict[str, Any]) -> str | N
             return False
         return cwd_in_vault
 
-    # Per-segment checks, in order; first match wins.
+    # Per-command checks, in order; first match wins.
     segment_checks = (_check_rm_mv, _check_find_delete, _check_rsync_delete, _check_shred)
 
-    # Split into statements (`;`, `&&`, `||`), then pipeline segments (`|`).
-    statements = re.split(r"&&|\|\||;", command)
-    for stmt in statements:
-        segments = stmt.split("|")
-
-        for seg in segments:
-            # Strip quoted-string content so 'mv' inside -m "..." args or grep
-            # patterns doesn't trigger the destructive-op check.
-            seg = strip_quoted(seg)
+    for pipeline in _shell_pipelines(command):
+        for tokens in pipeline:
+            executable, args = _command_parts(tokens)
             for check in segment_checks:
-                reason = check(seg, target_in_vault)
+                reason = check(executable, args, target_in_vault)
                 if reason is not None:
                     return reason
 
-        # xargs rm: cross-segment scan within the statement (uses raw segments).
-        reason = _check_xargs_rm(segments, cwd_in_vault)
+        reason = _check_xargs_rm(pipeline, cwd_in_vault)
         if reason is not None:
             return reason
 

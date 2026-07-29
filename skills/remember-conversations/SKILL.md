@@ -6,7 +6,7 @@ description: >-
   repeated work and is not already recoverable elsewhere, or when the user
   explicitly asks to preserve it. Triggered by the Stop-hook decision gate or
   requests such as "file this", "save this conversation", and "remember this".
-version: 0.10.1
+version: 0.11.0
 ---
 
 # Remember Conversations
@@ -188,6 +188,16 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
 
 ## Procedure
 
+All note, index, and changelog content writes use `obsidian-knowledge write`
+with a quoted heredoc. The command resolves the configured filesystem root,
+confines the vault-relative path, refuses empty content and accidental
+overwrites, writes atomically, fsyncs, and verifies the final bytes. Treat only
+`Wrote and verified:` as success. For a new file, omit `--replace`; for an
+intentional full-file update, read it first and pass `--replace`.
+
+Write the durable note first, then its index, then the conditional changelog.
+Never create an index link before the note write verifies.
+
 ### For learning pages
 
 1. **Identify concept** — what durable delta did this Q&A add? Pick the single
@@ -200,26 +210,28 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
 
 3. **Search for existing page** — within chosen subtree, look for page already covering concept. Check by concept name (`find <subtree> -iname '*concept*'`) + via search from step 2. Found → step 5 (append). Not found → step 4 (create).
 
-4. **Create new page** via Obsidian CLI. `vault=` is a global option and must
-   precede the subcommand; when placed after `create`, Obsidian silently ignores
-   it and may write to the most recently focused vault. Confirm the selected
-   root first, create the empty file, then write rich Markdown with a structured
-   file-editing tool so shell quoting cannot execute backticks:
+4. **Create new page** — render the complete Markdown and write it directly to
+   the configured vault. The path is relative to the vault root:
    ```bash
-   obsidian vault="<vault-name>" vault info=path
-   obsidian vault="<vault-name>" create path="<subtree>/<concept>.md"
+   obsidian-knowledge write "wiki/<subtree>/<concept>.md" <<'ENDNOTE'
+   # Descriptive title
+
+   Complete durable note with literal `identifiers` and [[wikilinks]].
+   ENDNOTE
    ```
-   Verify the file exists under the reported root before writing. Initial content:
-   one-paragraph definition plus the durable delta organized as wiki prose, not
-   transcript. Add page to subtree's `index.md`. New subtree → also link from
-   parent `index.md`.
+   Initial content is a one-paragraph definition plus the durable delta
+   organized as wiki prose, not transcript. Continue only after the command
+   reports `Wrote and verified:`.
 
-5. **Append to existing page** — read current content. Integrate the durable
-   delta into wiki narrative; do not paste a transcript. Add a heading only when
-   the concept genuinely needs one. Preserve a verbatim user question only when
-   its framing is load-bearing.
+5. **Update an existing page** — read it with `obsidian-knowledge read`, integrate
+   the durable delta into the complete wiki narrative, then write the full result
+   with `obsidian-knowledge write "<path>" --replace`. Do not paste a transcript.
+   Add a heading only when the concept genuinely needs one. Preserve a verbatim
+   user question only when its framing is load-bearing.
 
-6. **Cross-link** — add `[[wikilinks]]` to related concept pages encountered. Search results from step 2 good candidates.
+6. **Index and cross-link** — only after the note verifies, update the subtree's
+   `index.md` with the same read/full-replace workflow. A new subtree also needs
+   a parent-index link. Add `[[wikilinks]]` to related concept pages encountered.
 
 ### For convo / diary notes
 
@@ -235,19 +247,19 @@ Follow vault's CLAUDE.md for any vault-specific overrides.
    ```
    (Use `# Diary` for diary folders.)
 
-4. **Write note** — create the empty file via Obsidian CLI so Obsidian's file
-   index stays in sync, then write content with a structured file-editing tool.
-   `vault=` is global and must precede `create`; verify the selected root and the
-   created file before continuing:
+4. **Write note** — render and write the complete note directly:
    ```bash
-   obsidian vault="<vault-name>" vault info=path
-   obsidian vault="<vault-name>" create path="{subtree}/convos/YYYY-MM-DD-slug.md"
-   ```
-   Always specify the vault name when more than one vault is registered. Do not
-   put rich Markdown in a shell `content=` argument; backticks inside the content
-   can be executed by the shell before Obsidian receives it.
+   obsidian-knowledge write "wiki/{subtree}/convos/YYYY-MM-DD-slug.md" <<'ENDNOTE'
+   # Descriptive title
 
-5. **Update subfolder's `index.md`** — add entry for new note.
+   Complete hermetic session note.
+   ENDNOTE
+   ```
+   Use `diary/` instead of `convos/` for diary notes. Continue only after
+   `Wrote and verified:`.
+
+5. **Update subfolder's `index.md`** — note first, then read and fully replace
+   the index with an entry for the verified note.
 
 6. **Update parent `index.md`** — `convos/` or `diary/` subfolder new → add to parent folder index:
    ```markdown
