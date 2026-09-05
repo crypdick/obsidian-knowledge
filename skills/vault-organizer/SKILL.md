@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.4.8
+version: 1.4.9
 ---
 
 # Vault Organizer
@@ -35,11 +35,17 @@ Treat Syncthing `.sync-conflict-YYYYMMDD-HHMMSS-DEVICEID` files as non-live arti
 
 ### Step 0: Locate vault + verify Obsidian running
 
+Set `VAULT` to the configured filesystem root and `VAULT_NAME` to its registered
+Obsidian name. Set `VAULT_ORGANIZER_DIR` to the directory containing this loaded
+`SKILL.md`, using the skill path supplied by the runtime. Scripts and `lib/` live
+beside it in both source and installed copies. Do not infer that directory from
+the working directory or search for an arbitrary installed copy.
+
 ```bash
 cat ~/.config/obsidian-knowledge/vaults.yaml   # get VAULT path
 cat "$VAULT/CLAUDE.md"                          # naming conventions
 cat "$VAULT/.claude/obsidian-knowledge.yaml"    # zone config
-obsidian version                                # verify running; launch if not
+obsidian vault="${VAULT_NAME:?set the registered vault name}" version
 ```
 
 ### Step 1: Read state
@@ -49,11 +55,12 @@ Read `$VAULT/Utility/obsidian-knowledge/needs-attention.md` — note known issue
 ### Step 2: Run structural audit
 
 ```bash
-SCRIPTS="${HERMES_VAULT_ORGANIZER_SCRIPTS:-$HOME/.hermes/skills/note-taking/vault-organizer}"
+SCRIPTS="${HERMES_VAULT_ORGANIZER_SCRIPTS:-${VAULT_ORGANIZER_DIR:?set the loaded skill directory}}"
 if [ ! -f "$SCRIPTS/vault-audit.py" ]; then
-  SCRIPTS=$(dirname $(find ~/.claude/plugins ~/.hermes/skills -name "vault-audit.py" 2>/dev/null | head -1))
+  printf 'Missing vault-audit.py in %s; check the loaded skill path or explicit override.\n' "$SCRIPTS" >&2
+  exit 1
 fi
-python3 "$SCRIPTS/vault-audit.py" "$VAULT"
+uv run --no-project --with pyyaml python "$SCRIPTS/vault-audit.py" "$VAULT"
 ```
 
 Output header tells you which lib/ file to read for each issue type. Fix every line.
@@ -69,7 +76,7 @@ Output header tells you which lib/ file to read for each issue type. Fix every l
 **`STACKED_FRONTMATTER <file>`** — auto-fix stray duplicate `---` markers:
 
 ```bash
-python3 "$SCRIPTS/fix-stacked-frontmatter.py" --fix <file1> <file2> ...
+uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" --fix <file1> <file2> ...
 ```
 
 Files reported as `NEEDS_MERGE` (real second block with keys) require manual merge — read `lib/stacked-frontmatter.md`.
@@ -79,9 +86,9 @@ After structural fixes, rename ambiguous non-markdown files. Read `lib/rename-fi
 ### Step 4: Detect + fix broken links
 
 ```bash
-obsidian unresolved verbose format=json | python3 "$SCRIPTS/filter-unresolved-links.py" "$VAULT"
-obsidian unresolved verbose format=json | python3 "$SCRIPTS/recover-unresolved-links.py" "$VAULT" > /tmp/vault-unresolved-recovery.tsv
-obsidian orphans
+obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run --no-project --with pyyaml python "$SCRIPTS/filter-unresolved-links.py" "$VAULT"
+obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run --no-project --with pyyaml python "$SCRIPTS/recover-unresolved-links.py" "$VAULT" > /tmp/vault-unresolved-recovery.tsv
+obsidian vault="$VAULT_NAME" orphans
 ```
 
 Read `lib/broken-links.md` for triage rules on the surviving candidates. Use `recover-unresolved-links.py --apply` only after reviewing its report; it is designed to rewrite only unique exact/high-confidence filename recoveries and leave ambiguous/concept-stub cases untouched. Walk the full list — the filter/recovery scripts reduce risk and queue deterministic candidates, but the surviving remainder is still the work, not noise. Do not collapse the tail into a "mostly stubs, skip" bucket without checking each.
@@ -91,7 +98,7 @@ Read `lib/broken-links.md` for triage rules on the surviving candidates. Use `re
 Vault-wide check for the same patterns enforced at write-time by `enforce-conventions.py` and surfaced at session-start by `doctor.py`. Catches accumulated pre-existing violations the hooks couldn't have seen.
 
 ```bash
-python3 "$SCRIPTS/convention-sweep.py" "$VAULT"
+uv run --no-project --with pyyaml python "$SCRIPTS/convention-sweep.py" "$VAULT"
 ```
 
 Output (tab-separated, one issue per line):
@@ -109,7 +116,7 @@ For each issue: rename file (UNDATED_FILE) via `obsidian rename`, fix link (WIKI
 Rewrite `$VAULT/Utility/obsidian-knowledge/reports/open-questions.md` from scratch:
 
 ```bash
-python3 "$SCRIPTS/find-open-questions.py" "$VAULT"
+uv run --no-project --with pyyaml python "$SCRIPTS/find-open-questions.py" "$VAULT"
 ```
 
 Output is `<rel_path>\t<line>\t<question_text>` per hit. Code-block examples

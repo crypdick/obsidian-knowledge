@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-knowledge"
-version = "3.22.33"
+version = "3.22.34"
 description = "Obsidian vault knowledge integration for Claude Code and Hermes Agent CLI"
 requires-python = ">=3.12,<3.14"
 dependencies = [
