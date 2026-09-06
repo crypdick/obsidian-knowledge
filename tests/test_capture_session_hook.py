@@ -140,7 +140,7 @@ def test_stop_hook_continuation_is_silent(tmp_path, subprocess_vault):
     assert _run(CAPTURE_HOOK, _payload(tmp_path, active=True), cwd=vault, env=env) == {}
 
 
-def test_missing_transcript_uses_time_cooldown(tmp_path, subprocess_vault):
+def test_missing_transcript_claims_once_per_session(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
     payload = {"session_id": f"capture-no-transcript-{uuid.uuid4()}"}
 
@@ -159,3 +159,48 @@ def test_missing_transcript_legacy_aliases_claim_atomically(tmp_path, subprocess
         outputs = list(executor.map(lambda hook: _run(hook, payload, cwd=vault, env=env), LEGACY_HOOKS))
 
     assert sum(output.get("decision") == "block" for output in outputs) == 1
+
+
+def test_codex_hook_and_goal_continuations_do_not_rearm_capture(tmp_path, subprocess_vault):
+    vault, env = subprocess_vault
+    payload = _payload(tmp_path)
+    transcript = Path(payload["transcript_path"])
+
+    def append_user(text):
+        with transcript.open("a") as handle:
+            handle.write(
+                json.dumps({
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": text}],
+                    },
+                })
+                + "\n"
+            )
+
+    transcript.write_text("")
+    append_user("Please review the code")
+    assert _run(CAPTURE_HOOK, payload, cwd=vault, env=env)["decision"] == "block"
+    append_user('<hook_prompt hook_run_id="stop:1">Capture once</hook_prompt>')
+    append_user('<codex_internal_context source="goal">Continue</codex_internal_context>')
+    assert _run(CAPTURE_HOOK, payload, cwd=vault, env=env) == {}
+    append_user("Here is a new decision to remember")
+    assert _run(CAPTURE_HOOK, payload, cwd=vault, env=env)["decision"] == "block"
+
+
+def test_capture_without_transcript_does_not_rearm_when_time_passes(monkeypatch):
+    from hookslib.stop_hook import capture_debounce
+
+    payload = {"session_id": f"no-transcript-{uuid.uuid4()}"}
+    monkeypatch.setattr("hookslib.stop_hook.time.time", lambda: 1000)
+    assert capture_debounce(payload) is False
+    monkeypatch.setattr("hookslib.stop_hook.time.time", lambda: 5000)
+    assert capture_debounce(payload) is True
+
+
+def test_capture_without_session_identity_is_silent():
+    from hookslib.stop_hook import capture_debounce
+
+    assert capture_debounce({}) is True

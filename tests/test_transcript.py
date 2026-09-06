@@ -91,3 +91,30 @@ def test_count_user_messages_counts_only_genuine(tmp_path):
         + "\n"
     )
     assert count_user_messages(str(f)) == 2
+
+
+def test_codex_user_records_exclude_injected_context_and_duplicate_events(tmp_path):
+    path = tmp_path / "codex.jsonl"
+    messages = [
+        "Please help",
+        "<hook_prompt>stop</hook_prompt>",
+        '<codex_internal_context source="goal">continue</codex_internal_context>',
+        "# AGENTS.md instructions for /repo\nInstructions",
+        "<environment_context>cwd</environment_context>",
+        "Thanks, keep this decision",
+    ]
+    records = [
+        {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": text}],
+            },
+        }
+        for text in messages
+    ]
+    records.append({"type": "event_msg", "payload": {"type": "user_message", "message": "Please help"}})
+    records.extend([None, [], {"type": "response_item", "payload": None}])
+    path.write_text("\n".join(json.dumps(record) for record in records))
+    assert count_user_messages(str(path)) == 2

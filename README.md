@@ -94,9 +94,16 @@ for memory location, read/write conventions, and session-start recall.
 
 ### Stop hooks
 
-Stop hooks fire at the end of each Claude Code turn. Each checks whether the
-working directory is inside a configured vault root and uses a per-session
-cooldown to avoid repeated blocks.
+Capture hooks support Claude and Codex transcripts and emit at most once per human
+turn. Hook prompts, goal continuations, and injected environment instructions do not
+rearm capture; elapsed time alone never does. Without a readable transcript, capture
+emits at most once per session; without session identity it stays silent. Capture can
+run outside the vault when exactly one vault is configured. Other maintenance hooks
+retain their own vault and cooldown gates.
+
+The capture reminder also asks agents to repair verified stale instructions already
+encountered, under the instruction-repair rules in the obsidian-knowledge skill. It
+does not request a new audit or authorize policy changes.
 
 - **capture-session.py** — makes one selective capture decision. The default is
   to file nothing; qualifying information must be durable, novel, reusable,
