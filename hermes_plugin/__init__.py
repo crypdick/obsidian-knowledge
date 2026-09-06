@@ -35,7 +35,6 @@ _VAULT_SEARCH_TIMEOUT_SECONDS = 60.0
 _VAULT_PREFETCH_TIMEOUT_SECONDS = 8.0
 _VAULT_PRIMER_TIMEOUT_SECONDS = 5.0
 _VAULT_SYNC_TIMEOUT_SECONDS = 45.0
-_SYNC_FINGERPRINT_FILENAME = "last-sync-fingerprint.txt"
 
 # Path to the installed plugin root. OBSIDIAN_KNOWLEDGE_ROOT is a dev override
 # for working directly from a source checkout.
@@ -162,56 +161,17 @@ def _skip_automatic_vault_search(query: str) -> bool:
 
 
 def _run_vault_sync(vault_root: str, plugin_root: str, python_cmd: list[str]) -> None:
-    """Run an incremental vault sync, skipping when the indexed file set is unchanged."""
+    """Run the canonical incremental sync in the dependency environment."""
     script = (
-        "import hashlib, os, re, sys\n"
+        "import os, sys\n"
         f"sys.path.insert(0, {plugin_root!r})\n"
         "from pathlib import Path\n"
-        "from platformdirs import user_cache_dir\n"
         "from lib.vault_index.config import load_config\n"
-        "from lib.vault_index.filters import path_passes\n"
+        "from lib.vault_index.indexer import Indexer, default_cache_dir\n"
         f"vault = Path({vault_root!r})\n"
-        "cfg_path = vault / '.claude' / 'obsidian-knowledge.yaml'\n"
-        "cfg = load_config(cfg_path)\n"
-        "cache_root = os.environ.get('OBSIDIAN_KNOWLEDGE_CACHE_ROOT')\n"
-        "cache_base = Path(cache_root).expanduser() / 'obsidian-knowledge' if cache_root else Path(user_cache_dir('obsidian-knowledge'))\n"
-        "vault_resolved = vault.resolve()\n"
-        "vault_key = hashlib.sha256(str(vault_resolved).encode()).hexdigest()[:8]\n"
-        "safe_name = re.sub(r'[^a-zA-Z0-9._-]', '-', vault_resolved.name) or 'vault'\n"
-        "cache = cache_base / f'{safe_name}-{vault_key}'\n"
-        "fingerprint = hashlib.sha256()\n"
-        "allowed = []\n"
-        "for candidate in vault.rglob('*.md'):\n"
-        "    rel = str(candidate.relative_to(vault))\n"
-        "    if path_passes(rel, cfg.index):\n"
-        "        allowed.append(candidate)\n"
-        "for candidate in [cfg_path, *allowed]:\n"
-        "    try:\n"
-        "        st = candidate.stat()\n"
-        "    except OSError:\n"
-        "        continue\n"
-        "    rel = str(candidate.relative_to(vault)) if candidate.is_relative_to(vault) else str(candidate)\n"
-        "    fingerprint.update(rel.encode())\n"
-        "    fingerprint.update(b'\\0')\n"
-        "    fingerprint.update(str(st.st_mtime_ns).encode())\n"
-        "    fingerprint.update(b'\\0')\n"
-        "    fingerprint.update(str(st.st_size).encode())\n"
-        "    fingerprint.update(b'\\n')\n"
-        "digest = fingerprint.hexdigest()\n"
-        f"marker = cache / {_SYNC_FINGERPRINT_FILENAME!r}\n"
-        "try:\n"
-        "    if marker.read_text().strip() == digest:\n"
-        "        os._exit(0)\n"
-        "except OSError:\n"
-        "    pass\n"
-        "from lib.vault_index.indexer import Indexer\n"
-        "idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)\n"
+        "cfg = load_config(vault / '.claude' / 'obsidian-knowledge.yaml')\n"
+        "idx = Indexer(vault, default_cache_dir(vault), cfg)\n"
         "idx.sync()\n"
-        "idx.row_count()\n"
-        "try:\n"
-        "    marker.write_text(digest)\n"
-        "except OSError:\n"
-        "    pass\n"
         "os._exit(0)\n"  # bypass asyncio daemon thread cleanup hang
     )
     subprocess.run(
@@ -310,21 +270,6 @@ def _can_run_stop_hooks() -> bool:
     return bool(cwd and Path(cwd).expanduser().is_dir())
 
 
-def _with_workdir(workdir: str | None):
-    """Temporarily switch cwd for rules that interpret relative paths."""
-
-    class _Workdir:
-        def __enter__(self) -> None:
-            self.old_cwd = os.getcwd()
-            if workdir:
-                os.chdir(os.path.expanduser(workdir))
-
-        def __exit__(self, *_exc: object) -> None:
-            os.chdir(self.old_cwd)
-
-    return _Workdir()
-
-
 def _extract_patch_files(patch_text: str) -> list[tuple[str, str, str]]:
     """Return (operation, path, added_text) tuples from Hermes V4A patch text."""
     files: list[tuple[str, str, str]] = []
@@ -377,17 +322,12 @@ def _run_protect_rules(tool_name: str, tool_input: dict[str, Any], workdir: str 
         # protect_vault is a dynamically loaded module; mypy types it as
         # ModuleType and rejects attribute assignment even though VAULT_ROOTS
         # is a real module-level global we intentionally override here.
-        cast(Any, protect_vault).VAULT_ROOTS = [os.path.abspath(os.path.expanduser(vault_root))]
+        cast(Any, protect_vault).VAULT_ROOTS = [str(Path(vault_root).expanduser().resolve())]
 
-    if tool_name == "Bash" and protect_vault.ESCAPE_HATCH in tool_input.get("command", ""):
-        return None
-
-    with _with_workdir(workdir):
-        for rule in protect_vault.RULES:
-            reason: str | None = rule(tool_name, tool_input)
-            if reason:
-                return reason
-    return None
+    reason: str | None = protect_vault.check_tool_call(
+        tool_name, tool_input, workdir=workdir or os.environ.get("TERMINAL_CWD")
+    )
+    return reason
 
 
 def _hermes_tool_as_protect_inputs(
@@ -954,6 +894,8 @@ class ObsidianKnowledgeProvider(MemoryProvider):  # type: ignore[misc]  # Memory
             except Exception as exc:
                 import logging
 
+                with _REMINDER_LOCK:
+                    _SYNC_DIRTY_SESSIONS.add(key)
                 logging.getLogger(__name__).warning("sync_turn failed: %s", exc)
             finally:
                 with _REMINDER_LOCK:

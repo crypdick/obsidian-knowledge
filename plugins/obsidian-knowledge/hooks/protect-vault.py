@@ -33,6 +33,7 @@ import re
 import shlex
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 # Shared with Stop hooks via lib/vault_config.py; per-vault policy via
@@ -79,7 +80,7 @@ def deny(rule: str, message: str, hint: str = "", show_escape_hint: bool = True)
 
 
 def path_hits_protected_dir(path: str) -> bool:
-    return any(f"/{d}/" in path or path.rstrip("/").endswith(f"/{d}") for d in PROTECTED_DIRS)
+    return bool(set(Path(path).parts).intersection(PROTECTED_DIRS))
 
 
 # ── Rules ────────────────────────────────────────────────────────
@@ -224,7 +225,7 @@ def _flags_and_paths(args: list[str]) -> tuple[list[str], list[str]]:
     return flags, paths
 
 
-def _obsidian_knowledge_write_target(executable: str, args: list[str]) -> str | None:
+def _obsidian_knowledge_write_target(executable: str, args: list[str], cwd: str) -> str | None:
     """Resolve an `obsidian-knowledge write` path for existing Bash guards."""
     if executable != "obsidian-knowledge" or not args or args[0] != "write":
         return None
@@ -246,13 +247,17 @@ def _obsidian_knowledge_write_target(executable: str, args: list[str]) -> str | 
     if relative_path is None:
         return None
 
-    vault = explicit_vault or find_containing_vault(os.getcwd(), VAULT_ROOTS)
+    vault = (
+        str((Path(cwd) / Path(explicit_vault).expanduser()).resolve())
+        if explicit_vault
+        else find_containing_vault(cwd, VAULT_ROOTS)
+    )
     if vault is None and VAULT_ROOTS:
         vault = VAULT_ROOTS[0]
     return os.path.join(vault, relative_path) if vault else None
 
 
-def _bash_write_targets(command: str) -> list[str]:
+def _bash_write_targets(command: str, cwd: str) -> list[str]:
     """Return paths targeted by actual local write commands."""
     targets: list[str] = []
     destructive = {"chmod", "chown", "mv", "rm", "rmdir", "shred", "truncate", "unlink"}
@@ -264,14 +269,14 @@ def _bash_write_targets(command: str) -> list[str]:
 
             executable, args = _command_parts(tokens)
             flags, paths = _flags_and_paths(args)
-            cli_target = _obsidian_knowledge_write_target(executable, args)
+            cli_target = _obsidian_knowledge_write_target(executable, args, cwd)
             if cli_target is not None:
                 targets.append(cli_target)
             elif executable in destructive:
                 targets.extend(paths)
             elif executable == "sed" and any("i" in flag.lstrip("-") for flag in flags):
                 targets.extend(paths[1:])
-    return targets
+    return [str((Path(cwd) / Path(target).expanduser()).resolve()) for target in targets]
 
 
 def protected_dirs_bash(tool_name: str, tool_input: dict[str, Any]) -> str | None:
@@ -280,7 +285,7 @@ def protected_dirs_bash(tool_name: str, tool_input: dict[str, Any]) -> str | Non
         return None
     command = tool_input.get("command", "")
 
-    for target in _bash_write_targets(command):
+    for target in _bash_write_targets(command, tool_input.get("cwd") or os.getcwd()):
         if path_hits_protected_dir(target):
             dirs = ", ".join(PROTECTED_DIRS)
             return deny(
@@ -494,7 +499,7 @@ def destructive_vault_ops(tool_name: str, tool_input: dict[str, Any]) -> str | N
     if tool_name != "Bash":
         return None
     command = tool_input.get("command", "")
-    cwd = os.getcwd()
+    cwd = tool_input.get("cwd") or os.getcwd()
     cwd_in_vault = is_in_vault(cwd, VAULT_ROOTS)
 
     def target_in_vault(token: str) -> bool:
@@ -506,7 +511,7 @@ def destructive_vault_ops(tool_name: str, tool_input: dict[str, Any]) -> str | N
         # the trailing '\' (before the pipe) would otherwise trigger here.
         if not token or token[0] in ('"', "'", "\\", "|", "&", ";", "<", ">"):
             return False
-        return cwd_in_vault
+        return is_in_vault(str((Path(cwd) / token).resolve()), VAULT_ROOTS)
 
     # Per-command checks, in order; first match wins.
     segment_checks = (_check_rm_mv, _check_find_delete, _check_rsync_delete, _check_shred)
@@ -569,17 +574,8 @@ def ai_readonly_bash(tool_name: str, tool_input: dict[str, Any]) -> str | None:
     if tool_name != "Bash":
         return None
     command = tool_input.get("command", "")
-    cwd = os.getcwd()
-    cwd_vault = find_containing_vault(cwd, VAULT_ROOTS)
-    # Anchor on cwd-vault for relative-path resolution; otherwise look for
-    # any vault root mentioned in the command's targets.
-    for target in _bash_write_targets(command):
-        if target.startswith(("/", "~")):
-            abs_target = os.path.abspath(os.path.expanduser(target))
-        else:
-            if not cwd_vault:
-                continue  # relative path outside any vault — skip
-            abs_target = os.path.abspath(os.path.join(cwd, target))
+    cwd = tool_input.get("cwd") or os.getcwd()
+    for abs_target in _bash_write_targets(command, cwd):
         target_vault = find_containing_vault(abs_target, VAULT_ROOTS)
         if not target_vault:
             continue
@@ -718,7 +714,7 @@ def block_memory_file_creation(tool_name: str, tool_input: dict[str, Any]) -> st
     if not VAULT_ROOTS:
         target_lines = "  (no vaults configured in ~/.config/obsidian-knowledge/vaults.yaml)"
     else:
-        target = resolve_target(os.getcwd())
+        target = resolve_target(tool_input.get("cwd") or os.getcwd())
         if target.kind == "repo":
             scope = f"this repo ({target.owner}/{target.repo})"
         else:
@@ -769,6 +765,21 @@ RULES = [
 ]
 
 
+def check_tool_call(tool_name: str, tool_input: dict[str, Any], workdir: str | None = None) -> str | None:
+    """Normalize runtime paths once, then evaluate rules without changing cwd."""
+    cwd = str(Path(workdir or os.getcwd()).expanduser().resolve())
+    normalized = {**tool_input, "cwd": cwd}
+    if tool_name in {"Write", "Edit"} and tool_input.get("file_path"):
+        normalized["file_path"] = str((Path(cwd) / Path(tool_input["file_path"]).expanduser()).resolve())
+    if tool_name == "Bash" and ESCAPE_HATCH in tool_input.get("command", ""):
+        return None
+    for rule in RULES:
+        reason = rule(tool_name, normalized)
+        if reason:
+            return reason
+    return None
+
+
 # ── Main ─────────────────────────────────────────────────────────
 
 
@@ -781,24 +792,18 @@ def main():
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input", {})
 
-    # Global escape hatch (Bash only)
-    if tool_name == "Bash" and ESCAPE_HATCH in tool_input.get("command", ""):
-        sys.exit(0)
-
-    for rule in RULES:
-        reason = rule(tool_name, tool_input)
-        if reason:
-            json.dump(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": "deny",
-                        "permissionDecisionReason": reason,
-                    }
-                },
-                sys.stdout,
-            )
-            return
+    reason = check_tool_call(tool_name, tool_input, workdir=input_data.get("cwd"))
+    if reason:
+        json.dump(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason,
+                }
+            },
+            sys.stdout,
+        )
 
     sys.exit(0)
 

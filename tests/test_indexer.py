@@ -55,17 +55,15 @@ def test_full_reindex_refuses_when_index_lock_is_held(vault: Path, cfg, tmp_path
         lock_file.close()
 
 
-def test_sync_degrades_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path):
+def test_sync_reports_busy_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     lock_file = open(cache_dir / ".index.sqlite.lock", "w")
     try:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
-        stats = idx.sync()
-        assert stats.indexed == 0
-        assert stats.skipped == 0
-        assert stats.deleted == 0
+        with pytest.raises(IndexBusyError):
+            idx.sync()
     finally:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         lock_file.close()
