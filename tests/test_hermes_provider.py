@@ -405,16 +405,7 @@ def test_sync_turn_runs_indexer_after_vault_markdown_write(monkeypatch, provider
     assert provider._sync_thread.daemon is False
     assert calls[0][1]["timeout"] == hermes_plugin._VAULT_SYNC_TIMEOUT_SECONDS
     script = command_script(calls[0][0][0])
-    assert "user_cache_dir('obsidian-knowledge')" in script
-    assert hermes_plugin._SYNC_FINGERPRINT_FILENAME in script
-    assert "path_passes(rel, cfg.index)" in script
-    assert "marker.read_text().strip() == digest" in script
-    assert "from lib.vault_index.indexer import Indexer" in script
-    assert script.index("marker.read_text().strip() == digest") < script.index(
-        "from lib.vault_index.indexer import Indexer"
-    )
     assert "idx.sync()" in script
-    assert "idx.row_count()" in script
 
 
 # ── Task 19: queue_prefetch ──────────────────────────────────────────────────

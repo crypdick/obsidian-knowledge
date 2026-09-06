@@ -39,6 +39,10 @@ The only code with real domain logic; everything else is an adapter over it.
 
 ### `hooks/` — the Claude Code adapter
 
+`vault_registry.py` is the dependency-light YAML registry shared with the CLI.
+The wheel also installs it as the top-level `vault_registry` module so both
+standalone hook scripts and the installed CLI import the same implementation.
+
 Thin entrypoint scripts (`doctor.py`, `enforce-conventions.py`, `protect-vault.py`,
 `recall-init.py`, `reflect-nudge.py`, `capture-session.py`, `nudge-index-sync.py`,
 `scan-vault-secrets.py`, plus deprecated capture aliases) that read a hook JSON payload on
@@ -77,6 +81,11 @@ root and re-run the sync. Excluded from all tooling.
   `filters` both depend on it, not on each other's internals.
 - **Hermes bridges by subprocess, not import.** `hermes_plugin` shells out to the uv
   venv (`_python_cmd()`), because of the 3.11/3.12 split. It must not `import lib`.
+- **Protection checks never change process cwd.** Runtime adapters pass workdir
+  to `check_tool_call`, which normalizes file paths before evaluating shared rules.
+- **Sync completion comes from the indexer.** Busy sync raises `IndexBusyError`;
+  Hermes retains dirty state for the next turn. There is no separate freshness
+  marker that can claim success without indexing.
 - **Hooks must not crash the host.** Entrypoints in `hooks/` degrade gracefully;
   broad `except` at those boundaries is deliberate and marked
   `# allow: exception-handling`.

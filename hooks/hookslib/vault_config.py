@@ -14,29 +14,17 @@ Config format (`~/.config/obsidian-knowledge/vaults.yaml`):
 """
 
 import os
-import re
 from pathlib import Path
+
+from vault_registry import load_vault_roots as read_registry
 
 CONFIG_PATH = Path.home() / ".config" / "obsidian-knowledge" / "vaults.yaml"
 
 
-def load_vault_roots() -> list[str]:
-    """Return absolute paths of all configured vault roots. [] if config absent."""
-    if not CONFIG_PATH.exists():
-        return []
-    try:
-        text = CONFIG_PATH.read_text()
-    except OSError:
-        return []
-    roots: list[str] = []
-    for line in text.splitlines():
-        m = re.match(r"^\s*-\s+(.+)$", line)
-        if not m:
-            continue
-        p = m.group(1).strip().strip("'\"")
-        if p and not p.startswith("#"):
-            roots.append(os.path.abspath(os.path.expanduser(p)))
-    return roots
+def load_vault_roots(config_path: Path | None = None) -> list[str]:
+    """Read the shared YAML registry; invalid or absent registries yield no roots."""
+    path = config_path or Path(os.environ.get("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(CONFIG_PATH)))
+    return read_registry(path)
 
 
 def matching_vault_root(path: str, vault_roots: list[str] | None = None) -> str | None:

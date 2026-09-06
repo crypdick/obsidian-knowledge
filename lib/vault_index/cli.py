@@ -18,6 +18,7 @@ from pathlib import Path
 
 import platformdirs
 import yaml
+from vault_registry import load_vault_roots
 
 from lib.vault_index.models import Hit
 from lib.vault_index.vault_files import read_vault_file, write_vault_file
@@ -180,17 +181,7 @@ def vaults_config_path() -> Path:
 
 def load_configured_vaults(config_path: Path | None = None) -> list[Path]:
     """Return configured vault roots in order."""
-    path = config_path or vaults_config_path()
-    if not path.exists():
-        return []
-    try:
-        data = yaml.safe_load(path.read_text()) or {}
-    except (OSError, yaml.YAMLError):
-        return []
-    roots = data.get("vaults") or []
-    if not isinstance(roots, list):
-        return []
-    return [Path(str(root)).expanduser().resolve() for root in roots if str(root).strip()]
+    return [Path(root) for root in load_vault_roots(config_path or vaults_config_path())]
 
 
 def resolve_vault(vault: Path | None, cwd: Path | None = None) -> Path:

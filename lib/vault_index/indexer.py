@@ -508,10 +508,7 @@ class Indexer:
 
     def sync(self) -> SyncStats:
         """Incremental re-index. Same as full_reindex without force."""
-        try:
-            return self.full_reindex(force=False)
-        except IndexBusyError:
-            return SyncStats(indexed=0, skipped=0, deleted=0)
+        return self.full_reindex(force=False)
 
     def search(
         self,
