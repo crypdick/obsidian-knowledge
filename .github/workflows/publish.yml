@@ -1,24 +1,64 @@
 name: Publish to PyPI
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ["main"]
+
+concurrency:
+  group: publish-pypi
+  cancel-in-progress: false
 
 jobs:
   publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write  # required for OIDC trusted publishing
+      contents: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 2
 
       - uses: astral-sh/setup-uv@v6
 
-      - name: Build
-        run: uv build
+      - name: Prepare release version
+        id: release
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: uv run --no-project --python 3.13 python scripts/prepare_release.py --source "$SOURCE_SHA"
+
+      - name: Sync and verify release
+        if: steps.release.outputs.state != 'stale'
+        run: |
+          uv lock
+          uv sync --group dev
+          uv run python scripts/sync_codex_plugin.py
+          uv run pre-commit run --all-files --show-diff-on-failure
+          uv build
+
+      - name: Commit release version
+        if: steps.release.outputs.state == 'new'
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pyproject.toml uv.lock plugin.yaml .claude-plugin .codex-plugin plugins/obsidian-knowledge
+          git commit --allow-empty -m "Release $RELEASE_VERSION" -m "Source-Commit: $SOURCE_SHA"
+          git push origin HEAD:main
 
       - name: Publish
+        if: steps.release.outputs.state != 'stale'
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true

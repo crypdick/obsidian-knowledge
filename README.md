@@ -233,6 +233,15 @@ ollama pull bge-m3
 
 `setup` is idempotent — safe to re-run. If `claude` is not on `PATH`, the plugin install step is skipped automatically.
 
+Upgrade the CLI with `uv tool upgrade obsidian-knowledge`.
+
+PyPI publishing runs after successful push CI on `main`, including docs-only
+changes. An unpublished manual version is preserved; otherwise the latest patch
+version is incremented. The release synchronizes Python, Claude, Codex, and Hermes
+versions, reruns checks, and commits the version before uploading. Tags are not
+required. Superseded CI runs defer to the newer push; failed uploads can be retried
+without another bump. The bot's version commit does not trigger another CI run.
+
 The protection hooks use `vaults.yaml` to know which directories to guard.
 Without it, the `_sources/`, published-file, and destructive-ops rules will
 not fire.
