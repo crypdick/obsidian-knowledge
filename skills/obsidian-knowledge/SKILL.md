@@ -10,6 +10,20 @@ non-trivial context, project knowledge, and conversation outcomes. Vault roots
 come from `~/.config/obsidian-knowledge/vaults.yaml`; paths passed to the CLI are
 relative to that root and normally begin with `wiki/`.
 
+## Repair encountered instructions
+
+Before stopping, fix objectively stale guidance already encountered during the task
+when the correction is clear and low risk: moved paths, obsolete commands with a
+verified replacement, or factual guidance contradicted by current code. Verify the
+replacement, edit its canonical source (not generated copies or plugin caches), and
+run the relevant check. Follow the source repository's normal edit/install workflow.
+
+Do not start a broad instruction audit, rewrite preferences, weaken safety or approval
+rules, or override higher-priority instructions. If ownership, intended policy, or the
+replacement is ambiguous, report the conflict instead of guessing. Do not reopen a
+completed capture decision solely because a hook ran again. A code or instruction
+repair does not by itself justify a vault note or changelog entry.
+
 ## Log workflow friction
 
 When the harness, a tool, or a repeated workaround gets in the way, record it without

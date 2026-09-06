@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.22.34+codex.20260729050731",
+  "version": "3.22.35+codex.20260729050731",
   "description": "Plugin that manages an Obsidian knowledge vault: capture, organize, index, and garden.",
   "author": {
     "name": "Ricardo Decal"

@@ -10,11 +10,17 @@ This repo is a local Codex marketplace. Register it with:
 codex plugin marketplace add "$(pwd)"
 ```
 
-After changing plugin source, refresh through Codex:
+For a configured Git marketplace, refresh its published snapshot through Codex:
 
 ```bash
 codex plugin marketplace upgrade obsidian-knowledge
+codex plugin add obsidian-knowledge@obsidian-knowledge
 ```
+
+For local source changes, register the control checkout path with `marketplace add`
+and then run `codex plugin add obsidian-knowledge@obsidian-knowledge`. A marketplace
+refresh alone does not install the plugin. Never register a temporary worktree that
+will be removed after integration.
 
 This plugin's Codex hooks call the installed `obsidian-knowledge` CLI, so keep the uv tool install in sync with the source package:
 

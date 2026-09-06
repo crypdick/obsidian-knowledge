@@ -51,7 +51,7 @@ def count_user_messages(transcript_path: str | None) -> int | None:
     SessionStart events with no new user message, so the count stays flat.
 
     Returns None when the path is missing or unreadable, so callers can fall
-    back to a time-only debounce instead of treating "no data" as "no activity".
+    back to their missing-transcript policy instead of treating missing data as inactivity.
     """
     if not transcript_path:
         return None
@@ -71,12 +71,49 @@ def count_user_messages(transcript_path: str | None) -> int | None:
                 entry = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if entry.get("type") != "user" or entry.get("isMeta"):
-                continue
-            content = (entry.get("message") or {}).get("content")
-            if isinstance(content, str) or (
-                isinstance(content, list)
-                and not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
-            ):
+            if _is_human_message(entry):
                 n += 1
     return n
+
+
+_INJECTED_PREFIXES = (
+    "<hook_prompt",
+    "<codex_internal_context",
+    "# AGENTS.md instructions for ",
+    "<environment_context>",
+)
+
+
+def _is_human_message(entry: Any) -> bool:
+    if not isinstance(entry, dict) or entry.get("isMeta"):
+        return False
+    if entry.get("type") == "user":
+        message = entry.get("message")
+    elif entry.get("type") == "response_item":
+        message = entry.get("payload")
+        if not isinstance(message, dict) or message.get("role") != "user":
+            return False
+    else:
+        # Codex event_msg records can mirror response_item messages.
+        return False
+    if not isinstance(message, dict):
+        return False
+    content = message.get("content")
+    if isinstance(content, str):
+        return bool(content.strip()) and not content.lstrip().startswith(_INJECTED_PREFIXES)
+    if not isinstance(content, list):
+        return False
+    if any(isinstance(block, dict) and block.get("type") == "tool_result" for block in content):
+        return False
+    return any(
+        isinstance(block, dict)
+        and (
+            block.get("type") in {"image", "input_image", "input_audio"}
+            or (
+                isinstance(block.get("text"), str)
+                and bool(block["text"].strip())
+                and not block["text"].lstrip().startswith(_INJECTED_PREFIXES)
+            )
+        )
+        for block in content
+    )

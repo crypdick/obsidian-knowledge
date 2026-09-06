@@ -64,58 +64,28 @@ def in_cooldown(payload: dict[str, Any], marker_basename: str, cooldown_seconds:
 def capture_debounce(
     payload: dict[str, Any],
     marker_basename: str = "capture-session",
-    cooldown_seconds: int = 300,
 ) -> bool:
-    """Atomically allow one capture decision per user-message generation.
+    """Claim one decision per human turn; elapsed time never rearms capture.
 
-    Codex and Claude Stop hooks may be invoked in parallel (including by old
-    cached manifests that still launch both legacy capture aliases). When the
-    transcript is available, key the claim by a hash of ``session_id`` plus the
-    genuine user-message count. The same finalization generation therefore
-    emits exactly once regardless of elapsed time, while a later user message
-    can produce a new decision. When transcript data is unavailable, retain the
-    time-based cooldown used by older runtimes such as Hermes.
+    Without transcript data, allow at most one reminder per session. Without
+    session identity, remain silent rather than risk a continuation loop.
     """
-    if payload.get("stop_hook_active"):
-        return True
-
     session_id = payload.get("session_id")
+    if payload.get("stop_hook_active") or not session_id:
+        return True
     user_message_count = count_user_messages(payload.get("transcript_path"))
-    if not session_id or user_message_count in (None, 0):
-        return _atomic_cooldown_claim(session_id, marker_basename, cooldown_seconds)
-
+    if user_message_count == 0:
+        return True
     session_digest = hashlib.sha256(str(session_id).encode()).hexdigest()[:24]
+    generation = "unknown" if user_message_count is None else str(user_message_count)
     marker = os.path.join(
         tempfile.gettempdir(),
-        f".obsidian-hook-{marker_basename}-{session_digest}-user-{user_message_count}",
+        f".obsidian-hook-{marker_basename}-{session_digest}-user-{generation}",
     )
     try:
         fd = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError:
-        return True
     except OSError:
-        return _atomic_cooldown_claim(session_id, marker_basename, cooldown_seconds)
-    os.close(fd)
-    return False
-
-
-def _atomic_cooldown_claim(session_id: str | None, marker_basename: str, cooldown_seconds: int) -> bool:
-    """Atomically claim the current cooldown bucket; return True if claimed."""
-    if not session_id:
-        return False
-    session_digest = hashlib.sha256(str(session_id).encode()).hexdigest()[:24]
-    bucket = int(time.time() // max(1, cooldown_seconds))
-    marker = os.path.join(
-        tempfile.gettempdir(),
-        f".obsidian-hook-{marker_basename}-{session_digest}-bucket-{bucket}",
-    )
-    try:
-        fd = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError:
-        return True
-    except OSError:
-        # Capture is optional. If the claim cannot be made safely, suppress the
-        # reminder instead of risking duplicate Stop continuations.
+        # An existing claim or unavailable state storage must not cause noise.
         return True
     os.close(fd)
     return False
