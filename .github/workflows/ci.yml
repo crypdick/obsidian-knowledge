@@ -8,6 +8,9 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v5
@@ -15,10 +18,20 @@ jobs:
       - uses: astral-sh/setup-uv@v6
 
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --group dev --python ${{ matrix.python }}
 
       # Runs every gate (hygiene, detect-secrets, ruff, flynt, vulture, xenon,
       # mypy --strict, custom taste hooks, Codex-sync check, pytest + coverage
       # ratchet) so CI matches the local pre-commit exactly.
       - name: Pre-commit (lint, types, complexity, tests, coverage)
         run: uv run pre-commit run --all-files --show-diff-on-failure
+
+  tool-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.14
+      - run: uv build
+      - name: Clean tool install and setup without Ollama
+        run: uv run --no-project python scripts/smoke_tool_install.py dist/*.whl

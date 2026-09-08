@@ -214,7 +214,10 @@ human or agent can choose where to store the memory.
 - [`uv`](https://docs.astral.sh/uv/) on `PATH` — required by
   `scan-vault-secrets.py` and the `obsidian-knowledge` CLI
 - [Ollama](https://ollama.com/) installed and running locally, with the
-  `bge-m3` embedding model pulled. Optional; enables better search ranking.
+  `bge-m3` embedding model pulled. Optional; enables semantic search.
+  Without it, setup and search use local keyword indexing with no embedding requests.
+  Ollama is a separate server; the PyPI `ollama` package is only a client and
+  does not install the server or model.
 
 ## Installation
 
@@ -229,11 +232,16 @@ obsidian-knowledge setup --vault /path/to/your/obsidian/vault
 brew install ollama          # macOS; or see ollama.com/download
 brew services start ollama   # macOS; on Linux: `ollama serve` (systemd)
 ollama pull bge-m3
+obsidian-knowledge reindex --vault /path/to/your/obsidian/vault
 ```
 
 `setup` is idempotent — safe to re-run. If `claude` is not on `PATH`, the plugin install step is skipped automatically.
 
 Upgrade the CLI with `uv tool upgrade obsidian-knowledge`.
+
+Python 3.12, 3.13, and 3.14 are tested. `uv tool install` selects Python
+automatically; no `--python` override is required. CI also installs the built
+wheel into a fresh tool environment and verifies setup and search without Ollama.
 
 PyPI publishing runs after successful push CI on `main`, including docs-only
 changes. An unpublished manual version is preserved; otherwise the latest patch

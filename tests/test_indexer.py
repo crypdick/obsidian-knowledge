@@ -222,6 +222,11 @@ def test_full_reindex_writes_fingerprint(monkeypatch, vault: Path, cfg, tmp_path
         "lib.vault_index.indexer._ollama_probe",
         lambda api_base, model: (True, "test-stub: probe ok"),
     )
+
+    async def embed(self, texts):
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr("memweave.embedding.provider.LiteLLMEmbeddingProvider._embed_one_batch", embed)
     cache_dir = tmp_path / "cache"
     idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
     idx.full_reindex()

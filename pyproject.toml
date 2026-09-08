@@ -1,12 +1,14 @@
 [project]
 name = "obsidian-knowledge"
-version = "3.22.36"
+version = "3.22.37"
 description = "Obsidian vault knowledge integration for Claude Code and Hermes Agent CLI"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
-    "memweave>=0.1",
+    "memweave>=0.2.1,<0.3",
+    # Older LiteLLM releases pinned tokenizers builds that fail on Python 3.14.
+    "litellm>=1.100.0,<2",
     "platformdirs>=4.9.6",
     "botocore>=1.43.10",
     "beartype>=0.22.9",

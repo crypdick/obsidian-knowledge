@@ -139,6 +139,20 @@ class IndexBusyError(RuntimeError):
     """Raised when another process is using this vault index."""
 
 
+class KeywordOnlyEmbeddingProvider:
+    """Keep memweave's indexing pipeline offline when vectors are disabled.
+
+    memweave 0.2 still calls its provider with vector.enabled=False. Empty
+    vectors retain chunks and FTS entries without caching fake embeddings.
+    """
+
+    async def embed_query(self, text: str) -> list[float]:
+        return []
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [[] for _ in texts]
+
+
 @contextlib.contextmanager
 def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
     """Hold the per-vault SQLite access lock.
@@ -222,7 +236,17 @@ class Indexer:
 
         # Start with an empty-extra_paths store for read-only queries.
         # full_reindex() will replace this with the full allowed-paths store.
-        self._store = memweave.MemWeave(self._make_config(extra_paths=[]))
+        self._store = self._make_store(extra_paths=[])
+
+    @property
+    def vector_enabled(self) -> bool:
+        return self._vector_enabled
+
+    def _make_store(self, extra_paths: list[str]) -> memweave.MemWeave:
+        return memweave.MemWeave(
+            self._make_config(extra_paths=extra_paths),
+            embedding_provider=None if self._vector_enabled else KeywordOnlyEmbeddingProvider(),
+        )
 
     def _embedder_fingerprint(self) -> str:
         """Stable string identifying the current embedding setup.
@@ -244,8 +268,11 @@ class Indexer:
             return None
 
     def _write_fingerprint(self) -> None:
+        # An offline sync can add unembedded chunks even when an older vector
+        # table exists. Mark the mode so restoring Ollama rebuilds those files.
+        fingerprint = self._embedder_fingerprint() if self._vector_enabled else "keyword-only"
         with contextlib.suppress(OSError):
-            self._fingerprint_path().write_text(self._embedder_fingerprint())
+            self._fingerprint_path().write_text(fingerprint)
 
     def _stale_fingerprint(self) -> bool:
         """True iff a populated index exists but was built with a different embedder.
@@ -265,7 +292,7 @@ class Indexer:
             # use the existing cache rather than spending the whole gateway
             # memory-prefetch timeout on a rebuild every turn.
             return not self._vector_table_exists(db)
-        return stored != self._embedder_fingerprint()
+        return stored != self._embedder_fingerprint() or not self._vector_table_exists(db)
 
     @staticmethod
     def _vector_table_exists(db_path: Path) -> bool:
@@ -483,8 +510,8 @@ class Indexer:
         asyncio.run(self._store.close())
 
         allowed = self._allowed_vault_files()
-        self._store = memweave.MemWeave(self._make_config(extra_paths=allowed))
-        result = asyncio.run(self._store.index(force=force))
+        self._store = self._make_store(extra_paths=allowed)
+        result = asyncio.run(self._store.index(force=force or self._needs_rebuild))
         self._write_fingerprint()
         self._needs_rebuild = False
         return SyncStats(

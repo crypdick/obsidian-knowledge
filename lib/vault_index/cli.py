@@ -418,9 +418,8 @@ def setup(vault: Path) -> None:
     import shutil
 
     # 1. Write/update vaults.yaml
-    config_dir = Path.home() / ".config" / "obsidian-knowledge"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    vaults_yaml = config_dir / "vaults.yaml"
+    vaults_yaml = vaults_config_path()
+    vaults_yaml.parent.mkdir(parents=True, exist_ok=True)
     vault_str = str(vault.resolve())
 
     if vaults_yaml.exists():
@@ -457,6 +456,9 @@ def setup(vault: Path) -> None:
     cache = default_cache_dir(vault)
     cache.mkdir(parents=True, exist_ok=True)
     idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+    if not idx.vector_enabled:
+        print(f"Search mode: keyword-only ({idx.vector_status}).")
+        print("To enable semantic search, start Ollama, run `ollama pull bge-m3`, then reindex.")
     try:
         stats = idx.full_reindex(force=False)
     except IndexBusyError:
