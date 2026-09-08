@@ -1,5 +1,5 @@
 ---
-description: Scan the current vault for leaked secrets on demand. Pass `full` to rebuild the baseline from scratch.
+description: Scan the current vault for leaked secrets on demand. Pass `full` to rescan all eligible files while preserving audit decisions.
 ---
 
 # Scan Vault Secrets
@@ -10,7 +10,7 @@ The scanner is the same one wired up as a Stop hook (`hooks/scan-vault-secrets.p
 
 ## Steps
 
-1. Run the scanner. If `$ARGUMENTS` contains the word `full`, append `--full` to delete the baseline first and force a full rescan; otherwise run an incremental scan.
+1. Run the scanner. If `$ARGUMENTS` contains the word `full`, append `--full` to force a full rescan while preserving existing audit decisions; otherwise run an incremental scan.
 
    ```bash
    uv run "${CLAUDE_PLUGIN_ROOT}/hooks/scan-vault-secrets.py" --manual

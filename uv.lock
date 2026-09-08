@@ -1321,7 +1321,7 @@ wheels = [
 
 [[package]]
 name = "obsidian-knowledge"
-version = "3.22.38"
+version = "3.22.39"
 source = { editable = "." }
 dependencies = [
     { name = "beartype" },
