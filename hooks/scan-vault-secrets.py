@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["detect-secrets"]
+# dependencies = ["detect-secrets", "pydantic>=2"]
 # ///
 """Stop hook: scan the vault for leaked secrets and surface findings.
 
@@ -37,6 +37,8 @@ Kept (filter out non-content noise):
 - is_swagger_file         — OpenAPI spec example values
 - is_not_alphanumeric_string
 - is_sequential_string    — "abcdef..." padding
+- hookslib.secret_filters — explicit placeholders, typed metadata and MIME images;
+  generic token assignments and weak example passwords remain auditable
 
 Dropped (would suppress prose-note leaks):
 - is_likely_id_string     — drops 'token = "..."' as "looks like an ID"
@@ -63,7 +65,8 @@ extensions.
 Marking false positives in the baseline (alternative)
 -----------------------------------------------------
 
-For findings already in the baseline, run in the vault root:
+For findings already in the baseline, run in the vault root with the active
+plugin hooks directory on PYTHONPATH (needed to import the custom filters):
 
     detect-secrets audit .secrets.baseline
 
@@ -96,6 +99,8 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hookslib.stop_hook import emit_block, in_cooldown, read_input
@@ -133,6 +138,22 @@ EXCLUDE_EXTS = {
 
 KNOWN_LEAKED_FILENAME = ".secrets.known-leaked"
 BASELINE_FILENAME = ".secrets.baseline"
+# Increment when detector/filter semantics change so unchanged files are rechecked.
+SCAN_POLICY_VERSION = 1
+
+
+class BaselineScanPolicy(BaseModel):
+    vault_scan_policy: int = 0
+
+
+def scan_policy_is_current(baseline_path: Path) -> bool:
+    try:
+        state = BaselineScanPolicy.model_validate_json(baseline_path.read_text())
+    except (OSError, ValueError):
+        return False
+    return state.vault_scan_policy == SCAN_POLICY_VERSION
+
+
 # Cap reported known-leaked matches per scan to keep the reminder
 # readable. Once one literal hits dozens of files, the agent has
 # enough signal — listing each occurrence drowns the reminder.
@@ -172,6 +193,8 @@ DETECT_SECRETS_CFG = {
     "plugins_used": [{"name": p} for p in PLUGINS],
     "filters_used": [
         {"path": "detect_secrets.filters.allowlist.is_line_allowlisted"},
+        {"path": "hookslib.secret_filters.is_vault_noncredential"},
+        {"path": "hookslib.secret_filters.is_android_ui_boolean"},
         {"path": "detect_secrets.filters.common.is_invalid_file"},
         {"path": "detect_secrets.filters.heuristic.is_non_text_file"},
         {"path": "detect_secrets.filters.heuristic.is_lock_file"},
@@ -293,6 +316,8 @@ def _save_if_changed(result_sc, baseline_path: Path, ds_baseline) -> None:
     try:
         ds_baseline.save_to_file(result_sc, str(tmp_path))
         new_data = json.loads(tmp_path.read_text())
+        new_data["vault_scan_policy"] = SCAN_POLICY_VERSION
+        tmp_path.write_text(json.dumps(new_data, indent=2) + "\n")
         if baseline_path.exists():
             try:
                 old_data = json.loads(baseline_path.read_text())
@@ -337,7 +362,9 @@ REMINDER_TEMPLATE = (
     "    # pragma: allowlist secret             # yaml / sh / py\n"
     "    // pragma: allowlist secret            # js / go / c\n"
     "Or batch-audit existing findings in the baseline:\n"
-    "    detect-secrets audit .secrets.baseline"
+    "    detect-secrets audit .secrets.baseline\n"
+    "Include the active plugin hooks directory on PYTHONPATH so the custom "
+    "baseline filters can be imported."
 )
 
 KNOWN_LEAKED_REMINDER_TEMPLATE = (
@@ -416,7 +443,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--full",
         action="store_true",
-        help="Manual mode: delete the baseline first to force a full rescan.",
+        help="Manual mode: rescan all eligible files, preserving audit decisions.",
     )
     return parser.parse_args(argv)
 
@@ -446,14 +473,11 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(0)
 
     baseline_path = Path(vault_root) / BASELINE_FILENAME
-    if args.manual and args.full and baseline_path.exists():
-        baseline_path.unlink()
-
     all_paths = find_files(vault_root)
     # Baseline mtime is the vault-global "last scanned" signal — using
     # the per-session cooldown marker here would force a full scan in
     # every new session.
-    if not baseline_path.exists():
+    if args.full or not scan_policy_is_current(baseline_path):
         scan_paths = all_paths
     else:
         scan_paths = find_files(vault_root, since_mtime=baseline_path.stat().st_mtime)
