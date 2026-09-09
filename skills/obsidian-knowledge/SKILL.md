@@ -17,7 +17,7 @@ obsidian-knowledge search "concept or phrase"
 obsidian-knowledge read "wiki/path/to/note.md"
 ```
 
-Search before answering non-trivial questions. Use exact-string tools only for
+Search before answering nontrivial questions. Use exact-string tools only for
 literal names or phrases. Read relevant results before relying on them.
 
 ## Write notes
@@ -74,7 +74,7 @@ Routine debugging needs no entry; logging does not replace an in-scope fix.
   service health from a process with network access before restarting it.
 - **Writes:** Papercut logging needs write access to the log directory and lock file.
 - **macOS:** For `Operation not permitted` on note reads, grant the parent process
-  Documents or Full Disk Access in **System Settings → Privacy & Security**,
+  Documents or Full Disk Access in **System Settings > Privacy & Security**,
   then restart it.
 
 Use the host's approved permission mechanism when needed. If access remains

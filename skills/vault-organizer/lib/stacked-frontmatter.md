@@ -5,7 +5,7 @@ a second block appear as body text and are unavailable to plugins.
 
 ## Detect
 
-Audit emits one line per file:
+The audit emits one line per file:
 
 ```text
 STACKED_FRONTMATTER	<path>
@@ -24,10 +24,10 @@ uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" N
 uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" --fix NOTE_PATH
 ```
 
-Output codes:
+The script reports these output codes:
 
-- `WOULD_FIX` or `FIXED`: a stray duplicate marker can be removed automatically.
-- `NEEDS_MERGE`: the second block contains keys and requires a manual merge.
+- `WOULD_FIX` or `FIXED`: The script can remove a stray duplicate marker automatically.
+- `NEEDS_MERGE`: The second block contains keys and requires a manual merge.
   The script exits with code 1.
 
 For `NEEDS_MERGE` cases:

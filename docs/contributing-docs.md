@@ -18,7 +18,7 @@ Before submitting a change, run the same strict build as CI:
 uv run --only-group docs --locked mkdocs build --strict
 ```
 
-The generated site is written to `site/`, which Git ignores. Documentation
+MkDocs writes the generated site to `site/`, which Git ignores. Documentation
 dependencies live in the `docs` group in `pyproject.toml` and are pinned in
 `uv.lock`; update both when adding or upgrading a plugin.
 
@@ -41,7 +41,7 @@ The `Docs` GitHub Actions workflow builds documentation on pull requests and
 pushes to `main` when documentation, the README, dependencies, or the workflow
 change. Only pushes to `main` and manual runs on `main` deploy to GitHub Pages.
 
-In the repository's **Settings → Pages → Build and deployment**, select
+In the repository's **Settings > Pages > Build and deployment**, select
 **GitHub Actions** as the source. The workflow uploads `site/` and deploys the
 [documentation site](https://crypdick.github.io/obsidian-knowledge/).
 

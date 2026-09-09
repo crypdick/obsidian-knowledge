@@ -10,6 +10,8 @@ Create `<folder>/index.md`:
 
 ## Entry format
 
+Use this structure for index entries:
+
 ```markdown
 # Folder Name
 
@@ -56,7 +58,8 @@ Always use the Obsidian CLI to move files; never use filesystem `mv`:
 obsidian vault="<vault>" move path="old/path.md" to="new/folder/file.md" silent
 ```
 
-After each move, verify the new path exists and the old path does not under the
-configured filesystem root; CLI success text alone is insufficient. Then search
+After each move, verify that the new path exists and the old path no longer
+exists within the configured filesystem root. CLI success text alone is
+insufficient. Then search
 the vault for the old filename to verify Obsidian updated all references. Fix any
 stale wikilinks found.

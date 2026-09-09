@@ -24,12 +24,14 @@ backward compatibility. A malformed registry is an error, not a fallback.
 
 ## Commands
 
+Use these commands to configure, search, and maintain the vault:
+
 | Command | Behavior |
 | --- | --- |
 | `setup --vault PATH` | Register and index; optionally install the Claude plugin. |
 | `init-vault-index [--vault PATH]` | Create `.claude/obsidian-knowledge.yaml` and its parent directory, or append the index template to an existing mapping. An existing `vault_index` section is left unchanged. |
-| `read PATH` | Write the file's exact bytes to stdout. PATH must be vault-relative. |
-| `write PATH [--replace]` | Read stdin, atomically write and verify the bytes. Reject blank input, path escapes, and existing files unless `--replace` is given. Does not reindex. |
+| `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
+| `write PATH [--replace]` | Read stdin, then atomically write and verify the bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Does not reindex. |
 | `reindex [--force] [--timeout-seconds N]` | Index changed files and remove stale index entries. `--force` reprocesses unchanged files too. Does not delete vault notes. |
 | `search QUERY [--top-k N] [--all]` | Print ranked paths and snippets. `--all` bypasses the digest filter, not the indexing exclusions. |
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
@@ -37,6 +39,10 @@ backward compatibility. A malformed registry is an error, not a fallback.
 | `doctor [--query TEXT] [--top-k N] [--digest-only]` | Report index rows, semantic availability, and sample retrieval results. Repeat `--query` for multiple checks. |
 | `link-hermes-memories [--hermes-memories-dir PATH]` | Compatibility helper; see [Hermes links](#legacy-hermes-links). |
 | `_hook EVENT [--kind KIND] [--agent claude\|codex]` | Private JSON-on-stdin interface for host hook manifests. |
+
+`PATH`, `QUERY`, `TEXT`, `DESCRIPTION`, `EVENT`, and `KIND` are placeholders for
+command arguments. Replace `N` with a numeric value. Square brackets mark
+optional arguments; omit the brackets when running a command.
 
 `--top-k` must be positive. `read` and `write` do not load the embedding stack.
 For literal Markdown containing backticks, dollar signs, or wikilinks, use a
@@ -82,9 +88,9 @@ install or enable a service.
 If note reads fail with `Operation not permitted` on macOS, grant the parent
 process Documents or Full Disk Access, restart it, and retry.
 
-Search, remember, and doctor have a 30-second deadline covering initialization
+`search`, `remember`, and `doctor` have a 30-second deadline covering initialization
 and retrieval. Override it with `OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`.
-Reindex has no deadline unless `--timeout-seconds` is supplied; always supply one
+`reindex` has no deadline unless you pass `--timeout-seconds`. Always pass it
 for scheduled jobs. Zero or negative deadline values disable the deadline.
 A hard watchdog allows five extra seconds to terminate stuck native calls.
 
@@ -92,11 +98,13 @@ For model, cache, and sandbox settings, see [configuration](configuration.md).
 Use `OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG` to select an alternate registry YAML file.
 
 Exit codes are 0 for success (including no search results or reindex skipped
-because another process holds the lock), 2 for usage/configuration errors or a
-failed doctor, and 124 for a deadline. Some file/configuration write failures
+because another process holds the lock), 2 for usage or configuration errors or a
+failed `doctor` check, and 124 for a deadline. Some file or configuration write failures
 return 1. Error messages identify the failing path or operation.
 
 ## Papercut logs
+
+Record tooling problems that interrupt your workflow:
 
 ```bash
 obsidian-knowledge papercut "search hung after an automatic rebuild"
@@ -120,7 +128,7 @@ regular destination files are preserved and reported as conflicts; only symlinks
 are replaced. Configure the Obsidian linter to exclude that directory first.
 
 This helper is not part of the current Hermes provider setup: that provider
-stores durable knowledge in the wiki and disables Hermes's built-in memory
+stores durable knowledge in the wiki and disables the built-in Hermes memory
 snapshots. See the [Hermes installation instructions](index.md#hermes-plugin-install).
 
 ## Verification

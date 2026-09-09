@@ -2,7 +2,7 @@
 
 State lives at `<vault_root>/Utility/obsidian-knowledge/`. Create the directory if missing.
 
-## changelog/
+## `changelog/`
 
 Create one file for the session. Reuse it for further actions in that session;
 never append to another session's file.
@@ -24,9 +24,9 @@ YYYY-MM-DD HH:MM — Fixed N stale links during move/rename sanity check
 YYYY-MM-DD HH:MM — diary: vault reorg pass → [[wiki/systems/knowledge-base/diary/2026-05-12-reorg]]
 ```
 
-Do not create a file if no actions were taken.
+If you took no actions, do not create a file.
 
-## needs-attention.md
+## `needs-attention.md`
 
 Use `- [ ]` entries for issues requiring human judgment. Delete resolved entries.
 

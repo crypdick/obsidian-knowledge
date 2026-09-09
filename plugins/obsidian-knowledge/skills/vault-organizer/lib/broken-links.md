@@ -23,7 +23,7 @@ be intentional concept stubs or broken references. Apply these rules:
 5. **Intentional concept stub:** Leave it for future expansion.
 
 Dates, paths, extensions, and missing embeds usually indicate expected files.
-A bare concept such as `[[anxiety]]` may be an intentional stub. When uncertain,
+A bare concept such as `[[anxiety]]` might be an intentional stub. When uncertain,
 add the issue to the worklist rather than silently skipping it.
 
 ## Orphans

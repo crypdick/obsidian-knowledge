@@ -6,7 +6,7 @@ description: >-
   repeated work and is not already recoverable elsewhere, or when the user
   explicitly asks to preserve it. Triggered by the Stop-hook decision gate or
   requests such as "file this", "save this conversation", and "remember this".
-version: 0.11.0
+version: 0.11.1
 ---
 
 # Remember conversations
@@ -17,7 +17,7 @@ Filing nothing is a successful outcome.
 ## Acceptance gate
 
 1. Search the vault and read the best existing note on the topic.
-2. State the one-sentence durable delta missing from that note.
+2. State, in one sentence, the reusable knowledge missing from that note.
 3. File it only if it changes a future decision or prevents repeated work and
    is not cheaply recoverable from code, tracked docs, Git, issues, logs, or runtime.
 
@@ -62,7 +62,7 @@ required. Preserve exact user wording only when it carries a durable preference,
 constraint, or rationale. Prefer 150-350 words; exceed 500 only for a verified
 procedure that needs the detail.
 
-Every durable note must be hermetic: explain local labels such as "category 15"
+Every durable note must be self-contained: explain local labels such as "category 15"
 or "scenario 9" with their system and meaning. The note must be usable without
 the originating conversation; links can supply further detail.
 
@@ -83,7 +83,7 @@ For topics spanning domains, choose one primary home and link to the others.
 
 ## Procedure
 
-1. Apply the acceptance gate and choose a filing location. If no delta qualifies,
+1. Apply the acceptance gate and choose a filing location. If no reusable knowledge qualifies,
    stop without a note or changelog.
 2. Read an existing canonical note before updating it. Integrate the result into
    its prose rather than appending a transcript.

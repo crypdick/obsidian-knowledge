@@ -5,6 +5,8 @@ retrieval and protection components.
 
 ## Codemap
 
+The following directories contain the shared components and host adapters:
+
 | Location | Responsibility |
 | --- | --- |
 | `lib/vault_index/` | Retrieval, configuration, verified file I/O, session primer, papercut logs, and CLI orchestration. |
@@ -35,8 +37,8 @@ Preserve these boundaries:
 - Hook entrypoints import `hookslib` and may import `vault_index` for the doctor.
 - `hermes_plugin` may import `hookslib` for reflection counters. It calls the
   retrieval environment through subprocesses and never imports `lib` or
-  `vault_index` into the host process. This accommodates Hermes's Python 3.11
-  runtime and the retrieval stack's Python 3.12+ requirement.
+  `vault_index` into the host process. This accommodates the Hermes Python 3.11
+  runtime and the retrieval stack's requirement for Python 3.12 or later.
 - Keep `lib` free of import cycles. Put shared result types in `models.py`.
 
 Review dynamic imports and generated subprocess code separately; the checker
@@ -56,7 +58,7 @@ Runtime requirements:
 ## Worktree isolation
 
 Use `scripts/new-worktree.sh` to create a development worktree. Each worktree
-has its own `.venv`; uv's package cache can be shared.
+has its own `.venv`. Worktrees can share the uv package cache.
 
 Tests use temporary caches and disable live Ollama probes. For manual indexing
 in concurrent worktrees, set `OBSIDIAN_VAULT_ROOT` and

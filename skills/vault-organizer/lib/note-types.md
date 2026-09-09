@@ -12,7 +12,7 @@ Classify files by their content:
 | Diary | `diary/` | Accounts of incidents, events, or processes |
 | Wiki, guide, or TODO | Folder root | Compiled knowledge, how-tos, backlogs |
 
-## Fix a DUMPING_GROUND
+## Fix a `DUMPING_GROUND`
 
 The audit flags folders with at least four inline files whose names are
 date-prefixed or end in `-design.md`, `-convo.md`, or `-diary.md`.

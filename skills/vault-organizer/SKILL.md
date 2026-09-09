@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.4.9
+version: 1.4.10
 ---
 
 # Vault organizer
@@ -15,13 +15,19 @@ version: 1.4.9
 Maintain indexes, links, locations, and filenames. Preserve primary note
 content except for the link and frontmatter repairs described here. Read each
 `lib/` reference only when its step applies. Triage every issue, including
-pre-existing ones; process large lists in batches without skipping the remainder.
+existing ones. Process large lists in batches without skipping the remainder.
 
 ## Prerequisites
 
-- Obsidian CLI installed and configured (`Settings → General → Command line interface`)
-- **Use [[Wikilinks]]** and **Automatically update internal links** enabled in Obsidian settings
-- Always pass `vault="<name>"` before the subcommand (`obsidian vault="<name>" <command> ...`). It is a global option; after the subcommand it can be silently ignored, causing a wrong-vault write that still reports success.
+- Install and configure the Obsidian CLI in
+  **Settings > General > Command line interface**.
+- Enable **Use [[Wikilinks]]** and **Automatically update internal links** in
+  Obsidian settings.
+- Always pass `vault="<name>"` before the subcommand, as in
+  `obsidian vault="<name>" <command> ...`. Replace `<name>` with the registered
+  vault name and `<command>` with the subcommand. The `vault` option is global.
+  After the subcommand, the CLI can silently ignore it and write to the wrong
+  vault while still reporting success.
 - Write index, report, state, and changelog Markdown with
   `obsidian-knowledge write` and a quoted heredoc. Read existing files first and
   use `--replace` for full-file updates. Require `Wrote and verified:`. Complete
@@ -52,7 +58,8 @@ obsidian vault="${VAULT_NAME:?set the registered vault name}" version
 
 ### Read state
 
-Read `$VAULT/Utility/obsidian-knowledge/needs-attention.md` — note known issues, detect resolved ones.
+Read `$VAULT/Utility/obsidian-knowledge/needs-attention.md` to identify known and
+resolved issues.
 
 ### Run the structural audit
 
@@ -69,21 +76,26 @@ Use the issue codes to select the repair instructions.
 
 ### Fix structural issues
 
-**`MISSING_INDEX <folder>`** — create index.md. Read `lib/index-format.md`.
+**`MISSING_INDEX <folder>`**: Create `index.md`. Read `lib/index-format.md`.
 
-**`NOT_INDEXED <index> entry=<name>`** — add entry. Read `lib/index-format.md`.
+**`NOT_INDEXED <index> entry=<name>`**: Add the entry. Read `lib/index-format.md`.
 
-**`DUMPING_GROUND <folder> misplaced=N inline_total=T subfolders=M`** — classify the misplaced inline files (date-prefixed and `*-design`/`-convo`/`-diary`), move them to typed subfolders. Read `lib/note-types.md` + `lib/index-format.md`.
+**`DUMPING_GROUND <folder> misplaced=N inline_total=T subfolders=M`**: Classify
+the misplaced inline files, which have date prefixes or `*-design`, `*-convo`,
+or `*-diary` names, and move them to typed subfolders. Read `lib/note-types.md`
+and `lib/index-format.md`.
 
-**`STACKED_FRONTMATTER <file>`** — auto-fix stray duplicate `---` markers:
+**`STACKED_FRONTMATTER <file>`**: Fix stray duplicate `---` markers. Replace
+`NOTE_PATH` with the note's filesystem path. You can pass multiple paths:
 
 ```bash
-uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" --fix <file1> <file2> ...
+uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" --fix NOTE_PATH
 ```
 
-Files reported as `NEEDS_MERGE` (real second block with keys) require manual merge — read `lib/stacked-frontmatter.md`.
+Files reported as `NEEDS_MERGE` contain a second block with keys and require a
+manual merge. Read `lib/stacked-frontmatter.md`.
 
-After structural fixes, rename ambiguous non-markdown files. Read `lib/rename-files.md`.
+After structural fixes, rename ambiguous non-Markdown files. Read `lib/rename-files.md`.
 
 ### Fix broken links
 
@@ -103,9 +115,9 @@ it changes only unique, high-confidence matches.
 uv run --no-project --with pyyaml python "$SCRIPTS/convention-sweep.py" "$VAULT"
 ```
 
-Output (tab-separated, one issue per line):
+The output is tab-separated, with one issue per line:
 
-```
+```text
 WIKILINK_EXT  <rel_path>:<line>  <match>     # [[foo.md]] → should be [[foo]]
 UNDATED_FILE  <rel_path>                     # in Journal/diary/convos/plans without YYYY-MM-DD prefix
 YAML_ERR      <rel_path>         <error>     # malformed frontmatter
@@ -128,7 +140,8 @@ Output is `<rel_path>\t<line>\t<question_text>` per question. Code-block example
 are filtered automatically. Build one entry per line:
 `- [[wiki/path/to/page]] — line N — "question text"`
 
-Preserve existing file structure (heading, regeneration notice, scope section). Only entry list + `Last run:` timestamp change.
+Preserve the existing heading, regeneration notice, and scope section. Change
+only the entry list and `Last run:` timestamp.
 
 ### Update the worklist
 
@@ -136,4 +149,4 @@ Remove resolved entries. Add new unresolvable issues. Read `lib/state-files.md` 
 
 ### Record completed changes
 
-Create `$VAULT/Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`. Read `lib/state-files.md` for format. Do not edit a shared changelog index; per-session files are the concurrency-safe audit record. Skip if no actions taken.
+Create `$VAULT/Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`. Read `lib/state-files.md` for format. Do not edit a shared changelog index; per-session files are the concurrency-safe audit record. Skip this step if you took no actions.

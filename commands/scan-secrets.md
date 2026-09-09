@@ -18,4 +18,4 @@ Scan the vault containing the working directory, bypassing the Stop-hook cooldow
 3. If there are findings, summarize the next steps from the scanner's guidance.
    Do not remediate files automatically; the user decides which findings are real.
 
-User arguments: $ARGUMENTS
+User arguments: `$ARGUMENTS`

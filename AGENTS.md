@@ -1,10 +1,12 @@
-# Repository Guidelines
+# Repository guidelines
 
-## Codex Plugin Maintenance
+## Codex plugin maintenance
 
-Use Codex's native plugin marketplace flow for normal install, refresh, and upgrade work. Do not edit `~/.codex/plugins/cache` by hand except as a break-glass recovery step when a broken hook prevents Codex from running tools.
+Use the native Codex plugin marketplace flow to install, refresh, and upgrade
+plugins. Do not edit `~/.codex/plugins/cache` by hand except for emergency
+recovery when a broken hook prevents Codex from running tools.
 
-This repo is a local Codex marketplace. Register it with:
+This repository is a local Codex marketplace. Register it with:
 
 ```bash
 codex plugin marketplace add "$(pwd)"
@@ -20,7 +22,7 @@ codex plugin add obsidian-knowledge@obsidian-knowledge
 For local source changes, register the control checkout path with `marketplace add`
 and then run `codex plugin add obsidian-knowledge@obsidian-knowledge`. A marketplace
 refresh alone does not install the plugin. Never register a temporary worktree that
-will be removed after integration.
+you plan to remove after integration.
 
 This plugin's Codex hooks call the installed `obsidian-knowledge` CLI, so keep the uv tool install in sync with the source package:
 

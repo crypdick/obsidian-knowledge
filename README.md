@@ -2,7 +2,7 @@
 
 Give Claude Code, Codex, or Hermes persistent memory in an Obsidian vault.
 Search your notes, save reusable knowledge, and maintain indexes and links.
-The CLI also works without an agent or the Obsidian app running.
+The command-line interface (CLI) also works without an agent or the Obsidian app running.
 
 [Documentation](https://crypdick.github.io/obsidian-knowledge/) ·
 [CLI reference](docs/CLI.md) ·
@@ -24,7 +24,7 @@ when `claude` is on `PATH`. Add `--skip-claude-plugin` for CLI-only, Codex, or
 Hermes use. Setup is safe to rerun. For a large first index, add
 `--timeout-seconds 900`.
 
-The CLI requires Python 3.12 or later. uv selects it automatically.
+The CLI requires Python 3.12 or later. The uv installer selects it automatically.
 Upgrade with `uv tool upgrade obsidian-knowledge`.
 
 ### Codex installation
@@ -44,6 +44,8 @@ For a source installation, follow the
 
 ### Hermes plugin install
 
+Install the plugin and configure Hermes to use vault memory:
+
 ```bash
 hermes plugins install crypdick/obsidian-knowledge --enable
 hermes config set memory.provider obsidian-knowledge
@@ -51,7 +53,7 @@ hermes config set memory.memory_enabled false
 hermes config set memory.user_profile_enabled false
 ```
 
-The provider uses the wiki instead of Hermes's built-in `MEMORY.md` and `USER.md`.
+The provider uses the wiki instead of the built-in Hermes `MEMORY.md` and `USER.md` files.
 Update it with `hermes plugins update obsidian-knowledge`.
 
 ### Enable semantic search

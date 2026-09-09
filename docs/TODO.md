@@ -21,7 +21,7 @@ protection.
 
 ## Convention-sweep: skip more false-positive sources
 
-The sweep already skips fenced blocks and inline code. Extend it to:
+The sweep already skips fenced blocks and inline code. Extend it with these changes:
 
 - Skip wikilinks in HTML comments.
 - Skip dated-folder checks for notes with `type: template`.

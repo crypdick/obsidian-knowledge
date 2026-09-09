@@ -1,10 +1,12 @@
 # Quality checks
 
-Measured on 2026-09-09 with Python 3.14.7. Config lives in `pyproject.toml`,
+Measured on 2026-09-09 with Python 3.14.7. Configuration lives in `pyproject.toml`,
 `prek.toml`, and `scripts/prek_hooks/`. Re-measure when behavior or tooling changes;
 do not treat this snapshot as a live dashboard.
 
 ## Enforced gates
+
+The repository enforces these checks and settings:
 
 | Gate | Setting |
 |------|---------|
@@ -16,7 +18,7 @@ do not treat this snapshot as a live dashboard.
 | Dead code | Vulture, confidence 80 |
 | Dependencies | deptry; host imports, PEP 723 scanner dependencies and embedding compatibility pins documented in config |
 | Package | check-sdist with injected junk; CI builds and smoke-tests a wheel without dev dependencies |
-| Coverage | Branch + subprocess collection; **80% floor**, target 100%; missing lines in terminal and `coverage.json` |
+| Coverage | Branch and subprocess collection; **80% floor**, target 100%; missing lines in terminal and `coverage.json` |
 | Fast tests | xdist up to four workers, failed-first, 30-second per-test timeout |
 | Hygiene | Native prek built-ins, detect-secrets with reviewed `.secrets.baseline` |
 | Custom checks | Exception handling, 400 logical lines, private first-party test imports, architectural boundaries |
@@ -24,19 +26,19 @@ do not treat this snapshot as a live dashboard.
 
 ## Per-area grades
 
-Coverage is combined statement/branch coverage, including Python subprocesses.
+Coverage combines statement and branch coverage, including Python subprocesses.
 Coverage grade: A ≥90%, B ≥80%, C ≥70%, D below 70%. Type checks pass with the
 documented exceptions; that does not mean every function is fully annotated. Production
 functions pass the Ruff complexity ceiling. Tests run without an embedding service.
 
-| Area | Coverage | Grade | Type / complexity / test health |
+| Area | Coverage | Grade | Type checks, complexity, and test results |
 |------|---------:|:-----:|--------------------------------|
-| Models, config, filters, primer, registration | 90–100% | A | Typed boundaries, passing core tests |
+| Models, config, filters, primer, registration | 90-100% | A | Typed boundaries, passing core tests |
 | `lib/vault_index/indexer.py` | 76% | C | External embedding paths remain partly untested |
 | `lib/vault_index/cli.py` | 72% | C | Subprocess coverage; oversized module |
 | `lib/vault_index/vault_files.py` | 85% | B | Boundary and atomic-write regressions pass |
-| `hooks/hookslib` | 85–100% | B | Shared behavior tests; small modules |
-| Hook entrypoints | 74–100% | C | Subprocess coverage included; protection guard oversized |
+| `hooks/hookslib` | 85-100% | B | Shared behavior tests; small modules |
+| Hook entrypoints | 74-100% | C | Subprocess coverage included; protection guard oversized |
 | `hermes_plugin/__init__.py` | 77% | C | Stubbed host and subprocess tests; oversized module |
 | Overall | 80.47% | B | 422 tests pass, including 13 architecture regressions |
 

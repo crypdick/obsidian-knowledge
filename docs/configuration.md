@@ -22,7 +22,7 @@ folders and is the default. Its state lives in
 `reports/open-questions.md` collects question callouts, and `changelog/` records
 completed vault changes.
 
-## Switching embedding models
+## Switch embedding models
 
 Set these environment variables before running the CLI:
 
@@ -48,7 +48,7 @@ copy the search database between devices.
 The vault key identifies the vault path. Set `OBSIDIAN_KNOWLEDGE_CACHE_ROOT` to
 change the cache base; the CLI adds `obsidian-knowledge/<vault-key>/` beneath it.
 
-## Keeping the index fresh
+## Keep the index fresh
 
 Schedule a reindex to include edits made outside the agent. For example, this
 hourly Linux cron entry uses a five-minute deadline:
@@ -98,10 +98,10 @@ not edits throughout every vault folder.
 Keep the proxy enabled: `network_access = true` alone permits unrestricted command
 network access. With the proxy active, this example allows localhost destinations
 and blocks public destinations; add other required hosts to your existing policy
-explicitly. The allowlist is host-based, not limited to Ollama's port. See the
+explicitly. The allowlist is host-based, not limited to the Ollama port. See the
 [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 
-These settings use Codex's `sandbox_workspace_write` configuration. Deployments
+These settings use the Codex `sandbox_workspace_write` configuration. Deployments
 that enforce named permission profiles must configure the equivalent grants in
 their active policy; the two permission systems do not compose. See
 [Codex permissions](https://learn.chatgpt.com/docs/permissions).
@@ -115,7 +115,7 @@ codex sandbox -c 'sandbox_mode="workspace-write"' -- python3 -c 'import tempfile
 ```
 
 The first command should return matching notes without `ranking degraded`; the
-second should exit successfully and leaves no note behind. These checks were
+second should exit successfully and leave no note behind. These checks were
 verified on Linux with Codex 0.153.4. In that version, inherit the shell's working
 directory: adding `codex sandbox -C` requires a named profile. A successful search
 from an unrestricted terminal alone does not verify sandbox access.
