@@ -11,6 +11,10 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+class IndexBusyError(RuntimeError):
+    """Raised when another process is using this vault index."""
+
+
 class Hit(BaseModel):
     path: str
     score: float

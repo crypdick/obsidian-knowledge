@@ -224,16 +224,20 @@ Deterministic placement helper for durable facts. It does not write files or
 invoke an agent. It searches the vault and prints scored candidate homes so a
 human or agent can choose where to store the memory.
 
+See the [CLI reference](docs/CLI.md) for all commands, first-run setup,
+configuration, exit codes, deadlines, and troubleshooting.
+
 ## Requirements
 
-- [Obsidian](https://obsidian.md/) with CLI enabled
+- For Obsidian app workflows: [Obsidian](https://obsidian.md/) with CLI enabled
   (`Settings → General → Command line interface`)
-- The following Obsidian settings must be enabled:
+- For those app workflows, enable these settings:
   - **Use [[Wikilinks]]** (`Settings → Files and Links`)
   - **Automatically update internal links** (`Settings → Files and Links`)
 - A supported agent host: Claude Code, Codex, or Hermes (optional for CLI-only use)
-- [`uv`](https://docs.astral.sh/uv/) on `PATH` — required by
-  `scan-vault-secrets.py` and the `obsidian-knowledge` CLI
+- Python 3.12 or newer for the standalone CLI; the Obsidian app need not be running.
+- [`uv`](https://docs.astral.sh/uv/) on `PATH` — recommended for CLI installation
+  and required by `scan-vault-secrets.py` and the Hermes integration
 - [Ollama](https://ollama.com/) installed and running locally, with the
   `bge-m3` embedding model pulled. Optional; enables semantic search.
   Without it, setup and search use local keyword indexing with no embedding requests.
@@ -257,6 +261,11 @@ obsidian-knowledge reindex --vault /path/to/your/obsidian/vault
 ```
 
 `setup` is idempotent — safe to re-run. If `claude` is not on `PATH`, the plugin install step is skipped automatically.
+Use `--skip-claude-plugin` to explicitly skip it for CLI-only, Codex, or Hermes
+setup. The vault directory must already exist. Malformed registry/configuration
+files and failed plugin installations report errors instead of claiming success.
+Setup defaults to a 300-second deadline; increase `--timeout-seconds` for a large
+first index. Verify your own notes with `obsidian-knowledge doctor --query "known phrase"`.
 
 Upgrade the CLI with `uv tool upgrade obsidian-knowledge`.
 
@@ -403,10 +412,10 @@ the recommended baseline:
 
 ```cron
 # Linux
-0 * * * * $HOME/.local/bin/obsidian-knowledge reindex --vault $HOME/Documents/obsidian >> $HOME/.cache/obsidian-knowledge/cron.log 2>&1
+0 * * * * $HOME/.local/bin/obsidian-knowledge reindex --vault $HOME/Documents/obsidian --timeout-seconds 300 >> $HOME/.cache/obsidian-knowledge/cron.log 2>&1
 
 # macOS (Apple Silicon)
-0 * * * * $HOME/.local/bin/obsidian-knowledge reindex --vault $HOME/Documents/obsidian >> $HOME/Library/Caches/obsidian-knowledge/cron.log 2>&1
+0 * * * * $HOME/.local/bin/obsidian-knowledge reindex --vault $HOME/Documents/obsidian --timeout-seconds 300 >> $HOME/Library/Caches/obsidian-knowledge/cron.log 2>&1
 ```
 
 Incremental reindex is cheap: ~8s wall on a ~1700-file vault with zero

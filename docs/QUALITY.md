@@ -20,6 +20,13 @@ Update the grades when a number moves materially; treat the floors as ratchets
 
 ## Per-area grades
 
+For a live check of the installed CLI, run `python scripts/cli_smoke_test.py`.
+It exercises every subcommand and both hook agent modes against a temporary
+vault, registry, and cache, using the configured embedding service. Setup skips
+the optional Claude plugin installation. The final doctor output reports whether
+semantic search is enabled or degraded. To check the real vault too, run
+`obsidian-knowledge doctor`.
+
 Coverage is the in-process number from `pytest --cov`. Types = clean under
 mypy --strict + beartype. Complexity = xenon rank.
 

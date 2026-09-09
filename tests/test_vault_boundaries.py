@@ -36,12 +36,16 @@ def test_registry_override_agrees_across_adapters(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("data", [None, [], "vault", {"vaults": "vault"}, {"vaults": [None]}])
-def test_invalid_registry_shapes_are_rejected_consistently(tmp_path, monkeypatch, data):
+def test_hooks_ignore_invalid_registry_but_cli_reports_it(tmp_path, monkeypatch, data):
     registry = tmp_path / "vaults.yaml"
     registry.write_text(json.dumps(data))
     monkeypatch.setattr(vault_config, "CONFIG_PATH", registry)
     assert vault_config.load_vault_roots() == []
-    assert load_configured_vaults(registry) == []
+    if data is None:
+        assert load_configured_vaults(registry) == []
+    else:
+        with pytest.raises(ValueError):
+            load_configured_vaults(registry)
 
 
 @pytest.mark.parametrize("path", ["_sources/original.md", "./_sources/original.md"])

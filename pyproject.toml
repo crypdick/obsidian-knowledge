@@ -12,6 +12,7 @@ dependencies = [
     "platformdirs>=4.9.6",
     "botocore>=1.43.10",
     "beartype>=0.22.9",
+    "httpx[socks]>=0.28.1",
 ]
 
 [project.scripts]

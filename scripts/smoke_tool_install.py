@@ -67,6 +67,8 @@ def main() -> None:
             output = run([cli, "search", "Quokkas"], env, root)
             if "example.md" not in output:
                 raise RuntimeError("Installed CLI failed to retrieve the indexed note")
+            smoke = Path(__file__).with_name("cli_smoke_test.py").resolve()
+            run([str(python), str(smoke), "--executable", cli], env, root)
         print("Clean tool install, setup, and search passed without Ollama.")
 
 

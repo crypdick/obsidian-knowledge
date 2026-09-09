@@ -19,9 +19,9 @@ from pathlib import Path
 
 import platformdirs
 import yaml
-from vault_registry import load_vault_roots
 
-from lib.vault_index.models import Hit
+from lib.vault_index.models import Hit, IndexBusyError
+from lib.vault_index.registration import existing_vault, read_registry, register_vault
 from lib.vault_index.vault_files import read_vault_file, write_vault_file
 
 DEFAULT_VAULT_INDEX_TEMPLATE = """
@@ -182,7 +182,8 @@ def vaults_config_path() -> Path:
 
 def load_configured_vaults(config_path: Path | None = None) -> list[Path]:
     """Return configured vault roots in order."""
-    return [Path(root) for root in load_vault_roots(config_path or vaults_config_path())]
+    data = read_registry(config_path or vaults_config_path())
+    return [Path(root).expanduser().resolve() for root in data.get("vaults", [])]
 
 
 def resolve_vault(vault: Path | None, cwd: Path | None = None) -> Path:
@@ -195,7 +196,7 @@ def resolve_vault(vault: Path | None, cwd: Path | None = None) -> Path:
     4. cwd, preserving legacy behavior when no registry exists
     """
     if vault is not None:
-        return vault.expanduser().resolve()
+        return existing_vault(vault)
 
     cwd = (cwd or Path.cwd()).expanduser().resolve()
     configured = load_configured_vaults()
@@ -204,9 +205,9 @@ def resolve_vault(vault: Path | None, cwd: Path | None = None) -> Path:
             cwd.relative_to(root)
         except ValueError:
             continue
-        return root
+        return existing_vault(root)
     if configured:
-        return configured[0]
+        return existing_vault(configured[0])
     return cwd
 
 
@@ -259,6 +260,8 @@ def run_search_doctor(
     ok = True
     try:
         rows = idx.row_count()
+    except SearchTimeoutError:
+        raise
     except Exception as exc:  # pragma: no cover  # allow: exception-handling
         rows = None
         ok = False
@@ -281,6 +284,8 @@ def run_search_doctor(
                 top_k=top_k,
                 override_digest_filter=override_digest_filter,
             )
+        except SearchTimeoutError:
+            raise
         except Exception as exc:  # pragma: no cover  # allow: exception-handling
             ok = False
             lines.append(f"  hits: ERROR ({type(exc).__name__}: {exc})")
@@ -365,16 +370,21 @@ def init_vault_index(yaml_path: Path) -> None:
     """
     if yaml_path.exists():
         try:
-            existing = yaml.safe_load(yaml_path.read_text()) or {}
+            existing = yaml.safe_load(yaml_path.read_text())
         except yaml.YAMLError as exc:
             print(f"error: malformed YAML in {yaml_path}: {exc}", file=sys.stderr)
             sys.exit(1)
+        if existing is None:
+            existing = {}
+        if not isinstance(existing, dict):
+            raise ValueError(f"expected a YAML mapping in {yaml_path}")
         if "vault_index" in existing:
             print(f"vault_index section already present in {yaml_path}; not modified.")
             return
         with yaml_path.open("a") as f:
             f.write("\n" + DEFAULT_VAULT_INDEX_TEMPLATE)
     else:
+        yaml_path.parent.mkdir(parents=True, exist_ok=True)
         yaml_path.write_text(DEFAULT_VAULT_INDEX_TEMPLATE)
     print(f"Wrote vault_index template to {yaml_path}")
 
@@ -383,26 +393,34 @@ def link_hermes_memories(vault_root: Path, hermes_memories_dir: Path) -> None:
     """Symlink Hermes built-in MEMORY.md and USER.md into the vault.
 
     Symlinks live at <vault>/Utility/obsidian-knowledge/hermes/{MEMORY,USER}.md.
-    Idempotent — overwrites existing symlinks.
+    Idempotent — replaces symlinks, refuses to overwrite regular files.
 
     NOTE: Obsidian linter must be configured to skip this directory before
     symlinks go live, or the linter's frontmatter rewrites will corrupt the
     section-sign delimiter format Hermes uses. See:
       <vault>/.obsidian/plugins/obsidian-linter/data.json (excluded_paths)
     """
-    if not hermes_memories_dir.exists():
-        raise FileNotFoundError(f"Hermes memories dir not found: {hermes_memories_dir}")
-
+    vault_root = existing_vault(vault_root)
+    hermes_memories_dir = hermes_memories_dir.expanduser().resolve(strict=True)
     link_dir = vault_root / "Utility" / "obsidian-knowledge" / "hermes"
-    link_dir.mkdir(parents=True, exist_ok=True)
-
+    # Preflight both paths so a missing source or destination conflict leaves
+    # both existing memories untouched.
     for filename in ("MEMORY.md", "USER.md"):
         target = hermes_memories_dir / filename
         link = link_dir / filename
-        if not target.exists():
-            print(f"Source missing, skipping: {target}", file=sys.stderr)
+        if not target.is_file():
+            raise FileNotFoundError(f"Hermes memory source is not a file: {target}")
+        if link.exists() and not link.is_symlink():
+            raise FileExistsError(f"refusing to overwrite existing memory file: {link}")
+        if link.resolve() == target.resolve():
             continue
-        if link.is_symlink() or link.exists():
+        if target.resolve().is_relative_to(link_dir.resolve()):
+            raise ValueError(f"Hermes memory source must be outside the link directory: {target}")
+    link_dir.mkdir(parents=True, exist_ok=True)
+    for filename in ("MEMORY.md", "USER.md"):
+        target = hermes_memories_dir / filename
+        link = link_dir / filename
+        if link.is_symlink():
             link.unlink()
         link.symlink_to(target)
         print(f"Symlinked: {link} -> {target}")
@@ -414,29 +432,27 @@ def link_hermes_memories(vault_root: Path, hermes_memories_dir: Path) -> None:
     )
 
 
-def setup(vault: Path) -> None:
+def setup(vault: Path, *, skip_claude_plugin: bool = False) -> None:
     """First-time setup: register vault, install claude plugin, initial reindex."""
     import shutil
 
-    # 1. Write/update vaults.yaml
-    vaults_yaml = vaults_config_path()
-    vaults_yaml.parent.mkdir(parents=True, exist_ok=True)
-    vault_str = str(vault.resolve())
+    from lib.vault_index.config import load_config
+    from lib.vault_index.indexer import Indexer, default_cache_dir
 
-    if vaults_yaml.exists():
-        existing = vaults_yaml.read_text()
-        if vault_str in existing:
-            print(f"vaults.yaml: {vault_str} already registered")
-        else:
-            with vaults_yaml.open("a") as f:
-                f.write(f"  - {vault_str}\n")
-            print(f"vaults.yaml: added {vault_str}")
+    vault = existing_vault(vault)
+    cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+    # 1. Validate and atomically update vaults.yaml.
+    vaults_yaml = vaults_config_path()
+    vault_str = str(vault)
+    if register_vault(vault, vaults_yaml):
+        print(f"vaults.yaml: registered {vault_str} in {vaults_yaml}")
     else:
-        vaults_yaml.write_text(f"vaults:\n  - {vault_str}\n")
-        print(f"vaults.yaml: created at {vaults_yaml}")
+        print(f"vaults.yaml: {vault_str} already registered")
 
     # 2. Claude plugin install (skip if claude not on PATH)
-    if shutil.which("claude") is None:
+    if skip_claude_plugin:
+        print("claude: plugin install skipped (--skip-claude-plugin)")
+    elif shutil.which("claude") is None:
         print("claude: not found on PATH — skipping plugin install")
     else:
         for cmd in [
@@ -444,16 +460,10 @@ def setup(vault: Path) -> None:
             ["claude", "plugin", "install", "obsidian-knowledge@obsidian-knowledge"],
         ]:
             print(f"running: {' '.join(cmd)}")
-            result = subprocess.run(cmd, check=False)
-            if result.returncode != 0:
-                print(f"  warning: exited {result.returncode} — continuing")
+            subprocess.run(cmd, check=True, timeout=120)
 
     # 3. Initial reindex
     print(f"\nreindexing {vault_str} (may take a minute on first run)…")
-    from lib.vault_index.config import load_config
-    from lib.vault_index.indexer import IndexBusyError, Indexer, default_cache_dir
-
-    cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
     cache = default_cache_dir(vault)
     cache.mkdir(parents=True, exist_ok=True)
     idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
@@ -517,6 +527,44 @@ def run_vault_file_command(
     return 0
 
 
+def run_retrieval_command(args: argparse.Namespace) -> int:
+    """Initialize and query inside the caller's whole-command deadline."""
+    from lib.vault_index.config import load_config
+    from lib.vault_index.indexer import Indexer, default_cache_dir
+
+    vault = resolve_vault(args.vault)
+    cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+    cache = default_cache_dir(vault)
+    idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+    if args.cmd == "doctor":
+        code, report = run_search_doctor(
+            vault=vault,
+            cache=cache,
+            idx=idx,
+            queries=args.queries or DEFAULT_DOCTOR_QUERIES,
+            top_k=args.top_k,
+            override_digest_filter=not args.digest_only,
+        )
+        print(report)
+        return code
+    if not idx.vector_enabled:
+        print(f"# search ranking degraded ({idx.vector_status})", file=sys.stderr)
+    query = args.query if args.cmd == "search" else args.memory
+    hits = idx.search(query, top_k=args.top_k, override_digest_filter=args.all)
+    if args.cmd == "remember":
+        print(format_remember_candidates(hits))
+    else:
+        print(format_search_hits(hits) if hits else "(no results)")
+    return 0
+
+
+def positive_int(value: str) -> int:
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return number
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="obsidian-knowledge")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -526,6 +574,10 @@ def main() -> int:
         help="First-time setup: register vault, install claude plugin, initial reindex",
     )
     p_setup.add_argument("--vault", type=Path, required=True, help="Vault root path")
+    p_setup.add_argument("--skip-claude-plugin", action="store_true", help="Register and index only")
+    p_setup.add_argument(
+        "--timeout-seconds", type=int, default=300, help="Whole-command deadline (default: 300)"
+    )
 
     p_init = sub.add_parser(
         "init-vault-index",
@@ -562,7 +614,7 @@ def main() -> int:
     p_search = sub.add_parser("search", help="Search the vault index")
     p_search.add_argument("query", help="Free-text query")
     p_search.add_argument("--vault", type=Path, default=None)
-    p_search.add_argument("--top-k", type=int, default=None)
+    p_search.add_argument("--top-k", type=positive_int, default=None)
     p_search.add_argument(
         "--all",
         action="store_true",
@@ -575,7 +627,7 @@ def main() -> int:
     )
     p_remember.add_argument("memory", help="Memory text to place")
     p_remember.add_argument("--vault", type=Path, default=None)
-    p_remember.add_argument("--top-k", type=int, default=None)
+    p_remember.add_argument("--top-k", type=positive_int, default=None)
     p_remember.add_argument(
         "--all",
         action="store_true",
@@ -600,7 +652,7 @@ def main() -> int:
         dest="queries",
         help="Known-hit query to test; may be repeated.",
     )
-    p_doctor.add_argument("--top-k", type=int, default=3)
+    p_doctor.add_argument("--top-k", type=positive_int, default=3)
     p_doctor.add_argument(
         "--digest-only",
         action="store_true",
@@ -628,7 +680,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.cmd == "setup":
-        setup(args.vault)
+        with search_ttl(args.timeout_seconds, label="setup"):
+            setup(args.vault, skip_claude_plugin=args.skip_claude_plugin)
     elif args.cmd == "_hook":
         return run_hook_entrypoint(args.hook_event, kind=args.kind, agent=args.agent)
     elif args.cmd == "init-vault-index":
@@ -637,9 +690,6 @@ def main() -> int:
     elif args.cmd in {"read", "write"}:
         return run_vault_file_command(args, parser)
     elif args.cmd == "reindex":
-        from lib.vault_index.config import load_config
-        from lib.vault_index.indexer import IndexBusyError, Indexer
-
         # Bound the ENTIRE reindex, not just full_reindex(): setup steps
         # (vault resolution, config load, Indexer init / fingerprint check) also
         # do filesystem reads that can block indefinitely on a contended/stalled
@@ -648,6 +698,9 @@ def main() -> int:
         # Indexer init). The watchdog inside search_ttl force-exits regardless.
         try:
             with search_ttl(args.timeout_seconds, label="reindex"):
+                from lib.vault_index.config import load_config
+                from lib.vault_index.indexer import Indexer
+
                 vault = resolve_vault(args.vault)
                 cache = default_cache_dir_for_vault(vault)
                 cache.mkdir(parents=True, exist_ok=True)
@@ -676,48 +729,9 @@ def main() -> int:
             description=args.description,
             parser=parser,
         )
-    elif args.cmd == "doctor":
-        from lib.vault_index.config import load_config
-        from lib.vault_index.indexer import Indexer, default_cache_dir
-
-        vault = resolve_vault(args.vault)
-        cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
-        cache = default_cache_dir(vault)
-        idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
-        code, text = run_search_doctor(
-            vault=vault,
-            cache=cache,
-            idx=idx,
-            queries=args.queries or DEFAULT_DOCTOR_QUERIES,
-            top_k=args.top_k,
-            override_digest_filter=not args.digest_only,
-        )
-        print(text)
-        return code
-    elif args.cmd in {"search", "remember"}:
-        from lib.vault_index.config import load_config
-        from lib.vault_index.indexer import Indexer, default_cache_dir
-
-        vault = resolve_vault(args.vault)
-        cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
-        cache = default_cache_dir(vault)
-        idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
-        if not idx._vector_enabled:
-            print(f"# search ranking degraded ({idx.vector_status})", file=sys.stderr)
-        query = args.query if args.cmd == "search" else args.memory
-        try:
-            with search_ttl(search_ttl_seconds()):
-                hits = idx.search(query, top_k=args.top_k, override_digest_filter=args.all)
-        except SearchTimeoutError as exc:
-            print(f"# search timed out ({exc})", file=sys.stderr)
-            return 124
-        if not hits:
-            print("(no results)" if args.cmd == "search" else format_remember_candidates([]))
-            return 0
-        if args.cmd == "remember":
-            print(format_remember_candidates(hits))
-            return 0
-        print(format_search_hits(hits))
+    elif args.cmd in {"doctor", "search", "remember"}:
+        with search_ttl(search_ttl_seconds(), label=args.cmd):
+            return run_retrieval_command(args)
 
     return 0
 
@@ -744,7 +758,15 @@ def _exit_hard(code: int) -> None:
 
 def cli_main() -> None:
     """Console-script entry point. See [project.scripts] in pyproject.toml."""
-    _exit_hard(main())
+    try:
+        code = main()
+    except SearchTimeoutError as exc:
+        print(f"obsidian-knowledge: timed out ({exc})", file=sys.stderr)
+        code = 124
+    except (OSError, ValueError, yaml.YAMLError, subprocess.SubprocessError) as exc:
+        print(f"obsidian-knowledge: {exc}", file=sys.stderr)
+        code = 2
+    _exit_hard(code)
 
 
 if __name__ == "__main__":

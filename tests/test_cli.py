@@ -30,9 +30,11 @@ from lib.vault_index.models import Hit
 # ---------------------------------------------------------------------------
 
 
-def test_init_vault_index_creates_template(tmp_path: Path):
+@pytest.mark.parametrize("existing_parent", [True, False])
+def test_init_vault_index_creates_template(tmp_path: Path, existing_parent: bool):
     yaml_path = tmp_path / ".claude" / "obsidian-knowledge.yaml"
-    yaml_path.parent.mkdir()
+    if existing_parent:
+        yaml_path.parent.mkdir()
     init_vault_index(yaml_path)
     assert yaml_path.exists()
     text = yaml_path.read_text()

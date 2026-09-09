@@ -40,6 +40,12 @@ def load_config(yaml_path: Path) -> VaultIndexConfig:
     """
     if not yaml_path.exists():
         return VaultIndexConfig()
-    raw = yaml.safe_load(yaml_path.read_text()) or {}
-    section = raw.get("vault_index", {}) or {}
+    raw = yaml.safe_load(yaml_path.read_text())
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"expected a YAML mapping in {yaml_path}")
+    section = raw.get("vault_index", {})
+    if section is None:
+        section = {}
     return VaultIndexConfig.model_validate(section)

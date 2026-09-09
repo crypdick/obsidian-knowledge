@@ -62,7 +62,11 @@ import platformdirs
 
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.filters import path_passes
-from lib.vault_index.models import Hit
+from lib.vault_index.models import Hit, IndexBusyError
+
+# Local embeddings do not need a public model-pricing download. LiteLLM reads
+# this at its first lazy import; preserve an explicit operator override.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 DEFAULT_EMBEDDING_MODEL = "ollama/bge-m3"
 DEFAULT_EMBEDDING_API_BASE = "http://127.0.0.1:11434"
@@ -147,10 +151,6 @@ class SyncStats:
     indexed: int
     skipped: int
     deleted: int
-
-
-class IndexBusyError(RuntimeError):
-    """Raised when another process is using this vault index."""
 
 
 class KeywordOnlyEmbeddingProvider:
