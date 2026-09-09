@@ -20,11 +20,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --python ${{ matrix.python }}
 
-      # Runs every gate (hygiene, detect-secrets, ruff, flynt, vulture, xenon,
+      # Runs every gate (hygiene, detect-secrets, ruff, flynt, vulture, dependency integrity,
       # mypy --strict, custom taste hooks, Codex-sync check, pytest + coverage
-      # ratchet) so CI matches the local pre-commit exactly.
-      - name: Pre-commit (lint, types, complexity, tests, coverage)
-        run: uv run pre-commit run --all-files --show-diff-on-failure
+      # ratchet) so CI matches the local prek exactly.
+      - name: Prek (lint, types, complexity, tests, coverage)
+        run: uv run prek run --all-files --show-diff-on-failure
 
   tool-install:
     runs-on: ubuntu-latest

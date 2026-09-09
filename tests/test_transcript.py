@@ -12,21 +12,23 @@ def test_missing_file_yields_nothing(tmp_path):
 def test_extracts_tool_uses(tmp_path):
     f = tmp_path / "t.jsonl"
     f.write_text(
-        json.dumps({
-            "type": "assistant",
-            "message": {
-                "role": "assistant",
-                "content": [
-                    {
-                        "type": "tool_use",
-                        "id": "t1",
-                        "name": "Write",
-                        "input": {"file_path": "/v/a.md", "content": "hi"},
-                    },
-                    {"type": "text", "text": "ignored"},
-                ],
-            },
-        })
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "t1",
+                            "name": "Write",
+                            "input": {"file_path": "/v/a.md", "content": "hi"},
+                        },
+                        {"type": "text", "text": "ignored"},
+                    ],
+                },
+            }
+        )
         + "\n"
     )
     uses = list(iter_tool_uses(str(f)))
@@ -39,14 +41,16 @@ def test_skips_malformed_lines(tmp_path):
     f = tmp_path / "t.jsonl"
     f.write_text(
         "not json\n"
-        + json.dumps({
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": "t2", "name": "Edit", "input": {}},
-                ]
-            },
-        })
+        + json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "id": "t2", "name": "Edit", "input": {}},
+                    ]
+                },
+            }
+        )
         + "\n"
     )
     uses = list(iter_tool_uses(str(f)))

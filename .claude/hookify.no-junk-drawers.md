@@ -5,7 +5,7 @@ event: file
 conditions:
   - field: file_path
     operator: regex_match
-    pattern: (utils|helpers|misc|common|shared|general)\.py$
+    pattern: (^|[/\\])(utils|helpers|misc|common|shared|general)\.py$
 action: warn
 ---
 

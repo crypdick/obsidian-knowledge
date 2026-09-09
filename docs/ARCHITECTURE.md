@@ -15,7 +15,8 @@ year, or when a package or invariant changes — not on every edit.
 
 ### `lib/vault_index/` — the shared retrieval core
 
-The only code with real domain logic; everything else is an adapter over it.
+Retrieval, configuration, safe file I/O, and CLI orchestration. Vault protection
+and memory routing also have domain logic under `hooks/hookslib/`.
 
 - **`models.py`** — `Hit` (a scored `{path, score, weight_applied}` result).
   Dependency-light on purpose so `indexer` and `filters` both import it without a
@@ -34,7 +35,7 @@ The only code with real domain logic; everything else is an adapter over it.
   registry.
 - **`papercuts.py`** — scoped, append-only, concurrency-safe workflow-friction
   logs; deliberately separate from the retrieval/indexing stack.
-- **`__init__.py`** — activates **beartype** for the whole `lib` package
+- **`lib/__init__.py`** — activates **beartype** for the whole `lib` package
   (`beartype_this_package()`); runtime type checking on all of `lib.vault_index`.
 
 ### `hooks/` — the Claude Code adapter
@@ -63,8 +64,8 @@ rather than importing `lib` directly. Root `__init__.py` is the Hermes plugin
 ### `scripts/`
 
 Dev/maintenance tools: `sync_codex_plugin.py` (regenerates the Codex mirror),
-`build_memory_indexes.py`, `migrate_*`, and `pre_commit_hooks/` (the custom taste
-hooks — exception/print/file-length/private-test-import/future-annotations).
+`build_memory_indexes.py`, `migrate_*`, and `prek_hooks/` (the custom taste
+hooks — exception/file-length/private-test-import checks and import boundaries).
 
 ### `plugins/obsidian-knowledge/` — generated Codex mirror
 
@@ -74,9 +75,16 @@ root and re-run the sync. Excluded from all tooling.
 
 ## Invariants (load-bearing)
 
-- **`lib/vault_index` is the bottom layer.** It never imports from `hooks/` or
-  `hermes_plugin/`. Dependency direction is `hooks → lib` and `hermes_plugin → lib`,
-  never the reverse.
+- **Import boundaries are enforced** by `scripts/prek_hooks/check_architecture.py`.
+  `lib` imports neither adapters nor shared hook modules, with one explicit
+  exception: `lib/vault_index/primer.py` imports `hookslib.repo_memory` to resolve
+  the memory destination. `hooks/hookslib` imports neither `lib`/`vault_index` nor
+  `hermes_plugin`; it may import the dependency-light `vault_registry`.
+  Hook entrypoints import `hookslib` and may import `vault_index` (the doctor).
+  `hermes_plugin` imports `hookslib` for reflection counters but never imports
+  `lib` or `vault_index` in its host process. These arrows describe **imports**,
+  not execution order. Dynamic imports and generated subprocess code require
+  review; the gate checks static imports, including local and relative imports.
 - **No import cycles inside `lib`.** Shared types live in `models.py`; `indexer` and
   `filters` both depend on it, not on each other's internals.
 - **Hermes bridges by subprocess, not import.** `hermes_plugin` shells out to the uv

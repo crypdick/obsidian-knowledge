@@ -49,12 +49,14 @@ def main() -> None:
         vault = root / "vault"
         vault.mkdir()
         (vault / "example.md").write_text("# Install check\nQuokkas are marsupials.\n")
-        env.update({
-            "PATH": str(root / "bin"),  # Keep Claude plugin installation out of this check.
-            "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(root / "config" / "vaults.yaml"),
-            "OBSIDIAN_KNOWLEDGE_CACHE_ROOT": str(root / "cache"),
-            "MEMWEAVE_EMBEDDING_MODEL": "ollama/bge-m3",
-        })
+        env.update(
+            {
+                "PATH": str(root / "bin"),  # Keep Claude plugin installation out of this check.
+                "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(root / "config" / "vaults.yaml"),
+                "OBSIDIAN_KNOWLEDGE_CACHE_ROOT": str(root / "cache"),
+                "MEMWEAVE_EMBEDDING_MODEL": "ollama/bge-m3",
+            }
+        )
         cli = str(root / "bin" / "obsidian-knowledge")
         # Reserve a local port without listening so the probe deterministically fails.
         with socket.socket() as unavailable:

@@ -69,13 +69,7 @@ def find_stacked_region(lines: list[str]) -> tuple[list[int], list[int]] | None:
             # Inside a stray/second block: collect until we hit body content.
             # Heuristic: YAML key lines look like `key:` or `key: value` or
             # `- list-item`. Body usually starts with `#`, `*`, **bold**, etc.
-            if (
-                line.startswith("#")
-                or line.startswith("*")
-                or line.startswith(">")
-                or line.startswith("|")
-                or line.startswith("[")
-            ):
+            if line.startswith(("#", "*", ">", "|", "[")):
                 break
             extra_content.append(j)
             j += 1

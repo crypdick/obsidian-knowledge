@@ -29,3 +29,9 @@ uv tool install --reinstall --python 3.13 "$(pwd)"
 ```
 
 Then restart Codex and use `/plugins` or `/hooks` for install, enablement, and hook trust review. If `obsidian-knowledge _hook ...` fails, fix or reinstall the CLI; do not treat the plugin cache as the source of truth.
+
+## Development quality
+
+See `CONVENTIONS.md` for design principles, `docs/ARCHITECTURE.md` for import
+boundaries, and `docs/QUALITY.md` for measured quality and maintenance guidance.
+Run `uv run prek run --all-files` before integration.

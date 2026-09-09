@@ -540,7 +540,7 @@ class Indexer:
 
         stored = self._read_stored_fingerprint() or "none"
         current = self._embedder_fingerprint()
-        print(  # allow: print-statements  (intentional stderr progress line for interactive reindex, not logging)
+        print(  # noqa: T201 -- intentional stderr progress for interactive reindex
             f"# vault-index: rebuilding ({reason}; was {stored}, now {current})",
             file=sys.stderr,
             flush=True,

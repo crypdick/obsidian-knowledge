@@ -4,7 +4,7 @@
 #   scripts/new-worktree.sh <name> [base-ref]
 #
 # Creates .worktrees/<name> on a fresh branch off <base-ref> (default: current
-# HEAD), builds its own uv venv, installs the pre-commit hook, and copies local
+# HEAD), builds its own uv venv, installs the prek hook, and copies local
 # -only config that isn't tracked in git. Fast enough to run several concurrently
 # -- each worktree is fully isolated (own .venv), see docs/ARCHITECTURE.md.
 set -euo pipefail
@@ -31,8 +31,8 @@ git -C "$repo_root" worktree add -b "$name" "$worktree_dir" "$base_ref"
 echo "==> uv sync --group dev"
 (cd "$worktree_dir" && uv sync --group dev)
 
-echo "==> pre-commit install"
-(cd "$worktree_dir" && uv run pre-commit install)
+echo "==> prek install"
+(cd "$worktree_dir" && uv run prek install)
 
 # Copy local-only (gitignored) config that a fresh checkout wouldn't have.
 for local_file in .env .claude/settings.local.json; do

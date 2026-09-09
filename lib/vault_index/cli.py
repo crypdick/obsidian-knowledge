@@ -1,7 +1,5 @@
-"""CLI entry points for obsidian-knowledge tooling.
-
 # allow: file-length  (CLI surface; decomposition tracked in docs/QUALITY.md)
-"""
+"""CLI entry points for obsidian-knowledge tooling."""
 
 from __future__ import annotations
 

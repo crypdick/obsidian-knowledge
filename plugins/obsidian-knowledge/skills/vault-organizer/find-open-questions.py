@@ -52,7 +52,7 @@ def scan_file(path: Path) -> list[tuple[int, str]]:
     for i, line in enumerate(lines, start=1):
         stripped = line.lstrip()
         # Track fenced code-block state. Markdown fences start with ``` or ~~~.
-        if stripped.startswith("```") or stripped.startswith("~~~"):
+        if stripped.startswith(("```", "~~~")):
             marker = stripped[:3]
             if not in_fence:
                 in_fence = True

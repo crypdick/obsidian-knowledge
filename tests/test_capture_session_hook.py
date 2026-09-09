@@ -169,14 +169,16 @@ def test_codex_hook_and_goal_continuations_do_not_rearm_capture(tmp_path, subpro
     def append_user(text):
         with transcript.open("a") as handle:
             handle.write(
-                json.dumps({
-                    "type": "response_item",
-                    "payload": {
-                        "type": "message",
-                        "role": "user",
-                        "content": [{"type": "input_text", "text": text}],
-                    },
-                })
+                json.dumps(
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": text}],
+                        },
+                    }
+                )
                 + "\n"
             )
 

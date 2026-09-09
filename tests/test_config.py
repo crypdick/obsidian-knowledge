@@ -22,13 +22,15 @@ def test_vault_index_config_defaults():
 
 
 def test_vault_index_config_from_dict():
-    cfg = VaultIndexConfig.model_validate({
-        "index": {"deny_regex": ["^Journal/"]},
-        "digest": {"allow_regex": ["^wiki/"]},
-        "weights": [{"regex": "^wiki/", "multiplier": 1.5}],
-        "default_weight": 1.0,
-        "top_k": 10,
-    })
+    cfg = VaultIndexConfig.model_validate(
+        {
+            "index": {"deny_regex": ["^Journal/"]},
+            "digest": {"allow_regex": ["^wiki/"]},
+            "weights": [{"regex": "^wiki/", "multiplier": 1.5}],
+            "default_weight": 1.0,
+            "top_k": 10,
+        }
+    )
     assert cfg.index.deny_regex == ["^Journal/"]
     assert cfg.digest.allow_regex == ["^wiki/"]
     assert len(cfg.weights) == 1

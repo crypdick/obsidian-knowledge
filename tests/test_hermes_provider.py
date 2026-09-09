@@ -29,7 +29,7 @@ def provider(vault: Path, tmp_path: Path):
 
     sys.modules["agent"] = MagicMock()
     sys.modules["agent.memory_provider"] = MagicMock()
-    sys.modules["agent.memory_provider"].MemoryProvider = object  # type: ignore
+    sys.modules["agent.memory_provider"].MemoryProvider = object  # type: ignore[attr-defined]
 
     from importlib import reload
 

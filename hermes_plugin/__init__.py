@@ -1,6 +1,5 @@
-"""Obsidian vault memory provider for Hermes Agent CLI.
-
 # allow: file-length  (large entrypoint module; decomposition tracked in docs/QUALITY.md)
+"""Obsidian vault memory provider for Hermes Agent CLI.
 
 Wraps the shared lib/vault_index/ retrieval into a MemoryProvider implementation.
 Activated via ``memory.provider: obsidian-knowledge`` in ~/.hermes/config.yaml.
@@ -213,10 +212,12 @@ def _drain_reminders(key: str) -> list[str]:
 
 def _hook_payload(session_id: str = "", stop_hook_active: bool = False) -> str:
     """Return the JSON stdin payload expected by Claude/Codex Stop hooks."""
-    return json.dumps({
-        "session_id": session_id or "default",
-        "stop_hook_active": stop_hook_active,
-    })
+    return json.dumps(
+        {
+            "session_id": session_id or "default",
+            "stop_hook_active": stop_hook_active,
+        }
+    )
 
 
 def _run_stop_hook_reasons(session_id: str = "") -> list[str]:
@@ -847,16 +848,18 @@ class ObsidianKnowledgeProvider(MemoryProvider):  # type: ignore[misc]  # Memory
 
     def handle_tool_call(self, tool_name: str, args: dict[str, Any], **kwargs: Any) -> str:
         if tool_name == "memory":
-            return json.dumps({
-                "success": False,
-                "error": (
-                    "Built-in Hermes memory is disabled for this profile. "
-                    "Use the Obsidian knowledge base instead: update "
-                    "wiki/systems/knowledge-base/index.md or a linked vault note, "
-                    "and use vault_search/obsidian-knowledge for recall."
-                ),
-                "replacement": "obsidian-knowledge",
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "Built-in Hermes memory is disabled for this profile. "
+                        "Use the Obsidian knowledge base instead: update "
+                        "wiki/systems/knowledge-base/index.md or a linked vault note, "
+                        "and use vault_search/obsidian-knowledge for recall."
+                    ),
+                    "replacement": "obsidian-knowledge",
+                }
+            )
         if tool_name != "vault_search":
             raise NotImplementedError(f"Unknown tool: {tool_name}")
         try:
@@ -899,7 +902,8 @@ class ObsidianKnowledgeProvider(MemoryProvider):  # type: ignore[misc]  # Memory
 
                 with _REMINDER_LOCK:
                     _SYNC_DIRTY_SESSIONS.add(key)
-                logging.getLogger(__name__).warning("sync_turn failed: %s", exc)
+                logger = logging.getLogger(__name__)
+                logger.warning("sync_turn failed: %s", exc)
             finally:
                 with _REMINDER_LOCK:
                     if self._sync_pending:

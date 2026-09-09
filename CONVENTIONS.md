@@ -57,14 +57,14 @@ def handle(payload: dict) -> None:
 # PREFER: parse into a type that carries the proof
 @dataclass(frozen=True)
 class HookEvent:
-    path: RelPath                           # if it constructed, it's valid
+    path: RelPath                           # constructed after boundary validation
 ```
 
-**Caveat on Pydantic field validators:** a `@field_validator` runs at runtime but does
-*not* change the static type — a validator confirming a `str` is well-formed still leaves
-it typed `str`. To make Pydantic validation *real parsing*, bind the proven value to a
-`NewType` via `Annotated[str, AfterValidator(...)]`, or wrap the model's output at the
-boundary. A plain validator is a check-and-discard, not a parse.
+Neither `NewType` nor a frozen dataclass validates untrusted input by itself.
+The parser must check the input before constructing `HookEvent`; freezing only
+prevents ordinary reassignment. Pydantic validators enforce runtime value
+constraints. A `str` field remains `str` for static checking, so add a distinct
+semantic type when confusing two domain concepts would be a bug.
 
 ---
 
@@ -108,3 +108,17 @@ INDEX_CHAR_CAP = 6000
   doc file and section.
 - **Changing a value that has a `NOTE:`:** read the referenced doc and update it in the
   same change. Don't merge code that silently contradicts its own docs.
+
+
+## Review and enforcement
+
+Ruff owns print/logging checks, syntax modernization, and cyclomatic complexity.
+Use `logger.info("message", extra={"key": value})` for structured events; CLI and
+hook stdout/stderr are explicit protocol boundaries. Keep suppressions narrow
+and explain why a boundary needs one. Annotation and pathlib migrations should
+follow public behavior tests rather than mechanical API churn.
+
+When a user states a durable coding preference, encode it in `pyproject.toml`,
+`prek.toml`, or `scripts/prek_hooks/` when a reliable check exists. Keep semantic
+judgments in this document. `.claude/hookify.taste-enforcer.md` supplies the prompt
+reminder on hosts with hookify installed; the checked-in tools run independently.

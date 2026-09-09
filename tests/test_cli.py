@@ -101,10 +101,12 @@ def test_resolve_vault_prefers_containing_configured_vault(tmp_path: Path, monke
 
 def test_format_remember_candidates_prints_scored_paths():
     """remember reports potential homes with scores and does not write anything."""
-    text = format_remember_candidates([
-        Hit(path="wiki/repos/acme/app/memory/project_codex.md", score=42.25),
-        Hit(path="wiki/codex.md", score=9.5),
-    ])
+    text = format_remember_candidates(
+        [
+            Hit(path="wiki/repos/acme/app/memory/project_codex.md", score=42.25),
+            Hit(path="wiki/codex.md", score=9.5),
+        ]
+    )
 
     assert "Potential homes:" in text
     assert "42.2  wiki/repos/acme/app/memory/project_codex.md" in text
@@ -112,14 +114,16 @@ def test_format_remember_candidates_prints_scored_paths():
 
 
 def test_format_search_hits_prints_snippets_under_paths():
-    text = format_search_hits([
-        Hit(
-            path="wiki/python.md",
-            score=42.25,
-            snippet="Python is a high-level programming language.",
-        ),
-        Hit(path="wiki/empty.md", score=9.5),
-    ])
+    text = format_search_hits(
+        [
+            Hit(
+                path="wiki/python.md",
+                score=42.25,
+                snippet="Python is a high-level programming language.",
+            ),
+            Hit(path="wiki/empty.md", score=9.5),
+        ]
+    )
 
     assert "42.2  wiki/python.md" in text
     assert "      Python is a high-level programming language." in text

@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-knowledge"
-version = "3.22.44"
+version = "3.22.45"
 description = "Obsidian vault knowledge integration for Claude Code and Hermes Agent CLI"
 requires-python = ">=3.12"
 dependencies = [
@@ -25,6 +25,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["lib"]
 
+[tool.hatch.build.targets.sdist]
+# Keep platform/editor detritus out even when the source checkout is dirty.
+exclude = [
+    ".DS_Store?", ".Spotlight-V100", ".Trashes", "._*", "Thumbs.db",
+    "ehthumbs.db", "*.egg-info", "*.swp", "*~",
+]
+
 [tool.hatch.build.targets.wheel.force-include]
 hooks = "hooks"
 hermes_plugin = "hermes_plugin"
@@ -32,10 +39,12 @@ hermes_plugin = "hermes_plugin"
 
 [dependency-groups]
 dev = [
+    "check-sdist",
+    "deptry",
     "detect-secrets>=1.5.0",
     "flynt>=1.0.6",
     "mypy>=2.1.0",
-    "pre-commit>=4.6.0",
+    "prek",
     "pytest>=8.0",
     "pytest-cov>=7.1.0",
     "pytest-mock>=3.0",
@@ -44,7 +53,6 @@ dev = [
     "ruff>=0.12",
     "types-pyyaml>=6.0.12.20260518",
     "vulture>=2.16",
-    "xenon>=0.9.3",
 ]
 docs = [
     "mkdocs>=1.6.1,<2",
@@ -58,28 +66,40 @@ docs = [
 [tool.new-feature]
 target_branch = "main"
 setup = ["uv sync --group dev"]
-pre_merge = ["uv run pre-commit run --all-files --show-diff-on-failure"]
-post_merge = ["uv run pre-commit run --all-files --show-diff-on-failure"]
+pre_merge = ["uv run prek run --all-files --show-diff-on-failure"]
+post_merge = ["uv run prek run --all-files --show-diff-on-failure"]
 teardown = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--no-header -n auto -q --durations=5 --durations-min=1.0 --failed-first"
+addopts = "--no-header -n auto --maxprocesses=4 -q --durations=5 --durations-min=1.0 --failed-first"
 timeout = 30
 timeout_method = "thread"
 
 [tool.ruff]
 target-version = "py312"
 line-length = 110
-preview = true
 # plugins/obsidian-knowledge is a generated copy of the root (see
 # scripts/sync_codex_plugin.py) -- lint the source of truth only. docs/ holds
-# documentation and frozen plans/specs; preview format rewrites their code blocks.
+# documentation and frozen plans/specs; do not rewrite archived code blocks.
 extend-exclude = ["plugins/obsidian-knowledge", "docs/"]
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
+preview = true
+explicit-preview-rules = true
+# Fit for host-loaded adapters: annotation migration and path/API style rules
+# remain review conventions; enforce bug-shaped rules without changing interfaces.
+select = [
+    "E", "W", "F", "I", "B", "UP", "C4", "SIM", "RUF", "C90",
+    "A", "ASYNC", "COM818", "D402", "D414", "D418", "D419",
+    "DOC102", "DOC202", "DOC403", "DTZ", "FA", "G", "LOG",
+    "ISC004", "PGH", "PIE", "PLE", "RSE", "SLOT", "T10", "T20", "TID", "YTT",
+    "S102", "S103", "S104", "S106", "S107", "S110", "S112",
+    "S201", "S202", "S301", "S302", "S306", "S307", "S324",
+    "S501", "S506", "S508", "S509", "S602", "S605", "S606", "S608", "S612", "S701",
+    "TRY201", "TRY203", "TRY400", "TRY401",
+]
 ignore = [
     "E501",    # line-length deferred to the formatter
     "RUF067",  # non-empty-init-module: hermes_plugin/__init__.py is the plugin entrypoint by design
@@ -92,8 +112,13 @@ max-complexity = 15
 [tool.ruff.lint.per-file-ignores]
 # Idiomatic test patterns: captured-but-unused unpacking, exact-float asserts on
 # representable literals, async test-doubles matching an interface, [..][0] slices.
-"tests/**/*.py" = ["F841", "C901", "SIM", "RUF059", "RUF069", "RUF029", "RUF015"]
-"scripts/**/*.py" = ["C901"]
+"scripts/**/*.py" = ["C901", "T20"]
+# stdout is the protocol at hook and standalone-tool boundaries.
+"hooks/**/*.py" = ["T201"]
+"skills/**/*.py" = ["T201"]
+"spikes/**/*.py" = ["T201"]
+"**/cli.py" = ["T201"]
+"tests/**/*.py" = ["F841", "C901", "SIM", "RUF059", "RUF069", "RUF029", "RUF015", "T201"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -119,17 +144,16 @@ module = ["memweave.*", "botocore.*", "agent.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]
+branch = true
+patch = ["subprocess"]
 source = ["lib", "hooks", "hermes_plugin"]
 omit = ["*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/conftest.py"]
 
 [tool.coverage.report]
-# Ratchet floor: current in-process coverage is ~56%. The thin hook entrypoints
-# (doctor.py, recall-init.py, ...) are exercised via subprocess, so their lines
-# don't register in-process -- lib/ and hookslib/ (the real logic) sit at 76-100%.
-# Raise this over time; never lower it. See docs/QUALITY.md.
-fail_under = 55
+# NOTE: measured branch-coverage ratchet; see docs/QUALITY.md. Target: 100%.
+fail_under = 80
 skip_empty = true
-exclude_lines = [
+exclude_also = [
     "pragma: no cover",
     "def __repr__",
     "raise AssertionError",
@@ -148,3 +172,19 @@ exclude = [".venv/", "plugins/"]
 # legitimately ignores: **kwargs (forward-compat) and sync_turn's content args
 # (it reindexes off fingerprints, not turn content).
 ignore_names = ["kwargs", "user_content", "assistant_content"]
+
+[tool.uv]
+exclude-newer = "3 days"
+
+[tool.deptry]
+extend_exclude = ["plugins/", "scripts/", "skills/", "spikes/"]
+known_first_party = ["lib", "vault_index", "hooks", "hookslib", "vault_registry", "hermes_plugin"]
+
+[tool.deptry.per_rule_ignores]
+# Hermes supplies its MemoryProvider interface in the host process.
+DEP001 = ["agent"]
+# Explicit compatibility constraints for memweave's lazy embedding stack;
+# httpx[socks] supplies proxy support. Keep these even without direct imports.
+DEP002 = ["litellm", "botocore", "httpx"]
+# scan-vault-secrets.py declares its runtime dependencies in PEP 723 metadata.
+DEP004 = ["detect_secrets"]

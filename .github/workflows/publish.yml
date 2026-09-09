@@ -42,7 +42,7 @@ jobs:
           uv lock
           uv sync --group dev
           uv run python scripts/sync_codex_plugin.py
-          uv run pre-commit run --all-files --show-diff-on-failure
+          uv run prek run --all-files --show-diff-on-failure
           uv build
           uv run --no-project python scripts/smoke_tool_install.py dist/*.whl
 

@@ -35,8 +35,10 @@ plugin_path = repo_root / "hermes_plugin" / "__init__.py"
 import importlib.util  # noqa: E402  (must follow the agent-module mock above)
 
 spec = importlib.util.spec_from_file_location("hermes_plugin", plugin_path)
-mod = importlib.util.module_from_spec(spec)  # type: ignore
-spec.loader.exec_module(mod)  # type: ignore
+if spec is None or spec.loader is None:
+    raise ImportError(f"Cannot load plugin from {plugin_path}")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
 
 vault_root = os.environ.get("OBSIDIAN_VAULT_ROOT", "")
 if not vault_root:

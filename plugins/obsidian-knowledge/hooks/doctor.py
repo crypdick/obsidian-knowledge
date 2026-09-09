@@ -105,7 +105,7 @@ def check_ollama(vault_root: str) -> str | None:
         return None
     try:
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-        from vault_index.indexer import default_cache_dir  # type: ignore
+        from vault_index.indexer import default_cache_dir  # type: ignore[import-not-found]
     except ImportError:
         return None
     cache_dir = str(default_cache_dir(Path(vault_root)))

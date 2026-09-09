@@ -88,11 +88,13 @@ def test_hook_uses_payload_cwd_for_relative_protected_write(subprocess_vault, tm
     hook = Path(__file__).parents[1] / "hooks/protect-vault.py"
     result = subprocess.run(
         [sys.executable, str(hook)],
-        input=json.dumps({
-            "cwd": str(vault),
-            "tool_name": "Write",
-            "tool_input": {"file_path": "_sources/original.md", "content": "overwrite"},
-        }),
+        input=json.dumps(
+            {
+                "cwd": str(vault),
+                "tool_name": "Write",
+                "tool_input": {"file_path": "_sources/original.md", "content": "overwrite"},
+            }
+        ),
         text=True,
         capture_output=True,
         cwd=tmp_path,

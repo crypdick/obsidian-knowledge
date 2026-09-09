@@ -1,0 +1,164 @@
+# Run: uv run prek run --all-files; install: uv run prek install
+# Ruff owns complexity, print/logging, debugger, and future-import checks.
+minimum_prek_version = "0.5.2"
+exclude = "^plugins/obsidian-knowledge/"
+
+[[repos]]
+repo = "builtin"
+
+[[repos.hooks]]
+id = "trailing-whitespace"
+
+[[repos.hooks]]
+id = "end-of-file-fixer"
+
+[[repos.hooks]]
+id = "check-yaml"
+
+[[repos.hooks]]
+id = "check-json"
+
+[[repos.hooks]]
+id = "check-toml"
+
+[[repos.hooks]]
+id = "check-merge-conflict"
+
+[[repos.hooks]]
+id = "detect-private-key"
+
+[[repos.hooks]]
+id = "check-added-large-files"
+
+[[repos.hooks]]
+id = "mixed-line-ending"
+
+[[repos.hooks]]
+id = "check-case-conflict"
+
+[[repos.hooks]]
+id = "check-symlinks"
+
+[[repos.hooks]]
+id = "destroyed-symlinks"
+
+[[repos.hooks]]
+id = "fix-byte-order-marker"
+
+[[repos.hooks]]
+id = "check-executables-have-shebangs"
+
+[[repos.hooks]]
+id = "check-shebang-scripts-are-executable"
+
+[[repos]]
+repo = "https://github.com/Yelp/detect-secrets"
+rev = "v1.5.0"
+
+[[repos.hooks]]
+id = "detect-secrets"
+args = ["--baseline", ".secrets.baseline"]
+exclude = "uv\\.lock"
+
+[[repos]]
+repo = "https://github.com/ikamensh/flynt/"
+rev = "1.0.6"
+
+[[repos.hooks]]
+id = "flynt"
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "ruff-check"
+name = "ruff (lint)"
+entry = "uv run ruff check --fix --quiet"
+language = "system"
+types = ["python"]
+require_serial = true
+
+[[repos.hooks]]
+id = "ruff-format"
+name = "ruff (format)"
+entry = "uv run ruff format --quiet"
+language = "system"
+types = ["python"]
+require_serial = true
+
+[[repos.hooks]]
+id = "vulture"
+name = "vulture (dead code)"
+entry = "uv run vulture"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "mypy"
+name = "mypy (strict)"
+entry = "uv run mypy lib hooks hermes_plugin"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "check-exception-handling"
+name = "Check exception handling"
+entry = "uv run python scripts/prek_hooks/check_exception_handling.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-file-length"
+name = "Check file length"
+entry = "uv run python scripts/prek_hooks/check_file_length.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-private-test-imports"
+name = "Forbid private imports in tests"
+entry = "uv run python scripts/prek_hooks/check_private_test_imports.py --package lib --package vault_index --package hookslib --package hermes_plugin --package vault_registry"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "deptry"
+name = "deptry"
+entry = "uv run deptry ."
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "check-sdist"
+name = "check-sdist"
+entry = "uv run check-sdist --inject-junk --installer uv"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "architecture"
+name = "architecture"
+entry = "uv run python scripts/prek_hooks/check_architecture.py"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "codex-plugin-sync"
+name = "Codex plugin in sync"
+entry = "uv run python scripts/sync_codex_plugin.py --check"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "pytest"
+name = "pytest (+ coverage gate)"
+entry = "uv run pytest --cov --cov-report=term-missing --cov-report=json:coverage.json"
+language = "system"
+pass_filenames = false
+always_run = true
