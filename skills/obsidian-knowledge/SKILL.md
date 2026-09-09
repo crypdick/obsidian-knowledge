@@ -39,6 +39,12 @@ current directory has an identifiable Git `origin`; otherwise it falls back to
 and is lock-protected for concurrent agents. It records the papercut only; continue
 the task unless the user asks to investigate or fix it.
 
+Papercut logging requires write access to the vault log's directory and its lock
+file. If the vault is outside the sandbox's writable roots, use the host's
+approved permission mechanism when available. If access is unavailable, report
+the logging failure once and continue the original task. Do not recursively
+invoke `papercut` to record its own failure or retry with unchanged permissions.
+
 ## Frontmatter timestamps
 
 Do **not** manually edit `updated:` timestamps in Obsidian notes. The vault linter manages `updated` metadata automatically; content edits should leave existing timestamp fields alone unless the user explicitly asks for timestamp repair.
@@ -54,6 +60,13 @@ obsidian-knowledge read "wiki/path/to/note.md"
 ```bash
 obsidian-knowledge search "concept or phrase"
 ```
+
+Semantic ranking requires network access to the configured Ollama endpoint,
+including localhost. `Operation not permitted` or `Permission denied` on that
+connection means sandbox or OS access was blocked; it does not establish that
+Ollama failed to start. Use the host's approved permission mechanism when
+available, or continue with degraded keyword ranking and state the limitation.
+Check service health from a process with network access before restarting it.
 
 ## Create a note
 

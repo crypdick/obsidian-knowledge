@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import errno
 import hashlib
 import os
 import re
@@ -458,7 +459,9 @@ def setup(vault: Path) -> None:
     idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
     if not idx.vector_enabled:
         print(f"Search mode: keyword-only ({idx.vector_status}).")
-        print("To enable semantic search, start Ollama, run `ollama pull bge-m3`, then reindex.")
+        print(
+            "To enable semantic search, resolve the reported embedding access or model issue, then reindex."
+        )
     try:
         stats = idx.full_reindex(force=False)
     except IndexBusyError:
@@ -475,7 +478,18 @@ def run_papercut(*, vault: Path, description: str, parser: argparse.ArgumentPars
 
     try:
         record = record_papercut(vault, description)
-    except (OSError, ValueError) as exc:
+    except OSError as exc:
+        print(f"papercut: could not complete vault log write: {exc}", file=sys.stderr)
+        if exc.errno in {errno.EROFS, errno.EACCES, errno.EPERM}:
+            print(
+                f"papercut: vault write access is required under {vault}, including the log's directory "
+                "and lock file. In a sandbox, retry through the host's approved permission mechanism. "
+                "If access is unavailable, report the logging failure once and continue the original task; "
+                "do not recursively log this failure.",
+                file=sys.stderr,
+            )
+        return 1
+    except ValueError as exc:
         parser.error(str(exc))
     print(f"Logged papercut: {record.path.relative_to(vault)}")
     return 0

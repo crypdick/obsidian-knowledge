@@ -143,11 +143,7 @@ def check_ollama(vault_root: str) -> str | None:
 
     if ok:
         return None
-    bare = model.split("/", 1)[1] if "/" in model else model
-    return (
-        f"obsidian-knowledge search is using basic ranking — {msg}. "
-        f"Fix: `ollama serve` + `ollama pull {bare}` for better ranking."
-    )
+    return f"obsidian-knowledge search is using basic ranking — {msg}."
 
 
 def main() -> None:

@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import fcntl
 import hashlib
 import json
@@ -119,12 +120,25 @@ def _ollama_probe(api_base: str, model: str) -> tuple[bool, str]:
         with urllib.request.urlopen(req, timeout=PROBE_TIMEOUT_S) as resp:
             data = json.loads(resp.read())
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return False, f"Ollama unreachable at {api_base}: {exc}"
+        reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+        if isinstance(reason, OSError) and reason.errno in {errno.EPERM, errno.EACCES}:
+            return False, (
+                f"Ollama access denied at {api_base}: {exc}. "
+                "Sandbox or OS permissions blocked the connection; this does not show that Ollama is stopped. "
+                "Retry with approved network access to this endpoint"
+            )
+        return False, (
+            f"Ollama unreachable at {api_base}: {exc}. "
+            "Check the configured endpoint and Ollama service from a process with network access"
+        )
     except json.JSONDecodeError as exc:
         return False, f"Ollama returned non-JSON: {exc}"
     tags = [t.get("name", "") for t in data.get("models", [])]
     if not any(name.split(":", 1)[0] == bare_name for name in tags):
-        return False, f"model '{bare_name}' not pulled (have: {tags or 'none'})"
+        return False, (
+            f"model '{bare_name}' not pulled (have: {tags or 'none'}); "
+            f"run `ollama pull {bare}` against {api_base}"
+        )
     return True, f"ok: {bare_name} via {api_base}"
 
 

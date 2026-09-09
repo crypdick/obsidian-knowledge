@@ -1,7 +1,7 @@
 # Obsidian Knowledge
 
-A Claude Code plugin marketplace with skills and hooks for maintaining
-Obsidian knowledge base vaults.
+A plugin marketplace and CLI for maintaining Obsidian knowledge base vaults
+with Claude Code, Codex, and Hermes.
 
 ## Skills
 
@@ -167,6 +167,12 @@ a repository, it falls back to `wiki/systems/knowledge-base/PAPERCUTS.md`. The
 log is lock-protected for concurrent agents. It records friction only—it does not
 diagnose the issue or modify the harness.
 
+The vault log's directory and lock file must be writable. In a sandbox where the
+vault is outside the writable roots, use the host's approved permission mechanism.
+Permission and read-only-filesystem failures exit with status 1 and explain the
+required access. If permission is unavailable, report the failure once and
+continue the task; do not recursively log the failed logging attempt.
+
 Reports created by v3.22.24 remain untouched under
 `wiki/systems/knowledge-base/papercuts/`; they are not automatically assigned to a
 repository because their original scope may be ambiguous.
@@ -175,6 +181,14 @@ repository because their original scope may be ambiguous.
 
 Searches the indexed `wiki/` tree and returns ranked `score  path` lines.
 Pass `--all` to include normally-hidden zones (`Inbox/`, `Journal/`).
+
+Semantic ranking needs network access to Ollama, even at `127.0.0.1`. A connection
+denied with `EPERM` or `EACCES` indicates sandbox or OS restrictions, not evidence
+that the server is stopped. Retry through the host's approved permission mechanism
+or use degraded keyword ranking. Check the service outside the restricted process
+before starting another server. A Linux systemd user service starts at login unless
+lingering is enabled; inspect it with `systemctl --user status ollama` and
+`journalctl --user -u ollama` (system services omit `--user`).
 
 ### Hermes plugin install
 
@@ -209,8 +223,7 @@ human or agent can choose where to store the memory.
 - The following Obsidian settings must be enabled:
   - **Use [[Wikilinks]]** (`Settings → Files and Links`)
   - **Automatically update internal links** (`Settings → Files and Links`)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with plugin
-  support
+- A supported agent host: Claude Code, Codex, or Hermes (optional for CLI-only use)
 - [`uv`](https://docs.astral.sh/uv/) on `PATH` — required by
   `scan-vault-secrets.py` and the `obsidian-knowledge` CLI
 - [Ollama](https://ollama.com/) installed and running locally, with the
@@ -230,7 +243,7 @@ obsidian-knowledge setup --vault /path/to/your/obsidian/vault
 
 # 3. Install Ollama and pull the default embedding model (optional — improves search ranking)
 brew install ollama          # macOS; or see ollama.com/download
-brew services start ollama   # macOS; on Linux: `ollama serve` (systemd)
+brew services start ollama   # macOS; on Linux, start your installed Ollama service
 ollama pull bge-m3
 obsidian-knowledge reindex --vault /path/to/your/obsidian/vault
 ```
@@ -253,6 +266,93 @@ without another bump. The bot's version commit does not trigger another CI run.
 The protection hooks use `vaults.yaml` to know which directories to guard.
 Without it, the `_sources/`, published-file, and destructive-ops rules will
 not fire.
+
+### Codex installation
+
+After installing the CLI and registering the vault above, install the Codex plugin:
+
+```bash
+codex plugin marketplace add crypdick/obsidian-knowledge
+codex plugin add obsidian-knowledge@obsidian-knowledge
+```
+
+Restart Codex and review plugin enablement and hook trust through `/plugins` or
+`/hooks`. For local development, use the control checkout and reinstall workflow
+in [AGENTS.md](AGENTS.md).
+
+### Global Codex sandbox access
+
+Installing the plugin does not grant sandbox access. For sessions using
+`workspace-write`, merge the following into `~/.codex/config.toml`. It applies
+across repositories without selecting a dedicated permission profile. Replace
+the example paths with absolute paths to your vault and [host cache](#cache-location).
+Keep existing writable roots and domain rules; merge existing TOML tables rather
+than declaring them twice. If `features.network_proxy` is already a boolean,
+replace it with the table form below.
+
+```toml
+[sandbox_workspace_write]
+writable_roots = [
+  "/path/to/obsidian/vault/wiki",
+  "/path/to/obsidian/vault/Utility/obsidian-knowledge",
+  "/home/your-user/.cache/obsidian-knowledge",
+]
+network_access = true
+
+[features.network_proxy]
+enabled = true
+
+[features.network_proxy.domains]
+"127.0.0.1" = "allow"
+"localhost" = "allow"
+```
+
+The writable directories cover notes, papercut logs and their lock files,
+changelog fragments, and the search cache. On macOS, use
+`/Users/your-user/Library/Caches/obsidian-knowledge` for the cache entry. Run initial
+`setup` from a terminal with vault access; these grants cover routine memory work,
+not edits throughout every vault folder.
+
+Keep the proxy enabled: `network_access = true` alone permits unrestricted command
+network access. With the proxy active, this example allows localhost destinations
+and blocks public destinations; add other required hosts to your existing policy
+explicitly. The allowlist is host-based, not limited to Ollama's port. See the
+[Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+These settings use Codex's `sandbox_workspace_write` configuration. Deployments
+that enforce named permission profiles must configure the equivalent grants in
+their active policy; the two permission systems do not compose. See
+[Codex permissions](https://learn.chatgpt.com/docs/permissions).
+
+Restart Codex and open a new session after changing permissions. Verify from the
+repository where you normally work, using a phrase from an indexed note:
+
+```bash
+codex sandbox -c 'sandbox_mode="workspace-write"' -- obsidian-knowledge search "known note phrase"
+codex sandbox -c 'sandbox_mode="workspace-write"' -- python3 -c 'import tempfile; tempfile.TemporaryFile(dir="/path/to/obsidian/vault/wiki").close()'
+```
+
+The first command should return matching notes without `ranking degraded`; the
+second should exit successfully and leaves no note behind. These checks were
+verified on Linux with Codex 0.153.4. In that version, inherit the shell's working
+directory: adding `codex sandbox -C` requires a named profile. A successful search
+from an unrestricted terminal alone does not verify sandbox access.
+
+### Ollama service availability
+
+Check Ollama from a normal terminal before diagnosing startup:
+
+```bash
+curl --fail http://127.0.0.1:11434/api/tags
+```
+
+On Linux, inspect an installed user service with `systemctl --user status ollama`
+and `journalctl --user -u ollama`; omit `--user` for a system service. A user service
+normally starts at login. To run an enabled user service from boot and while logged
+out, enable lingering with `sudo loginctl enable-linger "$USER"`. Running
+`ollama serve` directly only runs the server in that process; it does not install
+or enable a service. A sandbox connection error reporting `EPERM` or `EACCES` is
+an access restriction and does not establish a startup failure.
 
 ### Switching embedding models
 

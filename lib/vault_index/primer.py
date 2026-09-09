@@ -112,6 +112,12 @@ def build_primer(
         "blocks, or repeat the same workaround, log it immediately with "
         '`obsidian-knowledge papercut "what happened"`. This only records a '
         "durable log entry; continue the requested work rather than turning it into "
-        "a side quest."
+        "a side quest.\n"
+        "- Sandbox access: papercut needs vault-directory and lock-file write access; "
+        "semantic search needs network access to the configured Ollama endpoint, even on localhost. "
+        "When these are outside the sandbox's allowed access, use the host's approved permission "
+        "mechanism if available. EPERM/EACCES on an Ollama connection does not mean the server "
+        "is stopped. If access is unavailable, report the limitation once and continue; "
+        "do not repeatedly retry unchanged permissions or recursively log a failed papercut."
         f"{kb_block}"
     )
