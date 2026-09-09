@@ -1,122 +1,64 @@
 # Architecture
 
-obsidian-knowledge gives an AI agent long-term memory backed by an Obsidian
-vault: hybrid (BM25 + dense) retrieval over vault markdown, plus lifecycle hooks
-that inject recalled context, protect the vault from destructive edits, and nudge
-the agent to write learnings back. It supports Claude Code and Codex plugins
-(hooks + skills) and a Hermes Agent CLI memory provider over a shared retrieval
-library.
-
-This is a map of *where things live and what may depend on what*, not how each
-piece works (the modules document themselves). Revisit it a couple of times a
-year, or when a package or invariant changes — not on every edit.
+The CLI, Claude Code and Codex hooks, and Hermes memory provider share vault
+retrieval and protection components.
 
 ## Codemap
 
-### `lib/vault_index/` — the shared retrieval core
+| Location | Responsibility |
+| --- | --- |
+| `lib/vault_index/` | Retrieval, configuration, verified file I/O, session primer, papercut logs, and CLI orchestration. |
+| `hooks/` | Claude Code hook entrypoints and the dependency-light vault registry. |
+| `hooks/hookslib/` | Shared protection, capture, transcript, memory-routing, and reflection logic. |
+| `hermes_plugin/` | Hermes memory provider and lifecycle adapter. The root `__init__.py` registers it. |
+| `scripts/` | Development, migration, packaging, and quality tools. |
+| `plugins/obsidian-knowledge/` | Generated Codex distribution; edit root sources and run `scripts/sync_codex_plugin.py`. |
 
-Retrieval, configuration, safe file I/O, and CLI orchestration. Vault protection
-and memory routing also have domain logic under `hooks/hookslib/`.
+In the retrieval core, `config.py` defines Pydantic configuration models,
+`models.py` holds shared result types, `filters.py` handles path filtering and
+weights, and `indexer.py` wraps memweave's keyword and dense retrieval.
+`vault_files.py` handles confined, verified writes. Importing `lib` enables
+beartype runtime checks.
 
-- **`models.py`** — `Hit` (a scored `{path, score, weight_applied}` result).
-  Dependency-light on purpose so `indexer` and `filters` both import it without a
-  cycle (and so beartype can resolve the `Hit` forward reference at runtime).
-- **`config.py`** — `VaultIndexConfig`, `IndexFilter`, `DigestFilter` (pydantic),
-  and `load_config`. The vault's `.claude/obsidian-knowledge.yaml` schema.
-- **`filters.py`** — `score_path`, `path_passes`, `apply_filters`. Pure functions:
-  allow/deny path filtering and weight scoring.
-- **`indexer.py`** — `Indexer`, the memweave (FTS5 + Ollama/dense) wrapper. Owns
-  the per-vault SQLite cache, the Ollama probe/fail-soft, and `index_lock`.
-- **`primer.py`** — `build_primer`, the session-start context string.
-- **`vault_files.py`** — confined, atomic, fsync-backed vault file reads/writes
-  with final byte verification.
-- **`cli.py`** — the `obsidian-knowledge` console entrypoint (argparse): reindex,
-  search, verified file I/O, papercut logging, doctor, hook dispatch, vault
-  registry.
-- **`papercuts.py`** — scoped, append-only, concurrency-safe workflow-friction
-  logs; deliberately separate from the retrieval/indexing stack.
-- **`lib/__init__.py`** — activates **beartype** for the whole `lib` package
-  (`beartype_this_package()`); runtime type checking on all of `lib.vault_index`.
-
-### `hooks/` — the Claude Code adapter
-
-`vault_registry.py` is the dependency-light YAML registry shared with the CLI.
-The wheel also installs it as the top-level `vault_registry` module so both
-standalone hook scripts and the installed CLI import the same implementation.
-
-Thin entrypoint scripts (`doctor.py`, `enforce-conventions.py`, `protect-vault.py`,
-`recall-init.py`, `reflect-nudge.py`, `capture-session.py`, `nudge-index-sync.py`,
-`scan-vault-secrets.py`, plus deprecated capture aliases) that read a hook JSON payload on
-stdin and emit a decision/message on stdout. Shared logic lives in **`hooks/hookslib/`**
-(`capture`, `patterns`, `vault_config`, `vault_policy`, `stop_hook`, `transcript`,
-`reflect_counter`, `repo_memory`, `recall_init_lib`). `protect-vault.py`'s
-`destructive_vault_ops` is the vault-write guard (decomposed per destructive-op
-check: `_check_rm_mv`, `_check_find_delete`, `_check_rsync_delete`, `_check_shred`,
-`_check_xargs_rm`).
-
-### `hermes_plugin/__init__.py` — the Hermes adapter
-
-`ObsidianKnowledgeProvider`, a Hermes `MemoryProvider`. Hermes runs Python 3.11
-but `lib` needs 3.12+ (memweave), so this **bridges to the uv venv via subprocess**
-rather than importing `lib` directly. Root `__init__.py` is the Hermes plugin
-`register()` entrypoint.
-
-### `scripts/`
-
-Dev/maintenance tools: `sync_codex_plugin.py` (regenerates the Codex mirror),
-`build_memory_indexes.py`, `migrate_*`, and `prek_hooks/` (the custom taste
-hooks — exception/file-length/private-test-import checks and import boundaries).
-
-### `plugins/obsidian-knowledge/` — generated Codex mirror
-
-A generated copy of the repo root for Codex's plugin marketplace, produced by
-`scripts/sync_codex_plugin.py`. **Never hand-edit it**; edit the source at the repo
-root and re-run the sync. Excluded from all tooling.
+The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
+module so hooks and the CLI share one registry implementation.
 
 ## Invariants (load-bearing)
 
-- **Import boundaries are enforced** by `scripts/prek_hooks/check_architecture.py`.
-  `lib` imports neither adapters nor shared hook modules, with one explicit
-  exception: `lib/vault_index/primer.py` imports `hookslib.repo_memory` to resolve
-  the memory destination. `hooks/hookslib` imports neither `lib`/`vault_index` nor
-  `hermes_plugin`; it may import the dependency-light `vault_registry`.
-  Hook entrypoints import `hookslib` and may import `vault_index` (the doctor).
-  `hermes_plugin` imports `hookslib` for reflection counters but never imports
-  `lib` or `vault_index` in its host process. These arrows describe **imports**,
-  not execution order. Dynamic imports and generated subprocess code require
-  review; the gate checks static imports, including local and relative imports.
-- **No import cycles inside `lib`.** Shared types live in `models.py`; `indexer` and
-  `filters` both depend on it, not on each other's internals.
-- **Hermes bridges by subprocess, not import.** `hermes_plugin` shells out to the uv
-  venv (`_python_cmd()`), because of the 3.11/3.12 split. It must not `import lib`.
-- **Protection checks never change process cwd.** Runtime adapters pass workdir
-  to `check_tool_call`, which normalizes file paths before evaluating shared rules.
-- **Sync completion comes from the indexer.** Busy sync raises `IndexBusyError`;
-  Hermes retains dirty state for the next turn. There is no separate freshness
-  marker that can claim success without indexing.
-- **Hooks must not crash the host.** Entrypoints in `hooks/` degrade gracefully;
-  broad `except` at those boundaries is deliberate and marked
-  `# allow: exception-handling`.
-- **`plugins/obsidian-knowledge/` is generated.** The `codex-plugin-sync` gate fails
-  the build if it drifts from the source root.
-- **Caches live outside the vault**, keyed per-vault (`default_cache_dir` hashes the
-  vault path), so Syncthing never replicates an embeddings DB and two vaults never
-  collide.
+The static import checker is `scripts/prek_hooks/check_architecture.py`.
+Preserve these boundaries:
+
+- `lib` imports neither adapters nor shared hooks, except that `primer.py`
+  imports `hookslib.repo_memory` to resolve the memory destination.
+- `hooks/hookslib` imports neither `lib`, `vault_index`, nor `hermes_plugin`.
+  It may import the dependency-light `vault_registry`.
+- Hook entrypoints import `hookslib` and may import `vault_index` for the doctor.
+- `hermes_plugin` may import `hookslib` for reflection counters. It calls the
+  retrieval environment through subprocesses and never imports `lib` or
+  `vault_index` into the host process. This accommodates Hermes's Python 3.11
+  runtime and the retrieval stack's Python 3.12+ requirement.
+- Keep `lib` free of import cycles. Put shared result types in `models.py`.
+
+Review dynamic imports and generated subprocess code separately; the checker
+covers static imports, including local and relative imports.
+
+Runtime requirements:
+
+- Protection checks receive the workdir and normalize paths without changing cwd.
+- Only the indexer reports sync completion. On `IndexBusyError`, Hermes retains
+  dirty state and retries on a later turn.
+- Hooks must not crash the host. Broad catches at entrypoint boundaries are
+  deliberate and marked `# allow: exception-handling`.
+- Keep the Codex distribution generated. The `codex-plugin-sync` check detects drift.
+- Store caches outside the vault, keyed by vault path, to avoid sync conflicts
+  and collisions between vaults.
 
 ## Worktree isolation
 
-Concurrent git worktrees (`.worktrees/<name>`) are safe to develop in:
+Use `scripts/new-worktree.sh` to create a development worktree. Each worktree
+has its own `.venv`; uv's package cache can be shared.
 
-- **Per-worktree venv** — each worktree gets its own `.venv` via `uv sync`; nothing
-  is shared at a fixed path.
-- **Tests self-isolate** — `tests/conftest.py` redirects `platformdirs.user_cache_dir`
-  into a per-session tmp dir and disables the live Ollama probe, so parallel test
-  runs never touch the real cache or network.
-- **Shared global caches are content-addressed** (`~/.cache/uv`), so sharing them
-  across worktrees is safe.
-- The one shared mutable state is a *real* vault's on-disk index cache (keyed by
-  vault path, not worktree). Point a worktree at a throwaway vault via
-  `OBSIDIAN_VAULT_ROOT` / `OBSIDIAN_KNOWLEDGE_CACHE_ROOT` if you exercise real
-  indexing concurrently.
-
-See `scripts/new-worktree.sh` for the one-command ephemeral-worktree setup.
+Tests use temporary caches and disable live Ollama probes. For manual indexing
+in concurrent worktrees, set `OBSIDIAN_VAULT_ROOT` and
+`OBSIDIAN_KNOWLEDGE_CACHE_ROOT` to a throwaway vault and cache. A real vault's
+index is shared across worktrees that target it.

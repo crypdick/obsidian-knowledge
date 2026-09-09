@@ -1,5 +1,8 @@
 nav:
   - Home: index.md
+  - CLI reference: CLI.md
+  - Configuration: configuration.md
+  - Hooks and vault protection: hooks.md
   - Architecture: ARCHITECTURE.md
   - Quality: QUALITY.md
   - Roadmap: TODO.md

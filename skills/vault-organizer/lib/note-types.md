@@ -1,38 +1,26 @@
 # Note types
 
-## Type → subfolder
+## Note locations
 
-| Type | Where it lives | Signal |
-|------|---------------|--------|
-| Background reference | `reference/` | Lookup-only, rarely edited. Editable notes — ≠ `_sources/` originals (write-protected). |
-| Design doc / plan | `plans/` | Decision records, implementation plans, roadmaps |
-| Convo note | `convos/` | Agent synthesis: comparisons, decision rationales, research summaries |
-| Diary note | `diary/` | Narrative account of process, incident, event |
-| Wiki / Guide / TODO | inline | Compiled knowledge, how-tos, task backlogs — stay at folder root |
+Classify files by their content:
 
-## Fixing a DUMPING_GROUND
+| Type | Subfolder | Content |
+| --- | --- | --- |
+| Background reference | `reference/` | Editable lookup notes, distinct from protected `_sources/` originals |
+| Design or plan | `plans/` | Decision records, implementation plans, roadmaps |
+| Conversation | `convos/` | Comparisons, decision rationale, research synthesis |
+| Diary | `diary/` | Accounts of incidents, events, or processes |
+| Wiki, guide, or TODO | Folder root | Compiled knowledge, how-tos, backlogs |
 
-The audit only flags a folder when it sees ≥4 inline files whose **filenames
-match a misplaced-file pattern**: date-prefixed (`2024-09-5-*.md`),
-`*-design.md`, `*-convo.md`, or `*-diary.md`. Plain-named wiki/guide notes
-never count toward the threshold — convention says they belong inline.
+## Fix a DUMPING_GROUND
 
-So when a folder is flagged, the inline files in question are almost
-always genuinely misplaced. Audit output reports both the misplaced count
-and the total inline count:
+The audit flags folders with at least four inline files whose names are
+date-prefixed or end in `-design.md`, `-convo.md`, or `-diary.md`.
+It does not count ordinary wiki or guide filenames.
 
-```
-DUMPING_GROUND  <folder>  misplaced=5  inline_total=12  subfolders=3
-```
+1. Inspect the matching files and classify them using the table.
+2. Move misplaced files into typed subfolders with `obsidian move`.
+3. Create an index for each new subfolder and link it from the parent.
+4. Leave ordinary wiki notes at the folder root.
 
-Steps:
-
-1. List inline files in the flagged folder; identify the ones matching the
-   misplaced patterns (date-prefixed, design/convo/diary suffix).
-2. For each, classify by the table above and move to the right typed
-   subfolder via `obsidian move`.
-3. When creating a new typed subfolder, create its `index.md` too and link
-   it from the parent index.
-4. Plain-named wiki notes — leave them. They belong inline.
-
-See `lib/index-format.md` for move syntax and index entry format.
+Follow [index and move conventions](index-format.md).

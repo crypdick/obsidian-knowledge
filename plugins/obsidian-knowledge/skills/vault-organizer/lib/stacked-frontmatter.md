@@ -1,48 +1,45 @@
-# Fix: stacked frontmatter
+# Fix stacked frontmatter
 
-Two consecutive `---` YAML blocks at top of file. Obsidian parses only first as frontmatter; second renders as `<hr>` + plain text + `<hr>`. Properties in second block silently invisible to dataview, bases, dg-publish, etc.
+Obsidian reads only the first YAML block at the start of a note. Properties in
+a second block appear as body text and are unavailable to plugins.
 
 ## Detect
 
 Audit emits one line per file:
 
-```
+```text
 STACKED_FRONTMATTER	<path>
 ```
 
-## Common cause
-
-Plugin (`update-time-on-edit`, `Linter`, etc.) injects `created`/`updated`/`date` keys at top of file already containing frontmatter. Templater templates with leading frontmatter + `<%- output %>` JS-string-build also produce stacked output.
-
 ## Fix
 
-The most common case is a **stray duplicate `---`** with no real second
-block — just an extra marker line after the frontmatter close. The
-helper script handles that automatically:
+For a stray duplicate `---` after the frontmatter, use the helper script.
+Replace `NOTE_PATH` with the note's filesystem path:
 
 ```bash
 # Dry run (reports what would change)
-python3 fix-stacked-frontmatter.py <file> [<file>...]
+uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" NOTE_PATH
 
 # Apply the fix
-python3 fix-stacked-frontmatter.py --fix <file> [<file>...]
+uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" --fix NOTE_PATH
 ```
 
 Output codes:
 
-- `WOULD_FIX` / `FIXED` — stray duplicate `---`, safely auto-collapsed.
-- `NEEDS_MERGE` — second block contains real keys; auto-fix refused.
-  Exit code 1. Merge manually using the steps below.
+- `WOULD_FIX` or `FIXED`: a stray duplicate marker can be removed automatically.
+- `NEEDS_MERGE`: the second block contains keys and requires a manual merge.
+  The script exits with code 1.
 
 For `NEEDS_MERGE` cases:
 
-1. Read file. Confirm two `---` blocks.
-2. Merge keys from both blocks into single frontmatter. Newer/auto-injected keys (created/updated) win for timestamps; user-set keys (tags, dg-publish, aliases) win for everything else.
-3. Write back single frontmatter block.
+1. Read the note and confirm two YAML blocks.
+2. Merge the keys into one block. For timestamps, prefer the newer automatically
+   injected values. For other properties, preserve user-set values.
+3. Write and verify the note with one frontmatter block.
 
 Example before:
 
-```
+```yaml
 ---
 created: 2026-04-29T13:24
 updated: 2026-04-29T13:27
@@ -58,7 +55,7 @@ aliases:
 
 After:
 
-```
+```yaml
 ---
 created: 2026-04-29T13:24
 updated: 2026-04-29T13:27
@@ -74,4 +71,7 @@ aliases:
 
 Templater templates emitting their own frontmatter must not have leading frontmatter on the template file itself. Start template with `<%*` script block. Move template's frontmatter into the rendered body after the `-%>` close.
 
-If a plugin keeps injecting frontmatter back into templates, add the templates folder (e.g. `Templates`) to that plugin's ignore list. Note `update-time-on-edit` matches via literal `path.startsWith()` — `Templates/*` is a no-op, use `Templates` (covers all nested files). Reload Obsidian after changing the setting so in-memory state refreshes.
+If a plugin injects frontmatter into templates, exclude the template folder in
+its settings. For `update-time-on-edit`, use `Templates`, not `Templates/*`:
+its path-prefix matching includes nested files. Reload Obsidian after changing
+this setting.

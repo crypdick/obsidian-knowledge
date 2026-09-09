@@ -1,124 +1,52 @@
-# Design Conventions
+# Design conventions
 
-Judgment-based design principles for obsidian-knowledge — not mechanically-checkable
-rules. A linter can't decide whether a given `str` is "really" a domain concept or
-whether some inheritance is genuinely the right call; that takes reading the code and
-applying taste. This doc is where those principles live so both humans and coding agents
-apply them consistently. Enforce them with judgment; the caveats matter.
-
----
+Use these principles in code review. Enforce mechanical rules through
+`pyproject.toml`, `prek.toml`, and `scripts/prek_hooks/`.
 
 ## Semantic types for domain concepts
 
-Give domain values a distinct type instead of a bare primitive. `NewType` is zero-cost
-at runtime and catches category errors at type-check time.
-
-This repo's most dangerous ambiguity is **relative-vs-absolute paths**. `vault_index`
-juggles both — `indexer._abs_to_rel(abs_path: str) -> str`, `filters.score_path(path:
-str, ...)`, `hermes_plugin._resolve_tool_path(raw_path, workdir)` — and every one is a
-bare `str`. Passing an absolute path where a vault-relative one is expected is a silent
-bug today; with distinct types it's a type error:
+Give commonly confused domain values distinct types, especially absolute and
+vault-relative paths. Apply types at boundaries first:
 
 ```python
 from typing import NewType
 
-RelPath = NewType("RelPath", str)   # vault-relative, e.g. "wiki/systems/index.md"
-AbsPath = NewType("AbsPath", str)   # filesystem-absolute
-
-def score_path(path: RelPath, config: VaultIndexConfig) -> float: ...
-def _abs_to_rel(self, abs_path: AbsPath) -> RelPath: ...
+RelPath = NewType("RelPath", str)
+AbsPath = NewType("AbsPath", str)
 ```
 
-Also consider `Query`, and `VaultRoot`/`PluginRoot` (both threaded as bare `str` through
-`hermes_plugin`). Apply this at boundaries first, where a mix-up is most costly.
-**Caveat:** a genuinely raw primitive (a loop counter, a `top_k` limit, free-text
-content) doesn't need wrapping. This is about intent, not blanket wrapping of every
-scalar.
-
----
+Keep ordinary counters, limits, and free text as primitives. Use semantic types
+where a mix-up would be a bug, not for every scalar.
 
 ## Parse, don't validate
 
-Coerce unstructured data into constrained types at the boundary, so downstream code never
-re-validates. Don't check a condition and then discard the proof.
+Parse configuration, paths, and hook payloads into constrained types at the
+boundary. Pass those values inward instead of repeatedly checking raw mappings.
 
-The boundaries here are the config layer (`VaultIndexConfig`, `IndexFilter`,
-`DigestFilter`), path resolution (`_resolve_tool_path` returns `Path | None` — good: it
-parses into an optional typed result), and hook payloads read from the harness. Parse the
-raw hook JSON / config dict into a typed structure once at the edge, then pass the typed
-value inward — don't re-check `"key" in payload` deep in the call stack.
-
-```python
-# AVOID: validate and throw the evidence away
-def handle(payload: dict) -> None:
-    if "tool_input" not in payload:
-        return                              # checked, then discarded
-
-# PREFER: parse into a type that carries the proof
-@dataclass(frozen=True)
-class HookEvent:
-    path: RelPath                           # constructed after boundary validation
-```
-
-Neither `NewType` nor a frozen dataclass validates untrusted input by itself.
-The parser must check the input before constructing `HookEvent`; freezing only
-prevents ordinary reassignment. Pydantic validators enforce runtime value
-constraints. A `str` field remains `str` for static checking, so add a distinct
-semantic type when confusing two domain concepts would be a bug.
-
----
+`NewType` and frozen dataclasses do not validate input. Check values before
+constructing them; use Pydantic for runtime constraints. Add semantic types when
+static checking must distinguish otherwise identical fields.
 
 ## Composition over inheritance
 
-Build behavior out of small, focused parts plus a combiner, rather than a class hierarchy
-that knows about every variant. For swappable behavior (index filters, memory backends,
-digest strategies), inject a strategy that satisfies a `Protocol` instead of subclassing:
-
-```python
-from typing import Protocol
-
-class PathFilter(Protocol):
-    def keep(self, path: RelPath) -> bool: ...
-```
-
-The `filters.py` split (`score_path`, `path_passes` taking a config/filter object) is
-already function-composition in this spirit — prefer extending it with new small
-functions over a growing `if kind == ...` ladder.
-
-**Caveat:** inheritance is sometimes right — framework base classes, `Enum`, `Exception`,
-and genuine is-a relationships with no combinatorial variants. Reach for composition when
-a hierarchy starts to multiply or a constructor sprouts flags. This repo is small; don't
-over-abstract a two-case switch into a plugin registry.
-
----
+Prefer small functions and injected strategies for behavior that varies, such
+as filters or memory backends. Use a `Protocol` when a shared interface helps.
+Framework base classes, enums, exceptions, and genuine subtype relationships
+can use inheritance. Do not build a registry for a simple two-case switch.
 
 ## Keep code and its documentation coupled
 
-When a concrete value in code is *also* stated in prose, the two drift out of sync unless
-they reference each other. This repo has real instances: the memory-index char cap (the
-knowledge-base index is "capped at 6000 chars"), the `AGENTS.md` command lists, and the
-vault-path allowlists in `hermes_plugin`.
-
-```python
-# NOTE: keep in sync with AGENTS.md § "capped at 6000 chars" if you change this.
-INDEX_CHAR_CAP = 6000
-```
-
-- **Introducing a documented value:** add a `NOTE:` comment at the code site naming the
-  doc file and section.
-- **Changing a value that has a `NOTE:`:** read the referenced doc and update it in the
-  same change. Don't merge code that silently contradicts its own docs.
-
+When prose repeats a code value, add a `NOTE:` comment at the code site naming
+the document and section. Update both in the same change. Follow existing
+back-pointers when changing defaults, paths, limits, or behavior.
 
 ## Review and enforcement
 
-Ruff owns print/logging checks, syntax modernization, and cyclomatic complexity.
-Use `logger.info("message", extra={"key": value})` for structured events; CLI and
-hook stdout/stderr are explicit protocol boundaries. Keep suppressions narrow
-and explain why a boundary needs one. Annotation and pathlib migrations should
-follow public behavior tests rather than mechanical API churn.
+Use `logger.info("message", extra={"key": value})` for structured events.
+CLI and hook stdout/stderr are protocol boundaries; keep lint suppressions
+narrow and explain them. Verify annotation and path changes against public
+behavior tests.
 
-When a user states a durable coding preference, encode it in `pyproject.toml`,
-`prek.toml`, or `scripts/prek_hooks/` when a reliable check exists. Keep semantic
-judgments in this document. `.claude/hookify.taste-enforcer.md` supplies the prompt
-reminder on hosts with hookify installed; the checked-in tools run independently.
+Encode durable coding preferences in tooling when a reliable check exists.
+Keep judgment-based guidance here. Hosts with hookify can also use
+`.claude/hookify.taste-enforcer.md`; the checked-in tools run independently.

@@ -2,28 +2,20 @@
 description: Scan the current vault for leaked secrets on demand. Pass `full` to rescan all eligible files while preserving audit decisions.
 ---
 
-# Scan Vault Secrets
+# Scan vault secrets
 
-Run the secrets scanner against the vault containing the current working directory. Bypasses the Stop-hook cooldown so it always executes.
+Scan the vault containing the working directory, bypassing the Stop-hook cooldown.
 
-The scanner is the same one wired up as a Stop hook (`hooks/scan-vault-secrets.py`); this command runs it in `--manual` mode so findings print to stdout instead of being injected as a Stop block.
-
-## Steps
-
-1. Run the scanner. If `$ARGUMENTS` contains the word `full`, append `--full` to force a full rescan while preserving existing audit decisions; otherwise run an incremental scan.
+1. Run the scanner in manual mode:
 
    ```bash
    uv run "${CLAUDE_PLUGIN_ROOT}/hooks/scan-vault-secrets.py" --manual
    ```
 
-   With `full`:
-
-   ```bash
-   uv run "${CLAUDE_PLUGIN_ROOT}/hooks/scan-vault-secrets.py" --manual --full
-   ```
-
-2. Surface the script's stdout verbatim to the user.
-
-3. If findings appeared, briefly summarize what should happen next (audit, redact, or allowlist) using the inline guidance the script already prints. Do not start remediating files automatically — the user decides which findings are real.
+   If `$ARGUMENTS` contains `full`, append `--full` to rescan all eligible files
+   while preserving audit decisions.
+2. Show stdout verbatim to the user.
+3. If there are findings, summarize the next steps from the scanner's guidance.
+   Do not remediate files automatically; the user decides which findings are real.
 
 User arguments: $ARGUMENTS

@@ -3,111 +3,81 @@ name: obsidian-knowledge
 description: Read, search, and create notes in the Obsidian vault/wiki memory store.
 ---
 
-# Obsidian Vault / Wiki Memory
+# Obsidian vault memory
 
-Use the configured Obsidian vault as the durable memory/source of truth for
-non-trivial context, project knowledge, and conversation outcomes. Vault roots
-come from `~/.config/obsidian-knowledge/vaults.yaml`; paths passed to the CLI are
-relative to that root and normally begin with `wiki/`.
+Read, search, and write notes in the configured vault. The registry is
+`~/.config/obsidian-knowledge/vaults.yaml`; CLI paths are vault-relative and
+usually start with `wiki/`. Treat notes as fallible context and verify
+consequential claims against code, runtime evidence, or primary sources.
+
+## Read and search
+
+```bash
+obsidian-knowledge search "concept or phrase"
+obsidian-knowledge read "wiki/path/to/note.md"
+```
+
+Search before answering non-trivial questions. Use exact-string tools only for
+literal names or phrases. Read relevant results before relying on them.
+
+## Write notes
+
+Use `obsidian-knowledge write` with a quoted heredoc to preserve literal Markdown:
+
+```bash
+obsidian-knowledge write "wiki/path/to/note.md" <<'ENDNOTE'
+# Title
+
+Reusable knowledge with `identifiers` and [[wikilinks]].
+ENDNOTE
+```
+
+For an update, read the existing note, integrate the change, and write the
+complete result with `--replace`. The command rejects blank input, path escapes,
+and accidental overwrites. Treat only `Wrote and verified:` as success.
+Write and verify the note before linking it from an index.
+
+Leave existing `updated:` timestamps to the vault linter unless the user
+explicitly requests timestamp repair. Use `[[wikilinks]]` for related notes.
+For conversation capture, follow `remember-conversations`.
 
 ## Repair encountered instructions
 
-Before stopping, fix objectively stale guidance already encountered during the task
-when the correction is clear and low risk: moved paths, obsolete commands with a
-verified replacement, or factual guidance contradicted by current code. Verify the
-replacement, edit its canonical source (not generated copies or plugin caches), and
-run the relevant check. Follow the source repository's normal edit/install workflow.
+Fix clear, low-risk errors in guidance encountered during the task, such as
+moved paths or commands with verified replacements. Edit the canonical source,
+run the relevant check, and follow its normal edit and install workflow.
 
-Do not start a broad instruction audit, rewrite preferences, weaken safety or approval
-rules, or override higher-priority instructions. If ownership, intended policy, or the
-replacement is ambiguous, report the conflict instead of guessing. Do not reopen a
-completed capture decision solely because a hook ran again. A code or instruction
-repair does not by itself justify a vault note or changelog entry.
+Preserve user preferences, policy, safeguards, and approval rules. Report
+ambiguous corrections instead of guessing. Do not start a broader audit or
+reopen a completed capture decision because a hook repeats. Repairs alone do
+not justify a vault note or changelog entry.
 
 ## Log workflow friction
 
-Fix and verify bugs you introduce, failed validation of your changes, and defects
-required to complete the request. These are in scope without a separate request;
-logging never substitutes for fixing them. Investigate unclear causes before calling
+Fix and verify defects you introduce, failed checks of your changes, and bugs
+required to complete the request. Investigate unclear causes before calling
 them unrelated. If blocked, report the unfinished work and exact blocker.
 
-For unrelated harness or tooling friction, record it and continue the requested
-work without expanding the task into unrelated repairs:
+For unrelated harness or tooling friction, log it and continue the task:
 
 ```bash
 obsidian-knowledge papercut "search hung after an automatic rebuild"
 ```
 
-The command appends an entry to `wiki/repos/<owner>/<repo>/PAPERCUTS.md` when the
-current directory has an identifiable Git `origin`; otherwise it falls back to
-`wiki/systems/knowledge-base/PAPERCUTS.md`. The log records the working directory
-and is lock-protected for concurrent agents. The command only writes a log entry;
-it does not resolve the issue. Routine debugging does not need papercut entries.
+The command selects a repository log from Git `origin`, with a global fallback.
+Routine debugging needs no entry; logging does not replace an in-scope fix.
 
-Papercut logging requires write access to the vault log's directory and its lock
-file. If the vault is outside the sandbox's writable roots, use the host's
-approved permission mechanism when available. If access is unavailable, report
-the logging failure once and continue the original task. Do not recursively
-invoke `papercut` to record its own failure or retry with unchanged permissions.
+## Access errors
 
-## Frontmatter timestamps
+- **Search:** Semantic ranking needs network access to Ollama, even on localhost.
+  `EPERM` or `EACCES` indicates blocked access, not a stopped service. Check
+  service health from a process with network access before restarting it.
+- **Writes:** Papercut logging needs write access to the log directory and lock file.
+- **macOS:** For `Operation not permitted` on note reads, grant the parent process
+  Documents or Full Disk Access in **System Settings → Privacy & Security**,
+  then restart it.
 
-Do **not** manually edit `updated:` timestamps in Obsidian notes. The vault linter manages `updated` metadata automatically; content edits should leave existing timestamp fields alone unless the user explicitly asks for timestamp repair.
-
-## Read a note
-
-```bash
-obsidian-knowledge read "wiki/path/to/note.md"
-```
-
-## Search
-
-```bash
-obsidian-knowledge search "concept or phrase"
-```
-
-Semantic ranking requires network access to the configured Ollama endpoint,
-including localhost. `Operation not permitted` or `Permission denied` on that
-connection means sandbox or OS access was blocked; it does not establish that
-Ollama failed to start. Use the host's approved permission mechanism when
-available, or continue with degraded keyword ranking and state the limitation.
-Check service health from a process with network access before restarting it.
-
-## Create a note
-
-`write` reads literal Markdown from stdin, rejects blank content and existing
-files, writes atomically, fsyncs, then reads the final path back and compares the
-bytes. Treat only `Wrote and verified:` as success.
-
-```bash
-obsidian-knowledge write "wiki/path/to/new-note.md" <<'ENDNOTE'
-# Title
-
-Literal Markdown with `identifiers`, `$()`, and [[wikilinks]].
-ENDNOTE
-```
-
-## Update a note
-
-Read the current note, integrate the change into the complete Markdown, then
-replace it explicitly:
-
-```bash
-obsidian-knowledge read "wiki/path/to/existing-note.md"
-obsidian-knowledge write "wiki/path/to/existing-note.md" --replace <<'ENDNOTE'
-# Complete updated note
-
-Preserved content plus the integrated durable change.
-ENDNOTE
-```
-
-## Wikilinks
-
-Obsidian links notes with `[[Note Name]]` syntax. When creating notes, use these to link related content.
-
-## macOS TCC
-
-If a known note cannot be read and the CLI reports `Operation not permitted`,
-the parent process lacks Documents or Full Disk Access. Grant that process in
-System Settings → Privacy & Security, restart it, and retry. Do not reinterpret
-an access error as a missing note.
+Use the host's approved permission mechanism when needed. If access remains
+unavailable, report the limitation once and continue with available tools or
+keyword ranking. Do not retry with unchanged permissions or log a papercut's
+own failure.

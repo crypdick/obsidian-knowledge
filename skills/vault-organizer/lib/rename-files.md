@@ -2,32 +2,30 @@
 
 ## What counts as ambiguous
 
-1. **Device-generated** — `IMG_\d+`, `DSC_\d+`, `Screenshot \d+`, `Photograph (\d+)`, `PXL_\d+`
-2. **Hash-based** — filename (minus ext) entirely hex, or hash+suffix patterns
-3. **Generic labels** — filename (minus ext + date prefix) is a single common word: `scan`, `receipt`, `invoice`, `document`, `form`, `image`, `photo`, `file`, `untitled`, or numbered variant. Flag any name giving no meaningful ID of content.
-4. **Numeric-only** — filename (minus ext) pure digits (e.g., `15863.gif`)
-5. **Double extensions** — like `scan.pdf.pdf` (also fix ext)
+Look for device-generated names (`IMG_1234`, `DSC_1234`, `PXL_1234`), hashes,
+numeric-only names, generic labels such as `scan` or `receipt`, and duplicate
+extensions such as `.pdf.pdf`. Skip descriptive names, dotfolders, and `.trash/`.
 
-**Scope:** All vault folders including `_sources/` (use `I_AM_BEING_CAREFUL=1` escape hatch for renames there). Skip `.trash/` + dotfolders. Skip files with descriptive human-readable names.
+Renames can include `_sources/` only through the `I_AM_BEING_CAREFUL=1` bypass
+and its required user authorization. Do not modify original file content there.
 
 ## Procedure
 
-**1. Read file** to extract identifying info:
-- PDFs: read text, look for dates, vendors, order/reference IDs, doc type
-- Images (jpg, png, webp, gif): view via multimodal, identify what depicted
-- Other formats: best-effort read; unreadable → rely on folder context alone
+1. Read or view the file to identify its content. Use folder context, neighboring
+   files, and metadata as supporting evidence. If unreadable, use folder context
+   and lower the confidence.
+2. Correct image orientation when needed with `exiftool -auto-rotate` or
+   `magick mogrify -auto-orient`. For `_sources/`, record the issue in
+   `needs-attention.md` instead of modifying the file.
+3. Choose a descriptive name using the vault's `CLAUDE.md` conventions. Prefer
+   dates from file content, then EXIF metadata, then the filename, then the
+   parent folder. Omit the date when none is reliable.
+4. For a confident match, rename the file:
 
-**2. Fix image orientation** if not right-side-up. Use `exiftool -auto-rotate` or `magick mogrify -auto-orient`. Files in `_sources/` — don't modify, add to needs-attention.md.
+   ```bash
+   obsidian vault="$VAULT_NAME" rename path="old/name.ext" name="new-name.ext"
+   ```
 
-**3. Gather context:** folder path (strong signal), neighboring files, EXIF data. File content = ultimate truth over folder context.
-
-**4. Generate new name** per vault naming conventions in CLAUDE.md. Date source priority:
-1. File content (extracted date)
-2. EXIF metadata
-3. Filename-embedded date (`IMG_20160130` → `2016-01-30`)
-4. Folder context (parent named `2015/`)
-5. Omit date
-
-**5. Act by confidence:**
-- **High** — rename: `obsidian rename path="old/name.ext" name="new-name.ext"`. Files in `_sources/` → `I_AM_BEING_CAREFUL=1` escape hatch. Grep for old name, fix stale refs.
-- **Low** — add to needs-attention.md with proposed name and reason.
+5. Verify the new path exists and the old path is gone. Search for the old name
+   and repair stale links. For low-confidence cases, add the proposed name and
+   reasoning to `needs-attention.md` instead of renaming.

@@ -10,30 +10,32 @@ description: >-
 version: 1.4.9
 ---
 
-# Vault Organizer
+# Vault organizer
 
-Maintain Obsidian vault structure. Single-pass pipeline. Never edit primary file content — only indexes, links, locations, names.
-
-**Don't read lib/ files upfront. Fetch them only when you hit that step.**
-
-**Pre-existing issues are in scope.** This skill exists to fix accumulated problems, not just ones introduced since the last run. If something was broken before today, it is still broken and still your job to triage. Volume is not an exit condition — a 700-item unresolved-link list is the *most* important pass to actually walk, not the one to dismiss as "mostly stubs." Triage every entry per the lib/ rules; do not bulk-skip on a hunch about the remainder.
+Maintain indexes, links, locations, and filenames. Preserve primary note
+content except for the link and frontmatter repairs described here. Read each
+`lib/` reference only when its step applies. Triage every issue, including
+pre-existing ones; process large lists in batches without skipping the remainder.
 
 ## Prerequisites
 
-- Obsidian CLI installed + configured (`Settings → General → Command line interface`)
-- "Use [[Wikilinks]]" + "Automatically update internal links" enabled in Obsidian settings
+- Obsidian CLI installed and configured (`Settings → General → Command line interface`)
+- **Use [[Wikilinks]]** and **Automatically update internal links** enabled in Obsidian settings
 - Always pass `vault="<name>"` before the subcommand (`obsidian vault="<name>" <command> ...`). It is a global option; after the subcommand it can be silently ignored, causing a wrong-vault write that still reports success.
 - Write index, report, state, and changelog Markdown with
-  `obsidian-knowledge write`; it verifies the final filesystem bytes. Complete
+  `obsidian-knowledge write` and a quoted heredoc. Read existing files first and
+  use `--replace` for full-file updates. Require `Wrote and verified:`. Complete
   the primary note or move first, verify it, then update dependent indexes.
 
 ## Sync-conflict exclusion
 
-Treat Syncthing `.sync-conflict-YYYYMMDD-HHMMSS-DEVICEID` files as non-live artifacts, not notes. Do not index them, repair their links, rename them, include them in unresolved/orphan reports, or rewrite them during gardening. If audit/CLI output includes conflicts, filter them out before normal maintenance and triage them separately as sync-conflict merge/delete work.
+Exclude Syncthing `.sync-conflict-YYYYMMDD-HHMMSS-DEVICEID` files from all
+maintenance and reports. Handle them separately as conflict merge or deletion
+work; they are not live notes.
 
 ## Pipeline
 
-### Step 0: Locate vault + verify Obsidian running
+### Locate the vault
 
 Set `VAULT` to the configured filesystem root and `VAULT_NAME` to its registered
 Obsidian name. Set `VAULT_ORGANIZER_DIR` to the directory containing this loaded
@@ -48,11 +50,11 @@ cat "$VAULT/.claude/obsidian-knowledge.yaml"    # zone config
 obsidian vault="${VAULT_NAME:?set the registered vault name}" version
 ```
 
-### Step 1: Read state
+### Read state
 
 Read `$VAULT/Utility/obsidian-knowledge/needs-attention.md` — note known issues, detect resolved ones.
 
-### Step 2: Run structural audit
+### Run the structural audit
 
 ```bash
 SCRIPTS="${HERMES_VAULT_ORGANIZER_SCRIPTS:-${VAULT_ORGANIZER_DIR:?set the loaded skill directory}}"
@@ -63,9 +65,9 @@ fi
 uv run --no-project --with pyyaml python "$SCRIPTS/vault-audit.py" "$VAULT"
 ```
 
-Output header tells you which lib/ file to read for each issue type. Fix every line.
+Use the issue codes to select the repair instructions.
 
-### Step 3: Fix structural issues
+### Fix structural issues
 
 **`MISSING_INDEX <folder>`** — create index.md. Read `lib/index-format.md`.
 
@@ -83,7 +85,7 @@ Files reported as `NEEDS_MERGE` (real second block with keys) require manual mer
 
 After structural fixes, rename ambiguous non-markdown files. Read `lib/rename-files.md`.
 
-### Step 4: Detect + fix broken links
+### Fix broken links
 
 ```bash
 obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run --no-project --with pyyaml python "$SCRIPTS/filter-unresolved-links.py" "$VAULT"
@@ -91,11 +93,11 @@ obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run --no-projec
 obsidian vault="$VAULT_NAME" orphans
 ```
 
-Read `lib/broken-links.md` for triage rules on the surviving candidates. Use `recover-unresolved-links.py --apply` only after reviewing its report; it is designed to rewrite only unique exact/high-confidence filename recoveries and leave ambiguous/concept-stub cases untouched. Walk the full list — the filter/recovery scripts reduce risk and queue deterministic candidates, but the surviving remainder is still the work, not noise. Do not collapse the tail into a "mostly stubs, skip" bucket without checking each.
+Read [broken-link triage](lib/broken-links.md) for each remaining candidate.
+Review the recovery report before using `recover-unresolved-links.py --apply`;
+it changes only unique, high-confidence matches.
 
-### Step 5: Convention violations sweep
-
-Vault-wide check for the same patterns enforced at write-time by `enforce-conventions.py` and surfaced at session-start by `doctor.py`. Catches accumulated pre-existing violations the hooks couldn't have seen.
+### Fix convention violations
 
 ```bash
 uv run --no-project --with pyyaml python "$SCRIPTS/convention-sweep.py" "$VAULT"
@@ -109,9 +111,12 @@ UNDATED_FILE  <rel_path>                     # in Journal/diary/convos/plans wit
 YAML_ERR      <rel_path>         <error>     # malformed frontmatter
 ```
 
-For each issue: rename file (UNDATED_FILE) via `obsidian rename`, fix link (WIKILINK_EXT) by editing the file, fix YAML (YAML_ERR) by editing frontmatter. If unresolvable, add to needs-attention.md (read `lib/state-files.md` for format). Vault-organizer is the sole writer to needs-attention.md — hooks just enforce/surface.
+Rename undated files with `obsidian vault="$VAULT_NAME" rename`, remove
+`.md` from wikilinks, and repair malformed frontmatter. Record unresolved issues
+in `needs-attention.md` using [state-file conventions](lib/state-files.md).
+Only the organizer writes this worklist.
 
-### Step 6: Regenerate reports
+### Regenerate reports
 
 Rewrite `$VAULT/Utility/obsidian-knowledge/reports/open-questions.md` from scratch:
 
@@ -119,16 +124,16 @@ Rewrite `$VAULT/Utility/obsidian-knowledge/reports/open-questions.md` from scrat
 uv run --no-project --with pyyaml python "$SCRIPTS/find-open-questions.py" "$VAULT"
 ```
 
-Output is `<rel_path>\t<line>\t<question_text>` per hit. Code-block examples
+Output is `<rel_path>\t<line>\t<question_text>` per question. Code-block examples
 are filtered automatically. Build one entry per line:
 `- [[wiki/path/to/page]] — line N — "question text"`
 
 Preserve existing file structure (heading, regeneration notice, scope section). Only entry list + `Last run:` timestamp change.
 
-### Step 7: Update needs-attention.md
+### Update the worklist
 
 Remove resolved entries. Add new unresolvable issues. Read `lib/state-files.md` for format.
 
-### Step 8: Create changelog entry
+### Record completed changes
 
 Create `$VAULT/Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`. Read `lib/state-files.md` for format. Do not edit a shared changelog index; per-session files are the concurrency-safe audit record. Skip if no actions taken.
