@@ -69,7 +69,9 @@ aliases:
 
 ## Prevention for templates
 
-Templater templates emitting their own frontmatter must not have leading frontmatter on the template file itself. Start template with `<%*` script block. Move template's frontmatter into the rendered body after the `-%>` close.
+If a Templater template emits frontmatter, the template file itself must not
+start with frontmatter. Start it with a `<%*` script block and place the
+frontmatter in the rendered body after the closing `-%>`.
 
 If a plugin injects frontmatter into templates, exclude the template folder in
 its settings. For `update-time-on-edit`, use `Templates`, not `Templates/*`:

@@ -60,9 +60,10 @@ back to keyword retrieval. Install the model with `ollama pull bge-m3`, then
 reindex to add embeddings to keyword-indexed files.
 
 `doctor` passes when the index is nonempty and each query returns a result.
-`PASS` alone does not confirm semantic ranking or that the intended note ranked first. Check `vector: enabled` and the printed top paths. Its
-default sample queries target this project's vault; use `--query` for your own
-notes. An empty vault correctly fails this check.
+`PASS` alone does not confirm semantic ranking or that the intended note ranked
+first. Check `vector: enabled` and the printed top paths. The default sample
+queries target this project's vault; use `--query` for your own notes. An empty
+vault correctly fails this check.
 
 Semantic search needs network access to the embedding endpoint, including
 localhost. `EPERM` or `EACCES` indicates blocked access; check permissions before
@@ -129,4 +130,4 @@ subcommand and both hook agent modes against a temporary vault. It uses the
 installed CLI and configured embedding service; it does not alter your vault or
 install Claude plugins. Run `obsidian-knowledge doctor` separately for your real
 vault. CI also runs the full smoke test against a freshly installed wheel with
-Ollama unavailable, ensuring keyword-only first-run behavior works.
+Ollama unavailable to verify keyword-only search on the first run.

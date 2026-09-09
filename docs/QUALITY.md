@@ -45,7 +45,7 @@ for coverage. The latter writes missing lines and branches to `coverage.json`,
 which Git ignores. Raise the coverage floor as gaps close; do not lower it to
 pass a failing check.
 
-## Fit decisions and remaining debt
+## Tradeoffs and remaining work
 
 - Split oversized modules when changing cohesive behavior within them; retain
   existing exemptions until then. Ordinary files have a 400-logical-line limit.

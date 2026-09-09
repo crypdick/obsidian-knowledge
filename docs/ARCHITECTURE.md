@@ -23,7 +23,7 @@ beartype runtime checks.
 The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
 module so hooks and the CLI share one registry implementation.
 
-## Invariants (load-bearing)
+## Invariants
 
 The static import checker is `scripts/prek_hooks/check_architecture.py`.
 Preserve these boundaries:

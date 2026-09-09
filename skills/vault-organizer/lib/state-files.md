@@ -7,15 +7,15 @@ State lives at `<vault_root>/Utility/obsidian-knowledge/`. Create the directory 
 Create one file for the session. Reuse it for further actions in that session;
 never append to another session's file.
 
-**Filename:** `YYYY-MM-DD-HHMMSS-<slug>.md`. Use a descriptive slug, such as
+Name the file `YYYY-MM-DD-HHMMSS-<slug>.md`. Use a descriptive slug, such as
 `2026-05-12-143022-vault-organizer.md`.
 
-**Contents:** one terse line per significant action. No H2 headers. No narrative. No code blocks.
+Write one short line per significant action. Omit H2 headings, narrative, and
+code blocks.
 
-**No shared index:** do not create or update `changelog/index.md`. The Utility
+For session logs, do not create or update `changelog/index.md`. The Utility
 zone is excluded from structural index enforcement. Find session records by
 filename or search; a shared index risks concurrent writes.
-
 
 ```text
 YYYY-MM-DD HH:MM — Created folder/index.md (N entries)
@@ -24,7 +24,7 @@ YYYY-MM-DD HH:MM — Fixed N stale links during move/rename sanity check
 YYYY-MM-DD HH:MM — diary: vault reorg pass → [[wiki/systems/knowledge-base/diary/2026-05-12-reorg]]
 ```
 
-Skip file entirely if no actions taken.
+Do not create a file if no actions were taken.
 
 ## needs-attention.md
 

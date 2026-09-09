@@ -2,14 +2,20 @@
 
 ## Problem
 
-`Utility/obsidian-knowledge/changelog.md` is a single append-only file. Two failure modes:
+`Utility/obsidian-knowledge/changelog.md` is a single append-only file with two
+problems:
 
-1. **Concurrent write conflicts.** Multiple agent sessions running simultaneously (same machine or different machines synced via Syncthing) both append to the same file. Syncthing creates conflict copies; same-machine sessions race on writes. The file has already logged its own conflicts, which is a sign the problem is real.
-2. **Verbose entries bloat grep.** Entries have been written as full diagnostic narratives — code blocks, signal/noise analysis, multi-paragraph investigations. `grep "dcloud" changelog.md` returns 98 hits across dense prose. Agents searching for recent activity on a topic get context explosion.
+1. Concurrent sessions append to the same file. Writes race on the same machine,
+   and Syncthing creates conflict copies across machines. The changelog already
+   records these conflicts.
+2. Entries contain full investigations, including code blocks and several
+   paragraphs of analysis. `grep "dcloud" changelog.md` returns 98 hits, making
+   recent activity on a topic hard to find.
 
 ## Solution
 
-Replace single `changelog.md` with a directory of per-session files. Enforce terse 1-liner format. Migrate existing entries to new structure.
+Replace `changelog.md` with a directory containing one file per session and one
+short line per action. Migrate existing entries to this structure.
 
 ## Vault Structure
 
@@ -22,7 +28,8 @@ Utility/obsidian-knowledge/
 └── changelog-archive.md              # renamed from changelog.md (post-migration)
 ```
 
-No `index.md` in `changelog/` — not a wiki folder, not maintained by vault-organizer.
+Do not create `index.md` in `changelog/`; the directory is outside the wiki and
+is not maintained by vault-organizer.
 
 ## Entry Format
 
@@ -32,13 +39,15 @@ No `index.md` in `changelog/` — not a wiki folder, not maintained by vault-org
 YYYY-MM-DD-HHMMSS-<slug>.md
 ```
 
-- Timestamp ensures uniqueness across concurrent sessions (no collision possible)
-- Slug gives human-readable glance without opening the file
-- `ls -t changelog/ | head -10` = recent history at a glance (git log analog)
+- The timestamp and slug distinguish session files. Sessions using the same
+  slug within the same second can still collide.
+- The slug describes the session without requiring the reader to open the file.
+- `ls -t changelog/ | head -10` lists the ten most recently modified files.
 
 ### Contents
 
-One line per significant action in the session. No H2 headers. No narrative. No code blocks. Pointers only.
+Write one short line per significant action, with links to detailed notes.
+Omit H2 headings, narrative, and code blocks.
 
 ```
 YYYY-MM-DD HH:MM — <what happened> [→ [[wikilink]] if diary/convo note filed]
@@ -54,9 +63,10 @@ Example:
 
 ### What goes in changelog vs. diary
 
-- **Changelog**: 1-liner per action, pointer to diary if one exists. Never the narrative itself.
-- **Diary**: full narrative for complex investigations, incidents, debug sessions.
-- Diary notes are now discoverable via semantic search (`obsidian-knowledge search`) — changelog doesn't need to duplicate their content.
+Keep action summaries and links in the changelog. Put full accounts of complex
+investigations, incidents, and debugging sessions in diary notes. Those notes
+are discoverable through `obsidian-knowledge search`, so the changelog does not
+need to repeat them.
 
 ### Agent usage patterns
 

@@ -4,9 +4,9 @@
 
 Create `<folder>/index.md`:
 
-- Heading = folder display name
-- One entry per child file and subfolder
-- No frontmatter
+- Use the folder's display name as the heading.
+- Add one entry per child file and subfolder.
+- Omit frontmatter.
 
 ## Entry format
 
@@ -17,10 +17,11 @@ Create `<folder>/index.md`:
 - [[some-file]] — orientation phrase
 ```
 
-- One entry per line: wikilink + em dash + short orientation phrase
-- Use a short phrase that helps the reader decide whether to open the note.
-- Subfolders first, then files alphabetically
-- Disambiguate duplicate `index.md` names with path prefix: `[[systems/index]]` not `[[index]]`
+- Put each entry on its own line: a wikilink, an em dash, and a short phrase
+  that helps the reader decide whether to open the note.
+- List subfolders first, then files alphabetically.
+- Add a path prefix to distinguish duplicate `index.md` names, such as
+  `[[systems/index]]` instead of `[[index]]`.
 
 ## Sectioned indexes
 
@@ -39,19 +40,23 @@ When folder contents split into distinct groups, use `##` headings:
 - [[reference/index|Reference]] — background protocols and guides
 ```
 
-Use sections when ≥2 groups are clearly distinct. Default flat list when homogeneous.
+Use sections for two or more distinct groups. Otherwise, use a flat list.
 
 ## Stale path-based wikilinks
 
-Watch for `[[old/path/file|Display]]` in existing indexes. Replace with `[[filename|Display]]` — Obsidian resolves by filename regardless of location.
+Replace stale links such as `[[old/path/file|Display]]` with
+`[[filename|Display]]`. Obsidian resolves these links by filename regardless
+of location.
 
 ## Move files
 
-Always use obsidian CLI, never raw filesystem `mv`:
+Always use the Obsidian CLI to move files; never use filesystem `mv`:
+
 ```bash
 obsidian vault="<vault>" move path="old/path.md" to="new/folder/file.md" silent
 ```
+
 After each move, verify the new path exists and the old path does not under the
 configured filesystem root; CLI success text alone is insufficient. Then search
-the vault for the old filename to verify Obsidian updated all refs. Fix any stale
-wikilinks found.
+the vault for the old filename to verify Obsidian updated all references. Fix any
+stale wikilinks found.
