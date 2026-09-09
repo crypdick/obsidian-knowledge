@@ -259,8 +259,10 @@ def run_scan(
         # root: stored filenames are vault-relative, audit flags survive
         # baseline reload regardless of where the hook was invoked from.
         fresh_sc = SecretsCollection(root=vault_root)
-        if scan_paths:
-            fresh_sc.scan_files(*scan_paths)
+        # Incremental hooks must work without multiprocessing sockets, including
+        # Python 3.14 forkserver sockets denied by restricted agent sandboxes.
+        for scan_path in scan_paths:
+            fresh_sc.scan_file(scan_path)
 
         old_sc: SecretsCollection | None = None
         if baseline_path.exists():

@@ -2,7 +2,8 @@
 
 The standalone CLI operates on files; it does not require the Obsidian app to be
 running. Install with `uv tool install obsidian-knowledge`. For this repository's
-local development install, follow [AGENTS.md](../AGENTS.md).
+local development install, follow the
+[repository guidelines](https://github.com/crypdick/obsidian-knowledge/blob/main/AGENTS.md).
 
 ## First run
 
@@ -110,7 +111,7 @@ are replaced. Configure the Obsidian linter to exclude that directory first.
 
 This helper is not part of the current Hermes provider setup: that provider
 stores durable knowledge in the wiki and disables Hermes's built-in memory
-snapshots. See the [Hermes installation instructions](../README.md#hermes-plugin-install).
+snapshots. See the [Hermes installation instructions](index.md#hermes-plugin-install).
 
 ## Verification
 
