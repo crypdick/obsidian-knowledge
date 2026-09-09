@@ -3,6 +3,9 @@
 A plugin marketplace and CLI for maintaining Obsidian knowledge base vaults
 with Claude Code, Codex, and Hermes.
 
+[Documentation](https://crypdick.github.io/obsidian-knowledge/) ·
+[Preview and contribute to the docs](docs/contributing-docs.md)
+
 ## Skills
 
 ### vault-organizer
@@ -278,7 +281,7 @@ codex plugin add obsidian-knowledge@obsidian-knowledge
 
 Restart Codex and review plugin enablement and hook trust through `/plugins` or
 `/hooks`. For local development, use the control checkout and reinstall workflow
-in [AGENTS.md](AGENTS.md).
+in [AGENTS.md](https://github.com/crypdick/obsidian-knowledge/blob/main/AGENTS.md).
 
 ### Global Codex sandbox access
 

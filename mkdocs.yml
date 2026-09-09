@@ -1,0 +1,70 @@
+site_name: Obsidian Knowledge
+site_description: Obsidian vault memory, search, and maintenance for Claude Code, Codex, and Hermes
+site_url: https://crypdick.github.io/obsidian-knowledge/
+repo_url: https://github.com/crypdick/obsidian-knowledge
+repo_name: crypdick/obsidian-knowledge
+
+validation:
+  links:
+    absolute_links: warn
+    anchors: warn
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to light mode
+    - scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+  icon:
+    logo: material/notebook-outline
+    repo: fontawesome/brands/github
+
+# Historical plans and specs remain available in the repository.
+exclude_docs: |
+  superpowers/
+
+plugins:
+  - search
+  - awesome-pages
+  - include-markdown:
+      rewrite_relative_urls: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+      fallback_to_build_date: true
+      # Missing history on new local pages should not fail link validation.
+      strict: false
+      # Avoid multiprocessing sockets in sandboxed local builds.
+      enable_parallel_processing: false
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: ['.']
+  - tables
+  - toc:
+      permalink: true

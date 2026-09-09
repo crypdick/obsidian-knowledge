@@ -3,9 +3,9 @@
 obsidian-knowledge gives an AI agent long-term memory backed by an Obsidian
 vault: hybrid (BM25 + dense) retrieval over vault markdown, plus lifecycle hooks
 that inject recalled context, protect the vault from destructive edits, and nudge
-the agent to write learnings back. It ships as **two runtimes off one checkout** —
-a Claude Code plugin (hooks + skills) and a Hermes Agent CLI memory provider —
-over a shared retrieval library.
+the agent to write learnings back. It supports Claude Code and Codex plugins
+(hooks + skills) and a Hermes Agent CLI memory provider over a shared retrieval
+library.
 
 This is a map of *where things live and what may depend on what*, not how each
 piece works (the modules document themselves). Revisit it a couple of times a
