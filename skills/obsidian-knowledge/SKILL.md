@@ -26,8 +26,13 @@ repair does not by itself justify a vault note or changelog entry.
 
 ## Log workflow friction
 
-When the harness, a tool, or a repeated workaround gets in the way, record it without
-starting an implementation side quest:
+Fix and verify bugs you introduce, failed validation of your changes, and defects
+required to complete the request. These are in scope without a separate request;
+logging never substitutes for fixing them. Investigate unclear causes before calling
+them unrelated. If blocked, report the unfinished work and exact blocker.
+
+For unrelated harness or tooling friction, record it and continue the requested
+work without expanding the task into unrelated repairs:
 
 ```bash
 obsidian-knowledge papercut "search hung after an automatic rebuild"
@@ -36,8 +41,8 @@ obsidian-knowledge papercut "search hung after an automatic rebuild"
 The command appends an entry to `wiki/repos/<owner>/<repo>/PAPERCUTS.md` when the
 current directory has an identifiable Git `origin`; otherwise it falls back to
 `wiki/systems/knowledge-base/PAPERCUTS.md`. The log records the working directory
-and is lock-protected for concurrent agents. It records the papercut only; continue
-the task unless the user asks to investigate or fix it.
+and is lock-protected for concurrent agents. The command only writes a log entry;
+it does not resolve the issue. Routine debugging does not need papercut entries.
 
 Papercut logging requires write access to the vault log's directory and its lock
 file. If the vault is outside the sandbox's writable roots, use the host's

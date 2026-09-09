@@ -19,8 +19,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hookslib import reflect_counter
 
 REMINDER = (
-    "Step back: did the harness or workflow create friction? Log it with "
-    '`obsidian-knowledge papercut "what happened"`; it records the log entry only.'
+    "Fix and verify bugs you introduce, failed validation of your changes, and defects "
+    "needed to complete the user's request as part of the active task. Investigate unclear "
+    "causes before calling them unrelated. For unrelated harness or tooling friction, use "
+    '`obsidian-knowledge papercut "what happened"` and continue the task. Routine debugging '
+    "does not need a papercut entry; logging never replaces an in-scope fix."
 )
 
 

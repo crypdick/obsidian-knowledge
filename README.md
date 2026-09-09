@@ -157,8 +157,8 @@ to operate within the harness.
 ### reflect-nudge (PostToolUse on Bash)
 
 `reflect-nudge.py` fires every 100 bash invocations within a session.
-Continuous — no per-session suppression. Reminds the agent to step back
-and log any observed workflow friction as a papercut.
+Continuous — no per-session suppression. Reminds the agent to fix and verify
+in-scope defects and log unrelated harness or tooling friction as a papercut.
 
 ## Commands
 
@@ -169,6 +169,11 @@ directory belongs to a Git repository with an identifiable `origin`. Outside suc
 a repository, it falls back to `wiki/systems/knowledge-base/PAPERCUTS.md`. The
 log is lock-protected for concurrent agents. It records friction only—it does not
 diagnose the issue or modify the harness.
+
+Bugs introduced by the agent, failed validation of its changes, and defects required
+to complete the request must be fixed and verified within the active task. Logging
+never defers that work. Reserve papercuts for unrelated harness or tooling friction;
+routine debugging does not need entries.
 
 The vault log's directory and lock file must be writable. In a sandbox where the
 vault is outside the writable roots, use the host's approved permission mechanism.

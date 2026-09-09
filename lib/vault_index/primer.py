@@ -108,11 +108,13 @@ def build_primer(
         "second generated memory/index.md; temporary handoffs belong in campaign "
         "records and never in eager MEMORY.md. Write here, not under "
         "~/.claude/projects/*/memory/ (a PreToolUse hook will block that).\n"
-        "- Reflect on friction: if you struggle with the harness, hit unexpected "
-        "blocks, or repeat the same workaround, log it immediately with "
-        '`obsidian-knowledge papercut "what happened"`. This only records a '
-        "durable log entry; continue the requested work rather than turning it into "
-        "a side quest.\n"
+        "- Own task defects: fix and verify bugs you introduce, failed validation of your changes, "
+        "and defects required to complete the request. These are in scope without a separate request; "
+        "logging never substitutes for fixing them. Investigate unclear causes before calling them "
+        "unrelated. If blocked, report the unfinished work and exact blocker.\n"
+        "- Reflect on friction: log unrelated harness or tooling friction with "
+        '`obsidian-knowledge papercut "what happened"`, then continue the requested work. '
+        "Routine debugging does not need papercut entries; avoid expanding into unrelated repairs.\n"
         "- Sandbox access: papercut needs vault-directory and lock-file write access; "
         "semantic search needs network access to the configured Ollama endpoint, even on localhost. "
         "When these are outside the sandbox's allowed access, use the host's approved permission "
