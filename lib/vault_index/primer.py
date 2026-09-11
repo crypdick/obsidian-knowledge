@@ -101,6 +101,9 @@ def build_primer(
         "them unrelated. If blocked, report the unfinished work and exact blocker.\n"
         "- Friction: log unrelated harness or tooling problems with "
         '`obsidian-knowledge papercut "what happened"`, then continue the task. '
+        "Keep entries brief and self-contained: name the tool or operation, concrete symptom "
+        "or exact error, and relevant trigger. Explain task names or local labels only if "
+        "needed to understand or reproduce the problem; otherwise omit them. "
         "Routine debugging needs no entry; logging never replaces an in-scope fix.\n"
         "- Access: papercut needs log-directory and lock-file write access; semantic search "
         "needs network access to Ollama, including localhost. Use the host's approved permission "

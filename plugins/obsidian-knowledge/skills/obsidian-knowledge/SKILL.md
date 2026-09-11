@@ -61,8 +61,12 @@ them unrelated. If blocked, report the unfinished work and exact blocker.
 For unrelated harness or tooling friction, log it and continue the task:
 
 ```bash
-obsidian-knowledge papercut "search hung after an automatic rebuild"
+obsidian-knowledge papercut "obsidian-knowledge search stopped producing output after an automatic index rebuild; interrupted after 2 minutes"
 ```
+
+Keep entries brief and self-contained: name the tool or operation, concrete
+symptom or exact error, and relevant trigger. Explain task names or local labels
+only if needed to understand or reproduce the problem; otherwise omit them.
 
 The command selects a repository log from Git `origin`, with a global fallback.
 Routine debugging needs no entry; logging does not replace an in-scope fix.

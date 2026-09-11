@@ -107,8 +107,12 @@ return 1. Error messages identify the failing path or operation.
 Record tooling problems that interrupt your workflow:
 
 ```bash
-obsidian-knowledge papercut "search hung after an automatic rebuild"
+obsidian-knowledge papercut "obsidian-knowledge search stopped producing output after an automatic index rebuild; interrupted after 2 minutes"
 ```
+
+Keep entries brief and self-contained: name the tool or operation, concrete
+symptom or exact error, and relevant trigger. Explain task names or local labels
+only if needed to understand or reproduce the problem; otherwise omit them.
 
 With an identifiable Git `origin`, the command appends to
 `wiki/repos/<owner>/<repo>/PAPERCUTS.md`. Otherwise it uses
