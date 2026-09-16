@@ -92,6 +92,19 @@ unavailable unit. Instead, configure the login session to start the service afte
 the authentication modules unlock the home directory, or
 move the unit and all required runtime data outside the encrypted home directory.
 
+For example, on a desktop that supports autostart files, create
+`~/.config/autostart/ollama-after-home-unlock.desktop` with this content:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Start Ollama after home unlock
+Exec=/bin/sh -c "systemctl --user daemon-reload && systemctl --user start ollama.service"
+NoDisplay=true
+```
+
+This entry reloads user units after login and starts only `ollama.service`.
+
 If note reads fail with `Operation not permitted` on macOS, grant the parent
 process Documents or Full Disk Access, restart it, and retry.
 
