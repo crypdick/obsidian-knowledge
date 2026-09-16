@@ -85,6 +85,13 @@ normally starts at login. For startup at boot, enable lingering with
 `sudo loginctl enable-linger "$USER"`. Running `ollama serve` alone does not
 install or enable a service.
 
+If an encrypted home directory holds the service unit or its required executable,
+model, or credentials, don't enable lingering. The user manager can start before
+Pluggable Authentication Modules mount the home directory and omit the
+unavailable unit. Instead, configure the login session to start the service after
+the authentication modules unlock the home directory, or
+move the unit and all required runtime data outside the encrypted home directory.
+
 If note reads fail with `Operation not permitted` on macOS, grant the parent
 process Documents or Full Disk Access, restart it, and retry.
 
