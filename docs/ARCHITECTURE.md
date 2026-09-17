@@ -41,7 +41,8 @@ covers static imports, including local and relative imports.
 
 Runtime requirements:
 
-- Protection checks receive the workdir and normalize paths without changing cwd.
+- i-insist normalizes tool inputs. Vault checks consume neutral file changes and
+  shell commands directly; the provider owns no harness or approval adapter.
 - Hooks must not crash the host. Broad catches at entrypoint boundaries are
   deliberate and marked `# allow: exception-handling`.
 - Keep the Codex distribution generated. The `codex-plugin-sync` check detects drift.

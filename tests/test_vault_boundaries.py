@@ -45,16 +45,22 @@ def test_hooks_ignore_invalid_registry_but_cli_reports_it(tmp_path, monkeypatch,
             load_configured_vaults(registry)
 
 
-def test_hook_uses_payload_cwd_for_relative_protected_write(subprocess_vault, tmp_path):
+def test_checker_uses_event_paths_from_another_cwd(subprocess_vault, tmp_path):
     vault, env = subprocess_vault
-    hook = Path(__file__).parents[1] / "hooks/protect-vault.py"
     result = subprocess.run(
-        [sys.executable, str(hook)],
+        [sys.executable, str(Path(__file__).parents[1] / "hooks/i_insist.py"), "protected-dirs"],
         input=json.dumps(
             {
                 "cwd": str(vault),
-                "tool_name": "Write",
-                "tool_input": {"file_path": "_sources/original.md", "content": "overwrite"},
+                "kind": "file_write",
+                "paths": [str(vault / "_sources/original.md")],
+                "changes": [
+                    {
+                        "path": str(vault / "_sources/original.md"),
+                        "operation": "write",
+                        "content": "overwrite",
+                    }
+                ],
             }
         ),
         text=True,
@@ -63,4 +69,4 @@ def test_hook_uses_payload_cwd_for_relative_protected_write(subprocess_vault, tm
         env=env,
         check=True,
     )
-    assert "protected-dir" in result.stdout
+    assert json.loads(result.stdout) is True
