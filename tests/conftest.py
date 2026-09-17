@@ -6,25 +6,9 @@ from pathlib import Path
 
 import pytest
 
-# Make hooks and hermes_plugin importable
+# Make hooks importable.
 PLUGIN_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
-# hermes_plugin/ lives at the repo root — insert root so `import hermes_plugin` works
-if str(PLUGIN_ROOT) not in sys.path:
-    sys.path.insert(0, str(PLUGIN_ROOT))
-
-# `agent.memory_provider` is a Hermes-runtime-only module that hermes_plugin
-# imports at module scope. It is never installed in the test environment, so
-# stub it once here — before any test imports hermes_plugin. Doing this at
-# session scope removes a latent order-dependency: previously only the
-# `provider` fixture stubbed it, so tests that imported hermes_plugin without
-# that fixture passed only when a fixture-using test happened to run first in
-# the same worker (which parallel/reordered runs no longer guarantee).
-from unittest.mock import MagicMock  # noqa: E402
-
-sys.modules.setdefault("agent", MagicMock())
-sys.modules.setdefault("agent.memory_provider", MagicMock())
-sys.modules["agent.memory_provider"].MemoryProvider = object  # type: ignore[attr-defined]
 
 # Scrub repo-binding git env vars so the git-invoking tests (which `git init`
 # throwaway repos under tmp_path) never inherit an ambient git context. Git and

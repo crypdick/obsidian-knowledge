@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Keep the Codex packaged plugin in sync with the repo-root source of truth.
 
-The repo is a dual-runtime plugin. Claude Code / Hermes read the source at the
-repo root; Codex installs from ``plugins/obsidian-knowledge/`` (see
+Claude Code reads plugin sources at repo root; Codex installs from
+``plugins/obsidian-knowledge/`` (see
 ``.agents/plugins/marketplace.json``). That subtree is a copy of the root's
 ``commands/``, ``hooks/`` and ``skills/`` trees and drifts silently when the
 root is edited but the copy is not. This script makes the copy a pure function

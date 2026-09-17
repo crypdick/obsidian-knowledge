@@ -56,7 +56,6 @@ def exercise(executable: str, root: Path) -> None:
         "papercut",
         "doctor",
         "_hook",
-        "link-hermes-memories",
     )
     help_text = run("--help")
     for command in commands:
@@ -93,15 +92,6 @@ def exercise(executable: str, root: Path) -> None:
     run("papercut", "Disposable CLI smoke test")
     log = vault / "wiki/systems/knowledge-base/PAPERCUTS.md"
     assert "Disposable CLI smoke test" in log.read_text()
-
-    memories = root / "fixture-memories"
-    memories.mkdir()
-    for name in ("MEMORY.md", "USER.md"):
-        (memories / name).write_text("Disposable fixture\n")
-    for _ in range(2):
-        run("link-hermes-memories", "--hermes-memories-dir", str(memories))
-    for name in ("MEMORY.md", "USER.md"):
-        assert (vault / "Utility/obsidian-knowledge/hermes" / name).resolve() == memories / name
 
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "true"}})
     for agent in ("claude", "codex"):

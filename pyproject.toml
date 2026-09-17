@@ -1,7 +1,7 @@
 [project]
 name = "obsidian-knowledge"
 version = "3.23.0"
-description = "Obsidian vault knowledge integration for Claude Code and Hermes Agent CLI"
+description = "Obsidian vault knowledge integration for Claude Code and Codex"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.0",
@@ -36,7 +36,6 @@ exclude = [
 
 [tool.hatch.build.targets.wheel.force-include]
 hooks = "hooks"
-hermes_plugin = "hermes_plugin"
 "hooks/vault_registry.py" = "vault_registry.py"
 
 [dependency-groups]
@@ -104,7 +103,6 @@ select = [
 ]
 ignore = [
     "E501",    # line-length deferred to the formatter
-    "RUF067",  # non-empty-init-module: hermes_plugin/__init__.py is the plugin entrypoint by design
     "RUF003",  # ambiguous-unicode-in-comment: em-dashes in prose comments are intentional
 ]
 
@@ -140,15 +138,15 @@ mypy_path = "hooks"
 # annotating every internal helper. Real bugs (arg-type, type-arg, ...) still fail.
 disable_error_code = ["no-untyped-call", "no-untyped-def"]
 
-# memweave and botocore ship without stubs; `agent` is a Hermes-runtime-only module.
+# memweave and botocore ship without stubs.
 [[tool.mypy.overrides]]
-module = ["memweave.*", "botocore.*", "agent.*"]
+module = ["memweave.*", "botocore.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true
 patch = ["subprocess"]
-source = ["lib", "hooks", "hermes_plugin"]
+source = ["lib", "hooks"]
 omit = ["*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/conftest.py"]
 
 [tool.coverage.report]
@@ -168,23 +166,18 @@ exclude_also = [
 
 [tool.vulture]
 min_confidence = 80
-paths = ["lib", "hooks", "hermes_plugin"]
+paths = ["lib", "hooks"]
 exclude = [".venv/", "plugins/"]
-# Params mandated by the Hermes MemoryProvider ABC that our implementation
-# legitimately ignores: **kwargs (forward-compat) and sync_turn's content args
-# (it reindexes off fingerprints, not turn content).
-ignore_names = ["kwargs", "user_content", "assistant_content"]
+ignore_names = ["kwargs"]
 
 [tool.uv]
 exclude-newer = "3 days"
 
 [tool.deptry]
 extend_exclude = ["plugins/", "scripts/", "skills/", "spikes/"]
-known_first_party = ["lib", "vault_index", "hooks", "hookslib", "vault_registry", "hermes_plugin"]
+known_first_party = ["lib", "vault_index", "hooks", "hookslib", "vault_registry"]
 
 [tool.deptry.per_rule_ignores]
-# Hermes supplies its MemoryProvider interface in the host process.
-DEP001 = ["agent"]
 # Explicit compatibility constraints for memweave's lazy embedding stack;
 # httpx[socks] supplies proxy support. Keep these even without direct imports.
 DEP002 = ["litellm", "botocore", "httpx"]

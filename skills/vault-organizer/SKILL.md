@@ -64,7 +64,7 @@ resolved issues.
 ### Run the structural audit
 
 ```bash
-SCRIPTS="${HERMES_VAULT_ORGANIZER_SCRIPTS:-${VAULT_ORGANIZER_DIR:?set the loaded skill directory}}"
+SCRIPTS="${OBSIDIAN_KNOWLEDGE_VAULT_ORGANIZER_SCRIPTS:-${VAULT_ORGANIZER_DIR:?set the loaded skill directory}}"
 if [ ! -f "$SCRIPTS/vault-audit.py" ]; then
   printf 'Missing vault-audit.py in %s; check the loaded skill path or explicit override.\n' "$SCRIPTS" >&2
   exit 1

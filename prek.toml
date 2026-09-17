@@ -97,7 +97,7 @@ always_run = true
 [[repos.hooks]]
 id = "mypy"
 name = "mypy (strict)"
-entry = "uv run mypy lib hooks hermes_plugin"
+entry = "uv run mypy lib hooks"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -119,7 +119,7 @@ types = ["python"]
 [[repos.hooks]]
 id = "check-private-test-imports"
 name = "Forbid private imports in tests"
-entry = "uv run python scripts/prek_hooks/check_private_test_imports.py --package lib --package vault_index --package hookslib --package hermes_plugin --package vault_registry"
+entry = "uv run python scripts/prek_hooks/check_private_test_imports.py --package lib --package vault_index --package hookslib --package vault_registry"
 language = "system"
 types = ["python"]
 

@@ -1,7 +1,7 @@
 # Architecture
 
-The CLI, Claude Code and Codex hooks, and Hermes memory provider share vault
-retrieval and protection components.
+The CLI plus Claude Code and Codex hooks share vault retrieval and protection
+components.
 
 ## Codemap
 
@@ -12,7 +12,6 @@ The following directories contain the shared components and host adapters:
 | `lib/vault_index/` | Retrieval, configuration, verified file I/O, session primer, papercut logs, and CLI orchestration. |
 | `hooks/` | Lifecycle hooks, provider-owned i-insist checkers and rule template, and the dependency-light vault registry. |
 | `hooks/hookslib/` | Shared protection, capture, transcript, memory-routing, and reflection logic. |
-| `hermes_plugin/` | Hermes memory provider and lifecycle adapter. The root `__init__.py` registers it. |
 | `scripts/` | Development, migration, packaging, and quality tools. |
 | `plugins/obsidian-knowledge/` | Generated Codex distribution; edit root sources and run `scripts/sync_codex_plugin.py`. |
 
@@ -32,13 +31,9 @@ Preserve these boundaries:
 
 - `lib` imports neither adapters nor shared hooks, except that `primer.py`
   imports `hookslib.repo_memory` to resolve the memory destination.
-- `hooks/hookslib` imports neither `lib`, `vault_index`, nor `hermes_plugin`.
+- `hooks/hookslib` imports neither `lib` nor `vault_index`.
   It may import the dependency-light `vault_registry`.
 - Hook entrypoints import `hookslib` and may import `vault_index` for the doctor.
-- `hermes_plugin` may import `hookslib` for reflection counters. It calls the
-  retrieval environment through subprocesses and never imports `lib` or
-  `vault_index` into the host process. This accommodates the Hermes Python 3.11
-  runtime and the retrieval stack's requirement for Python 3.12 or later.
 - Keep `lib` free of import cycles. Put shared result types in `models.py`.
 
 Review dynamic imports and generated subprocess code separately; the checker
@@ -47,8 +42,6 @@ covers static imports, including local and relative imports.
 Runtime requirements:
 
 - Protection checks receive the workdir and normalize paths without changing cwd.
-- Only the indexer reports sync completion. On `IndexBusyError`, Hermes retains
-  dirty state and retries on a later turn.
 - Hooks must not crash the host. Broad catches at entrypoint boundaries are
   deliberate and marked `# allow: exception-handling`.
 - Keep the Codex distribution generated. The `codex-plugin-sync` check detects drift.

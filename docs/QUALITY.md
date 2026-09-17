@@ -1,6 +1,6 @@
 # Quality checks
 
-Measured on 2026-09-09 with Python 3.14.7. Configuration lives in `pyproject.toml`,
+Measured on 2026-09-17 with Python 3.14.7. Configuration lives in `pyproject.toml`,
 `prek.toml`, and `scripts/prek_hooks/`. Re-measure when behavior or tooling changes;
 do not treat this snapshot as a live dashboard.
 
@@ -13,7 +13,7 @@ The repository enforces these checks and settings:
 | Hooks | Native prek; `uv run prek install`, `uv run prek run --all-files` |
 | Ruff | Core lint plus curated async, logging, security, suppression, docstring, and correctness checks; stable formatter |
 | Complexity | Ruff `C901`, ceiling 15; scripts and tests retain their existing exemptions |
-| Types | mypy strict on `lib`, `hooks`, `hermes_plugin`; existing untyped-definition/call exceptions remain |
+| Types | mypy strict on `lib` and `hooks`; existing untyped-definition/call exceptions remain |
 | Runtime types | Beartype on `lib.*`; decoration warnings visible; Pydantic owns model fields |
 | Dead code | Vulture, confidence 80 |
 | Dependencies | deptry; host imports, PEP 723 scanner dependencies and embedding compatibility pins documented in config |
@@ -39,8 +39,7 @@ functions pass the Ruff complexity ceiling. Tests run without an embedding servi
 | `lib/vault_index/vault_files.py` | 85% | B | Boundary and atomic-write regressions pass |
 | `hooks/hookslib` | 85-100% | B | Shared behavior tests; small modules |
 | Hook entrypoints | 74-100% | C | Subprocess coverage included; protection guard oversized |
-| `hermes_plugin/__init__.py` | 77% | C | Stubbed host and subprocess tests; oversized module |
-| Overall | 80.47% | B | 422 tests pass, including 13 architecture regressions |
+| Overall | 80.14% | B | 391 tests pass |
 
 Use `uv run pytest --no-cov` for targeted tests and `uv run prek run pytest`
 for coverage. The latter writes missing lines and branches to `coverage.json`,
