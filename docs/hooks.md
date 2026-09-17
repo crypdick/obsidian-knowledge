@@ -16,10 +16,43 @@ The tool-call guard applies these rules:
 | Vault paths in destructive commands | Block recognized destructive operations, including recursive removal and moves. |
 | Built-in project auto-memory | Redirect operational knowledge to the wiki. |
 
-After explicit user confirmation, prefix a shell command with
-`I_AM_BEING_CAREFUL=1` to bypass the source and published-file guards.
-The memory redirect has no bypass. These checks cover recognized tool calls;
-they do not replace filesystem permissions or backups.
+Codex and Claude use [i-insist](https://github.com/crypdick/i-insist) to execute
+provider-owned rules. `obsidian-knowledge setup` and plugin session startup run
+the same installation path:
+
+```bash
+obsidian-knowledge install-rules --global
+```
+
+It installs a missing runner with uv, then runs `i-insist ensure`. This registers
+hooks for available harnesses and rejects explicit disable settings. Existing
+runners need version 0.2.0 or later; upgrade with `uv tool upgrade i-insist`.
+Restart and review `/hooks`, including Codex hook trust. Registration cannot
+verify a running session's hook snapshot or all managed policies.
+
+Rules live in `~/.i-insist/obsidian-knowledge.toml`; omit `--global` to install
+into the current directory's tracked `.i-insist/` instead. Existing TOML is
+preserved, including custom messages and disabled rules. Global and local
+rules accumulate. The checker executable comes from this package, so normal
+package upgrades update its policy code without copying scripts into config
+directories. The bundled rule template is `hooks/i-insist.toml`.
+
+Checkers receive neutral paths, cwd, and operation kind. Native file content is
+adapted for Write/Edit, MultiEdit, notebooks, and apply_patch; all explicit patch
+targets are checked. Shell checks retain their recognized-command limitations.
+Each checker prints a JSON boolean; the TOML supplies the denial message.
+
+A standalone `I insist` in the latest human message permits overridable calls
+for that response. An explicitly authorized shell call may instead use
+`HUMAN_PERMISSION_GRANTED=1`. Publish allowlists, memory routing, filename
+constraints, and writing conventions set `overridable = false` and still block.
+Neither providers nor agents may rewrite rules to evade a block.
+
+The plugin retains its recall, capture, reflection, and secret-scanning hooks.
+Its direct Codex/Claude PreToolUse registrations are replaced by i-insist.
+The Hermes adapter retains its existing in-process guard and shell-only
+`I_AM_BEING_CAREFUL=1` approval path until its lifecycle adapter is migrated.
+These checks do not replace filesystem permissions or backups.
 
 ## Memory and recall
 

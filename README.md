@@ -19,7 +19,9 @@ obsidian-knowledge setup --vault /absolute/path/to/vault
 obsidian-knowledge doctor --query "a phrase from one of your notes"
 ```
 
-Setup registers and indexes the vault. It also installs the Claude Code plugin
+Setup registers and indexes the vault, installs i-insist when missing, and installs
+provider-owned guard rules. Existing i-insist installations require version
+0.2.0 or later (`uv tool upgrade i-insist`). See [guard setup](docs/hooks.md). It also installs the Claude Code plugin
 when `claude` is on `PATH`. Add `--skip-claude-plugin` for CLI-only, Codex, or
 Hermes use. Setup is safe to rerun. For a large first index, add
 `--timeout-seconds 900`.

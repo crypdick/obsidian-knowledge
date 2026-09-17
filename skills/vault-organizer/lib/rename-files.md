@@ -6,8 +6,10 @@ Look for device-generated names (`IMG_1234`, `DSC_1234`, `PXL_1234`), hashes,
 numeric-only names, generic labels such as `scan` or `receipt`, and duplicate
 extensions such as `.pdf.pdf`. Skip descriptive names, dotfolders, and `.trash/`.
 
-Renames can include `_sources/` only through the `I_AM_BEING_CAREFUL=1` bypass
-and its required user authorization. Do not modify original file content there.
+Renames can include `_sources/` only after explicit human approval. In
+Codex/Claude, use i-insist approval (`I insist`, or an explicitly authorized
+`HUMAN_PERMISSION_GRANTED=1` shell call). Hermes retains its
+`I_AM_BEING_CAREFUL=1` shell marker. Do not modify original file content there.
 
 ## Procedure
 

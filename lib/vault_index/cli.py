@@ -447,6 +447,10 @@ def setup(vault: Path, *, skip_claude_plugin: bool = False) -> None:
     else:
         print(f"vaults.yaml: {vault_str} already registered")
 
+    from lib.vault_index.guard_install import install_rules
+
+    print(f"i-insist rules: {install_rules(Path.home())}")
+
     # 2. Claude plugin install (skip if claude not on PATH)
     if skip_claude_plugin:
         print("claude: plugin install skipped (--skip-claude-plugin)")
@@ -657,6 +661,9 @@ def main() -> int:
         help="Apply the normal digest filter instead of searching all indexed paths.",
     )
 
+    p_rules = sub.add_parser("install-rules", help="Install i-insist and provider-owned vault rules")
+    p_rules.add_argument("--global", dest="global_scope", action="store_true", help="Install in ~/.i-insist")
+
     p_hook = sub.add_parser("_hook", help=argparse.SUPPRESS)
     hook_sub = p_hook.add_subparsers(dest="hook_event", required=True)
     for name in ("pre-tool-use", "post-tool-use", "session-start", "stop"):
@@ -680,6 +687,18 @@ def main() -> int:
     if args.cmd == "setup":
         with search_ttl(args.timeout_seconds, label="setup"):
             setup(args.vault, skip_claude_plugin=args.skip_claude_plugin)
+    elif args.cmd == "install-rules":
+        from lib.vault_index.guard_install import install_rules
+
+        try:
+            path = install_rules(Path.home() if args.global_scope else Path.cwd())
+        except (OSError, subprocess.CalledProcessError) as exc:
+            print(
+                f"i-insist setup failed: {exc}. Install or upgrade i-insist, enable its hooks, then retry.",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"Installed i-insist rules: {path}")
     elif args.cmd == "_hook":
         return run_hook_entrypoint(args.hook_event, kind=args.kind, agent=args.agent)
     elif args.cmd == "init-vault-index":

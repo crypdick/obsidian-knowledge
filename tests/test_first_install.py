@@ -93,6 +93,9 @@ def test_setup_without_ollama_finishes_and_explains_search_mode(vault, tmp_path,
     registry = tmp_path / "config" / "vaults.yaml"
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     monkeypatch.setattr("shutil.which", lambda _: None)
+    monkeypatch.setattr(
+        "lib.vault_index.guard_install.install_rules", lambda base: base / ".i-insist/obsidian-knowledge.toml"
+    )
     setup(vault)
     output = capsys.readouterr().out
     assert "Search mode: keyword-only" in output
