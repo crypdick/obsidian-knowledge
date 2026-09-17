@@ -5,7 +5,7 @@ Usage: python3 convention-sweep.py <vault_root>
 
 Walks all `.md` files under <vault_root> (skipping dotfolders, _sources/,
 .trash/, node_modules/) and runs the same three checks as the
-PreToolUse `enforce-conventions.py` hook and the SessionStart `doctor.py`
+i-insist vault checker and the SessionStart `doctor.py`
 hook — using the shared `hooks/hookslib/patterns.py` module so all four
 points (write-time, session-start, on-demand sweep, persistence) stay
 in lockstep.
@@ -105,7 +105,7 @@ def print_header(lib_dir: Path, counts: dict[str, int]) -> None:
         return
     summary = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
     print(f"# convention-sweep: {summary}")
-    print("# All checks shared with enforce-conventions.py + doctor.py via hooks/hookslib/patterns.py.")
+    print("# All checks shared with i_insist.py + doctor.py via hooks/hookslib/patterns.py.")
     print(f"# needs-attention.md entry format → {lib_dir}/state-files.md")
     print()
 

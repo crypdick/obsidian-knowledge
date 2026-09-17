@@ -41,7 +41,17 @@ def main() -> None:
             if key not in {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "UV_PYTHON"}
         }
         env.update({"UV_TOOL_DIR": str(root / "tools"), "UV_TOOL_BIN_DIR": str(root / "bin")})
+        env.update(
+            {
+                "HOME": str(root / "home"),
+                "CODEX_HOME": str(root / "home/.codex"),
+                "CLAUDE_CONFIG_DIR": str(root / "home/.claude"),
+                "XDG_CONFIG_HOME": str(root / "home/.config"),
+                "XDG_CACHE_HOME": str(root / "cache"),
+            }
+        )
         run([uv, "tool", "install", "--no-config", str(wheel)], env, root)
+        (root / "bin/uv").symlink_to(uv)
         python = root / "tools" / "obsidian-knowledge" / "bin" / "python"
         run([uv, "pip", "check", "--python", str(python)], env, root)
         run([str(python), "-c", "import sys; print(sys.version)"], env, root)

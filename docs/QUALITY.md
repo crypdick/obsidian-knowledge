@@ -34,12 +34,12 @@ functions pass the Ruff complexity ceiling. Tests run without an embedding servi
 | Area | Coverage | Grade | Type checks, complexity, and test results |
 |------|---------:|:-----:|--------------------------------|
 | Models, config, filters, primer, registration | 90-100% | A | Typed boundaries, passing core tests |
-| `lib/vault_index/indexer.py` | 76% | C | External embedding paths remain partly untested |
-| `lib/vault_index/cli.py` | 72% | C | Subprocess coverage; oversized module |
+| `lib/vault_index/indexer.py` | 74% | C | External embedding paths remain partly untested |
+| `lib/vault_index/cli.py` | 70% | C | Subprocess coverage; oversized module |
 | `lib/vault_index/vault_files.py` | 85% | B | Boundary and atomic-write regressions pass |
-| `hooks/hookslib` | 85-100% | B | Shared behavior tests; small modules |
-| Hook entrypoints | 74-100% | C | Subprocess coverage included; protection guard oversized |
-| Overall | 80.14% | B | 391 tests pass |
+| `hooks/hookslib` | 75-100% | C | Shared behavior tests; small modules |
+| Hook entrypoints | 79-100% | C | Subprocess coverage included; vault checker consumes neutral events |
+| Overall | 82.54% | B | Full test suite and installed CLI checks pass |
 
 Use `uv run pytest --no-cov` for targeted tests and `uv run prek run pytest`
 for coverage. The latter writes missing lines and branches to `coverage.json`,
