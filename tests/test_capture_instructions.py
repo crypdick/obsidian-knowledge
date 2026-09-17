@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hookslib.capture import build_reason
+from hookslib.capture import build_reason, capture_session_key, main, resolve_capture_vault
 
 ROOT = Path(__file__).parents[1]
 
@@ -95,3 +95,26 @@ def test_capture_policy_reverses_old_overcapture_defaults() -> None:
     assert "filing nothing as success" in primer
     assert "at most 20 bullets or 6000 characters" in primer
     assert "second generated memory/index.md" in primer
+
+
+def test_capture_session_key_is_absent_without_session_identity() -> None:
+    assert capture_session_key(None) is None
+    assert capture_session_key("") is None
+
+
+def test_capture_reason_without_session_key_explains_fallback_reuse() -> None:
+    reason = build_reason("/vault")
+    assert "Search current-day fragments" in reason
+    assert "capture key" not in reason
+
+
+def test_capture_vault_resolution_requires_unambiguous_destination(monkeypatch) -> None:
+    monkeypatch.setattr("hookslib.capture.load_vault_roots", lambda: ["/first", "/second"])
+    monkeypatch.setattr("hookslib.capture.matching_vault_root", lambda cwd, roots: None)
+    assert resolve_capture_vault("/outside") is None
+
+
+def test_capture_main_is_silent_without_resolved_vault(monkeypatch) -> None:
+    monkeypatch.setattr("hookslib.capture.read_input", lambda: {"session_id": "session"})
+    monkeypatch.setattr("hookslib.capture.resolve_capture_vault", lambda cwd: None)
+    assert main() == 0

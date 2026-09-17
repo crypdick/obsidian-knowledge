@@ -14,6 +14,7 @@ from email import policy
 from email.parser import BytesParser
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 ENTROPY_TYPES = frozenset({"Hex High Entropy String", "Base64 High Entropy String"})
 PLACEHOLDER = re.compile(
@@ -95,9 +96,10 @@ def encoded_images(filename: str, _mtime_ns: int) -> EncodedImages:
             or part.get("Content-Transfer-Encoding", "").lower() != "base64"
         ):
             continue
-        payload = part.get_payload()
-        if isinstance(payload, str):
-            lines.update(payload.splitlines())
+        # Multipart messages have main type "multipart" and were skipped above,
+        # so an image part's undecoded payload is always text here.
+        payload = cast(str, part.get_payload())
+        lines.update(payload.splitlines())
     return EncodedImages(frozenset(lines))
 
 

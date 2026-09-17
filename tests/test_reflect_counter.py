@@ -17,6 +17,14 @@ class TestCounter:
         n = reflect_counter.increment(path)
         assert n == 3
 
+    def test_increment_recovers_from_corrupt_counter(self, tmp_path):
+        path = tmp_path / "session-abc"
+        path.mkdir()
+        (path / "bash-count").write_text("not-an-integer")
+
+        assert reflect_counter.increment(path) == 1
+        assert (path / "bash-count").read_text() == "1"
+
     def test_should_fire_at_threshold_multiples(self):
         assert reflect_counter.should_fire(100) is True
         assert reflect_counter.should_fire(200) is True

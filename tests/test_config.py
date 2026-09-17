@@ -3,6 +3,8 @@
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from lib.vault_index.config import (
     VaultIndexConfig,
     load_config,
@@ -65,3 +67,26 @@ def test_load_config_missing_section_returns_defaults(tmp_path: Path):
     yaml_path.write_text("ai_managed:\n  - wiki\n")
     cfg = load_config(yaml_path)
     assert cfg.top_k == 5  # default
+
+
+def test_load_config_missing_file_returns_defaults(tmp_path: Path):
+    assert load_config(tmp_path / "missing.yaml") == VaultIndexConfig()
+
+
+def test_load_config_empty_file_returns_defaults(tmp_path: Path):
+    yaml_path = tmp_path / "obsidian-knowledge.yaml"
+    yaml_path.write_text("")
+    assert load_config(yaml_path) == VaultIndexConfig()
+
+
+def test_load_config_null_section_returns_defaults(tmp_path: Path):
+    yaml_path = tmp_path / "obsidian-knowledge.yaml"
+    yaml_path.write_text("vault_index: null\n")
+    assert load_config(yaml_path) == VaultIndexConfig()
+
+
+def test_load_config_rejects_non_mapping_document(tmp_path: Path):
+    yaml_path = tmp_path / "obsidian-knowledge.yaml"
+    yaml_path.write_text("- not\n- a mapping\n")
+    with pytest.raises(ValueError, match="expected a YAML mapping"):
+        load_config(yaml_path)

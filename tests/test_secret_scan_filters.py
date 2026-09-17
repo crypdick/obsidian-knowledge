@@ -13,6 +13,15 @@ import pytest
 from detect_secrets.core.potential_secret import PotentialSecret
 from detect_secrets.core.secrets_collection import SecretsCollection
 from detect_secrets.settings import transient_settings
+from hookslib.secret_filters import (
+    Candidate,
+    is_android_ui_boolean,
+    is_inline_image,
+    is_metadata,
+    is_mime_image,
+    is_vault_noncredential,
+    is_xmp_metadata,
+)
 
 ROOT = Path(__file__).parent.parent
 DIGEST = hashlib.sha256(b"synthetic metadata fixture").hexdigest()
@@ -216,3 +225,61 @@ def test_incremental_scan_retains_unscanned_audit_records(tmp_path, scanner):
     results = json.loads(baseline.read_text())["results"]
     assert set(results) == {"first.md", "second.md"}
     assert results["second.md"][0]["is_secret"] is False
+
+
+def test_metadata_filter_rejects_wrong_detector_and_malformed_repository_id():
+    assert not is_metadata(Candidate(DIGEST, f'sha256="{DIGEST}"', "Secret Keyword", "note.md"))
+    assert not is_metadata(
+        Candidate("not-a-repository", 'repo_id="not-a-repository"', "Base64 High Entropy String", "note.md")
+    )
+
+
+def test_xmp_filter_fails_closed_when_original_file_is_unreadable(tmp_path):
+    missing = tmp_path / "missing.xmp"
+    candidate = Candidate(
+        OPAQUE + "/",
+        f'other="{OPAQUE}/"',
+        "Base64 High Entropy String",
+        str(missing),
+    )
+    assert not is_xmp_metadata(candidate)
+
+    unrelated = tmp_path / "unrelated.xmp"
+    unrelated.write_text(f'other="{OPAQUE}"')
+    assert not is_xmp_metadata(
+        Candidate(OPAQUE + "/", f'other="{OPAQUE}/"', "Base64 High Entropy String", str(unrelated))
+    )
+
+
+def test_mime_filter_fails_closed_for_non_payload_line_and_missing_file(tmp_path):
+    assert not is_mime_image(Candidate("token", "not base64!", "Artifactory Credentials", "mail.mht"))
+    missing = tmp_path / "missing.mht"
+    assert not is_mime_image(Candidate("QUJD", "QUJD", "Artifactory Credentials", str(missing)))
+
+
+def test_inline_image_filter_handles_transformer_read_and_invalid_base64_failures(tmp_path):
+    transformed = Candidate(
+        "QUJD",
+        'image/png;base64,"QUJD"',
+        "AWS Access Key",
+        str(tmp_path / "missing.md"),
+    )
+    assert not is_inline_image(transformed)
+    assert not is_inline_image(Candidate("AAAA", "data:image/png;base64,AAAAA", "AWS Access Key", "note.md"))
+    assert not is_inline_image(
+        Candidate("missing", "data:image/png;base64,iVBORw0KGgo=", "AWS Access Key", "note.md")
+    )
+
+
+def test_filter_boundaries_reject_unknown_plugin_and_context_types():
+    plugin = type("Plugin", (), {"secret_type": None})()
+    assert not is_vault_noncredential("secret", "secret", plugin, "note.md")
+
+    keyword = type("Plugin", (), {"secret_type": "Secret Keyword"})()
+    context = type("Context", (), {"previous_line": None})()
+    assert not is_android_ui_boolean(
+        "false",
+        'password="false"',  # pragma: allowlist secret
+        keyword,
+        context,
+    )

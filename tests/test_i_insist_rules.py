@@ -76,6 +76,29 @@ def test_checker_rejects_malformed_event(tmp_path):
     assert not result.stdout
 
 
+def test_checker_rejects_non_text_file_content(tmp_path):
+    event = {
+        "kind": "file_write",
+        "cwd": str(tmp_path),
+        "paths": ["note.md"],
+        "tool_input": {"content": ["not", "text"]},
+    }
+    result = run_check(tmp_path, "wikilinks", event)
+    assert result.returncode == 2
+    assert "file content must be text" in result.stderr
+
+
+def test_checker_requires_exactly_one_rule_argument():
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "hooks/i_insist.py")],
+        input="{}",
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 2
+    assert "expected one rule id" in result.stderr
+
+
 @pytest.mark.parametrize(
     ("rule", "event", "error"),
     [
@@ -139,6 +162,17 @@ def test_checker_adapts_patch_paths_and_content(tmp_path):
         "tool_input": ("*** Begin Patch\n*** Add File: note.md\n+See [[target.md]]\n*** End Patch"),
     }
     assert json.loads(run_check(tmp_path, "wikilinks", event).stdout) is True
+
+
+def test_convention_checker_ignores_files_outside_configured_vault(tmp_path):
+    outside = tmp_path.parent / "outside-note.md"
+    event = {
+        "kind": "file_write",
+        "cwd": str(tmp_path),
+        "paths": [str(outside)],
+        "tool_input": {"content": "See [[target.md]]"},
+    }
+    assert json.loads(run_check(tmp_path, "wikilinks", event).stdout) is False
 
 
 def test_installer_bootstraps_runner_and_preserves_user_rules(tmp_path, monkeypatch):

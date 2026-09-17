@@ -108,8 +108,6 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any] | None, str | None]:
         return None, None
 
     lines = content.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return None, None
     close_idx = None
     for i, line in enumerate(lines[1:], start=1):
         if line.strip() == "---":

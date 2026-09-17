@@ -33,6 +33,7 @@ import re
 import shlex
 import sys
 from collections.abc import Callable
+from itertools import takewhile
 from pathlib import Path
 from typing import Any
 
@@ -47,13 +48,6 @@ ESCAPE_HATCH = "I_AM_BEING_CAREFUL=1"
 PROTECTED_DIRS = ["_sources"]
 
 VAULT_ROOTS = load_vault_roots()
-
-
-def command_touches_vault(command: str) -> bool:
-    """Return True if the command operates on or from within a vault."""
-    if is_in_vault(os.getcwd(), VAULT_ROOTS):
-        return True
-    return any(is_in_vault(token, VAULT_ROOTS) for token in command.split() if token.startswith(("/", "~")))
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -394,11 +388,7 @@ def _check_find_delete(
     )
     if not (has_delete or has_exec_rm):
         return None
-    paths: list[str] = []
-    for token in args:
-        if token.startswith(("-", "(", ")", "!")):
-            break
-        paths.append(token)
+    paths = list(takewhile(lambda token: not token.startswith(("-", "(", ")", "!")), args))
     if any(target_in_vault(path) for path in (paths or ["."])):
         label = "find -delete" if has_delete else "find -exec rm"
         return deny(

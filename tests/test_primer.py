@@ -1,5 +1,6 @@
 """Tests for build_primer."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -104,3 +105,16 @@ def test_build_primer_reads_existing_repo_memory(
 
     assert f"Read {memory_file} at session start" in text
     assert "No MEMORY.md exists yet" not in text
+
+
+def test_build_primer_adds_hooks_path_when_loaded_standalone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hooks_dir = str(Path(__file__).parents[1] / "hooks")
+    monkeypatch.setattr(sys, "path", [entry for entry in sys.path if entry != hooks_dir])
+
+    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin", cwd=str(tmp_path))
+
+    assert hooks_dir in sys.path
+    assert "Agent memory for this host" in text

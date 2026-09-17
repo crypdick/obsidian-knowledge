@@ -151,7 +151,8 @@ omit = ["*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/conftest.py"]
 
 [tool.coverage.report]
 # NOTE: measured branch-coverage ratchet; see docs/QUALITY.md. Target: 100%.
-fail_under = 80
+fail_under = 100
+precision = 2
 skip_empty = true
 exclude_also = [
     "pragma: no cover",

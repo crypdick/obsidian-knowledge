@@ -1,8 +1,11 @@
 """Subprocess tests for hooks/enforce-conventions.py."""
 
 import json
+import runpy
 import subprocess
 from pathlib import Path
+
+import pytest
 
 HOOK = Path(__file__).parent.parent / "hooks" / "enforce-conventions.py"
 
@@ -16,6 +19,34 @@ def run_hook(payload: dict, env: dict | None = None) -> tuple[int, str, str]:
         env=env,
     )
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def run_raw_hook(payload: str, env: dict | None = None) -> tuple[int, str, str]:
+    proc = subprocess.run(
+        ["python3", str(HOOK)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+@pytest.fixture(scope="module")
+def policy():
+    return runpy.run_path(str(HOOK))
+
+
+def test_invalid_json_is_silent():
+    rc, out, _ = run_raw_hook("{")
+    assert rc == 0
+    assert out == ""
+
+
+def test_irrelevant_tool_and_missing_path_are_silent(subprocess_vault):
+    _, env = subprocess_vault
+    assert run_hook({"tool_name": "Read", "tool_input": {}}, env)[1] == ""
+    assert run_hook({"tool_name": "Write", "tool_input": {}}, env)[1] == ""
 
 
 def test_silent_outside_vault(tmp_path, subprocess_vault):
@@ -106,6 +137,27 @@ def test_skips_date_check_on_edit_of_existing_file(subprocess_vault):
     }
     _, out, _ = run_hook(payload, env=env)
     assert out == ""
+
+
+def test_skips_date_check_when_write_targets_existing_file(subprocess_vault):
+    vault, env = subprocess_vault
+    (vault / "Journal").mkdir()
+    note = vault / "Journal" / "legacy-name.md"
+    note.write_text("existing")
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(note), "content": "replacement"},
+    }
+    _, out, _ = run_hook(payload, env=env)
+    assert out == ""
+
+
+def test_date_check_handles_paths_on_incompatible_filesystems(policy, monkeypatch):
+    def fail_relpath(path, root):
+        raise ValueError("different drives")
+
+    monkeypatch.setattr(policy["os"].path, "relpath", fail_relpath)
+    assert policy["check_dated_filename"]("Write", "Journal/note.md", "/vault") is not None
 
 
 def test_rejects_malformed_frontmatter(subprocess_vault):

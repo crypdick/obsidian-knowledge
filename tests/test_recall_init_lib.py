@@ -1,5 +1,10 @@
 """Tests for recall_init_lib (primer build)."""
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 from hookslib import recall_init_lib
 
 
@@ -37,3 +42,22 @@ class TestBuildPrimer:
         primer = recall_init_lib.build_primer(tmp_vault, plugin_root)
         assert "symlink" not in primer.lower()
         assert "setup-harness" not in primer
+
+
+def test_adapter_reuses_already_loaded_primer_module():
+    hooks = Path(__file__).parents[1] / "hooks"
+    script = """
+import sys
+from types import SimpleNamespace
+sentinel = object()
+sys.modules['vault_index.primer'] = SimpleNamespace(build_primer=sentinel)
+from hookslib import recall_init_lib
+assert recall_init_lib.build_primer is sentinel
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(hooks)},
+    )
+    assert result.returncode == 0, result.stderr

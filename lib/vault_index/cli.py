@@ -131,10 +131,10 @@ def search_ttl(seconds: int | None, *, label: str = "search"):
         yield
     finally:
         cancel.set()
-        if use_alarm:
+        if use_alarm:  # pragma: no branch  # generator-exit arc is not executable
             signal.alarm(0)
             signal.signal(signal.SIGALRM, previous_handler)
-            if previous_alarm:
+            if previous_alarm:  # pragma: no branch  # generator-exit arc is not executable
                 signal.alarm(previous_alarm)
 
 
@@ -689,7 +689,7 @@ def main() -> int:
             description=args.description,
             parser=parser,
         )
-    elif args.cmd in {"doctor", "search", "remember"}:
+    elif args.cmd in {"doctor", "search", "remember"}:  # pragma: no branch  # exhaustive parser
         with search_ttl(search_ttl_seconds(), label=args.cmd):
             return run_retrieval_command(args)
 

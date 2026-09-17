@@ -465,13 +465,13 @@ class Indexer:
 
         try:
             rows = run(query)
-        except sqlite3.OperationalError:
+        except sqlite3.DatabaseError:
             safe_query = self._safe_fts_query(query)
             if not safe_query:
                 return []
             try:
                 rows = run(safe_query)
-            except sqlite3.OperationalError:
+            except sqlite3.DatabaseError:
                 return []
 
         best_by_path: dict[str, float] = {}

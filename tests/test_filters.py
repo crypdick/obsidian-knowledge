@@ -34,6 +34,16 @@ def test_score_path_longest_regex_wins():
     assert score_path("wiki/special/bar.md", cfg) == 2.0
 
 
+def test_score_path_equal_length_uses_first_rule():
+    cfg = VaultIndexConfig(
+        weights=[
+            WeightRule(regex=r"wiki", multiplier=1.5),
+            WeightRule(regex=r"foo/", multiplier=2.0),
+        ]
+    )
+    assert score_path("foo/wiki.md", cfg) == 1.5
+
+
 # ---------------------------------------------------------------------------
 # Task 5: path_passes
 # ---------------------------------------------------------------------------
@@ -127,3 +137,13 @@ def test_apply_filters_dedupes_by_path():
     assert paths.count("wiki/bar.md") == 1
     foo = [h for h in out if h.path == "wiki/foo.md"][0]
     assert foo.score == 9.0  # the highest chunk's score is preserved
+
+
+def test_apply_filters_applies_min_score_after_weighting():
+    cfg = VaultIndexConfig(
+        weights=[WeightRule(regex=r"^wiki/", multiplier=2.0)],
+        min_score=10.0,
+        top_k=10,
+    )
+    out = apply_filters([_h("wiki/keep.md", 5.0), _h("Inbox/drop.md", 9.9)], cfg)
+    assert out == [Hit(path="wiki/keep.md", score=10.0, weight_applied=2.0)]

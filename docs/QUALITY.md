@@ -18,7 +18,7 @@ The repository enforces these checks and settings:
 | Dead code | Vulture, confidence 80 |
 | Dependencies | deptry; host imports, PEP 723 scanner dependencies and embedding compatibility pins documented in config |
 | Package | check-sdist with injected junk; CI builds and smoke-tests a wheel without dev dependencies |
-| Coverage | Branch and subprocess collection; **80% floor**, target 100%; missing lines in terminal and `coverage.json` |
+| Coverage | Branch and subprocess collection; **100% floor**; missing lines in terminal and `coverage.json` |
 | Fast tests | xdist up to four workers, failed-first, 30-second per-test timeout |
 | Hygiene | Native prek built-ins, detect-secrets with reviewed `.secrets.baseline` |
 | Custom checks | Exception handling, 400 logical lines, private first-party test imports, architectural boundaries |
@@ -33,18 +33,18 @@ functions pass the Ruff complexity ceiling. Tests run without an embedding servi
 
 | Area | Coverage | Grade | Type checks, complexity, and test results |
 |------|---------:|:-----:|--------------------------------|
-| Models, config, filters, primer, registration | 90-100% | A | Typed boundaries, passing core tests |
-| `lib/vault_index/indexer.py` | 76% | C | External embedding paths remain partly untested |
-| `lib/vault_index/cli.py` | 72% | C | Subprocess coverage; oversized module |
-| `lib/vault_index/vault_files.py` | 85% | B | Boundary and atomic-write regressions pass |
-| `hooks/hookslib` | 85-100% | B | Shared behavior tests; small modules |
-| Hook entrypoints | 74-100% | C | Subprocess coverage included; protection guard oversized |
-| Overall | 80.14% | B | 391 tests pass |
+| Models, config, filters, primer, registration | 100% | A | Typed boundaries, passing core tests |
+| `lib/vault_index/indexer.py` | 100% | A | Offline, vector, SQLite fallback, locking, and recovery paths |
+| `lib/vault_index/cli.py` | 100% | A | Command dispatch, deadlines, error mapping, and subprocess coverage |
+| `lib/vault_index/vault_files.py` | 100% | A | Boundary and atomic-write regressions pass |
+| `hooks/hookslib` | 100% | A | Shared behavior tests; small modules |
+| Hook entrypoints | 100% | A | Subprocess coverage included; protection guard behavior matrix |
+| Overall | 100% | A | 578 tests pass; 2,562 statements and 898 branches covered |
 
 Use `uv run pytest --no-cov` for targeted tests and `uv run prek run pytest`
 for coverage. The latter writes missing lines and branches to `coverage.json`,
-which Git ignores. Raise the coverage floor as gaps close; do not lower it to
-pass a failing check.
+which Git ignores. Keep the floor at 100%; do not lower it to pass a failing
+check.
 
 ## Tradeoffs and remaining work
 

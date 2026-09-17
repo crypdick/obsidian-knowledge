@@ -68,6 +68,25 @@ def test_resolve_target_repo_no_remote_falls_back_to_host(tmp_path):
     assert t.rel_path == "systems/machines/dream-machine/memory"
 
 
+def test_resolve_target_invalid_remote_falls_back_to_host(tmp_path):
+    _git_init(tmp_path, "not-a-supported-remote")
+    target = repo_memory.resolve_target(tmp_path, hostname="fallback-host")
+    assert target.kind == "host"
+    assert target.hostname == "fallback-host"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [FileNotFoundError(), subprocess.TimeoutExpired(cmd="git", timeout=2)],
+)
+def test_read_origin_url_returns_none_when_git_is_unavailable(tmp_path, monkeypatch, error):
+    def fail(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(subprocess, "run", fail)
+    assert repo_memory.read_origin_url(tmp_path) is None
+
+
 # ── Resolver: host fallback ───────────────────────────────────────────
 
 

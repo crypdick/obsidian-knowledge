@@ -65,6 +65,30 @@ def test_vault_file_path_rejects_absolute_and_escaping_paths(tmp_path: Path) -> 
         resolve_vault_file(vault, Path("../outside.md"))
 
 
+def test_vault_file_path_rejects_missing_or_non_directory_vault(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="vault does not exist"):
+        resolve_vault_file(tmp_path / "missing", Path("note.md"))
+
+    file_root = tmp_path / "file"
+    file_root.write_text("not a directory")
+    with pytest.raises(ValueError, match="vault is not a directory"):
+        resolve_vault_file(file_root, Path("note.md"))
+
+
+def test_vault_file_path_must_name_child_file(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    with pytest.raises(ValueError, match="file inside the vault"):
+        resolve_vault_file(vault, Path("."))
+
+
+def test_read_rejects_missing_file(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    with pytest.raises(FileNotFoundError, match="vault file does not exist"):
+        read_vault_file(vault, Path("missing.md"))
+
+
 def test_vault_file_path_rejects_symlink_escape(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     outside = tmp_path / "outside"
@@ -110,3 +134,40 @@ def test_write_fails_if_final_filesystem_bytes_do_not_match(
 
     with pytest.raises(OSError, match="verification failed"):
         write_vault_file(vault, Path("wiki/note.md"), b"expected\n")
+
+
+def test_write_fails_if_temporary_bytes_do_not_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    real_read_bytes = Path.read_bytes
+
+    def read_bytes(path: Path) -> bytes:
+        if path.suffix == ".tmp":
+            return b"corrupt"
+        return real_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+    with pytest.raises(OSError, match="temporary write verification failed"):
+        write_vault_file(vault, Path("wiki/note.md"), b"expected\n")
+    assert not (vault / "wiki" / "note.md").exists()
+    assert list((vault / "wiki").iterdir()) == []
+
+
+def test_write_closes_descriptor_and_removes_temporary_file_when_open_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    def fail_open(*args, **kwargs):
+        raise OSError("synthetic fdopen failure")
+
+    monkeypatch.setattr("lib.vault_index.vault_files.os.fdopen", fail_open)
+    with pytest.raises(OSError, match="synthetic fdopen failure"):
+        write_vault_file(vault, Path("wiki/note.md"), b"content\n")
+    assert list((vault / "wiki").iterdir()) == []

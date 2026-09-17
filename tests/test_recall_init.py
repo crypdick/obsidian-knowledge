@@ -33,7 +33,52 @@ def run_hook(stdin_payload: dict, env_overrides: dict | None = None) -> tuple[in
     return result.returncode, out
 
 
+def run_raw_hook(stdin_payload: str, env_overrides: dict | None = None) -> tuple[int, dict]:
+    env = os.environ.copy()
+    if env_overrides:
+        env.update(env_overrides)
+    result = subprocess.run(
+        ["python3", str(HOOK)],
+        input=stdin_payload,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return result.returncode, json.loads(result.stdout) if result.stdout else {}
+
+
 class TestRecallInit:
+    def test_default_registry_path_under_home(self, tmp_vault, tmp_path):
+        home = tmp_path / "home"
+        config = home / ".config" / "obsidian-knowledge" / "vaults.yaml"
+        config.parent.mkdir(parents=True)
+        config.write_text(f"vaults:\n  - {tmp_vault}\n")
+        env = {**os.environ, "HOME": str(home)}
+        env.pop("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", None)
+        result = subprocess.run(
+            ["python3", str(HOOK)],
+            input=json.dumps({"session_id": f"s-{RUN_ID}-default-config"}),
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        out = json.loads(result.stdout)
+        assert out["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+
+    def test_invalid_payload_still_uses_configured_vault(self, tmp_vault, tmp_path):
+        config = tmp_path / "vaults.yaml"
+        config.write_text(f"vaults:\n  - {tmp_vault}\n")
+        code, out = run_raw_hook("{", {"OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(config)})
+        assert code == 0
+        assert out["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+
+    def test_empty_registry_is_silent(self, tmp_path):
+        config = tmp_path / "vaults.yaml"
+        config.write_text("vaults: []\n")
+        code, out = run_hook({}, {"OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(config)})
+        assert code == 0
+        assert out == {}
+
     def test_emits_primer_when_vault_configured(self, tmp_vault, tmp_path):
         """Vault configured; hook injects SessionStart additionalContext."""
         config_dir = tmp_path / "obsidian-knowledge"

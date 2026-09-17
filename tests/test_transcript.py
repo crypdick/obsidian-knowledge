@@ -58,6 +58,14 @@ def test_skips_malformed_lines(tmp_path):
     assert uses[0]["name"] == "Edit"
 
 
+def test_tool_use_reader_skips_blank_lines_and_defaults_missing_input(tmp_path):
+    f = tmp_path / "t.jsonl"
+    f.write_text(
+        "\n" + json.dumps({"message": {"content": [{"type": "tool_use", "id": "t3", "name": "Read"}]}}) + "\n"
+    )
+    assert list(iter_tool_uses(str(f))) == [{"id": "t3", "name": "Read", "input": {}}]
+
+
 def test_handles_non_list_content(tmp_path):
     f = tmp_path / "t.jsonl"
     f.write_text(json.dumps({"message": {"content": "string"}}) + "\n")
@@ -95,6 +103,35 @@ def test_count_user_messages_counts_only_genuine(tmp_path):
         + "\n"
     )
     assert count_user_messages(str(f)) == 2
+
+
+def test_count_user_messages_ignores_malformed_blank_and_invalid_user_content(tmp_path):
+    f = tmp_path / "t.jsonl"
+    records = [
+        "",
+        "not json",
+        json.dumps({"type": "user", "message": None}),
+        json.dumps({"type": "user", "message": {"content": 42}}),
+        json.dumps({"type": "response_item", "payload": {"role": "assistant", "content": "no"}}),
+    ]
+    f.write_text("\n".join(records) + "\n")
+    assert count_user_messages(str(f)) == 0
+
+
+def test_count_user_messages_accepts_media_only_user_content(tmp_path):
+    f = tmp_path / "t.jsonl"
+    f.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "payload": {"role": "user", "content": [{"type": media_type}]},
+                }
+            )
+            for media_type in ("image", "input_image", "input_audio")
+        )
+    )
+    assert count_user_messages(str(f)) == 3
 
 
 def test_codex_user_records_exclude_injected_context_and_duplicate_events(tmp_path):

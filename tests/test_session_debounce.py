@@ -7,9 +7,10 @@ suppresses an auto-compaction storm (many SessionStart events, no new message).
 
 import json
 import os
+import sys
 import uuid
 
-from hookslib.stop_hook import session_debounce
+from hookslib.stop_hook import capture_debounce, in_cooldown, read_input, session_debounce
 
 RUN_ID = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
@@ -30,6 +31,22 @@ def _transcript(tmp_path, n_user_msgs: int) -> str:
 
 def test_no_session_id_never_debounces():
     assert session_debounce({}, "unit-nosid") is False
+
+
+def test_stop_input_returns_empty_mapping_for_invalid_json(monkeypatch):
+    monkeypatch.setattr(sys, "stdin", type("Input", (), {"read": lambda self: "{"})())
+    assert read_input() == {}
+
+
+def test_stop_cooldown_without_session_never_skips():
+    assert in_cooldown({}, "unit-no-session") is False
+
+
+def test_stop_cooldown_skips_immediate_repeat():
+    marker = f"unit-repeat-{RUN_ID}"
+    payload = {"session_id": "repeat"}
+    assert in_cooldown(payload, marker, cooldown_seconds=300) is False
+    assert in_cooldown(payload, marker, cooldown_seconds=300) is True
 
 
 def test_first_fire_runs_then_time_gate_blocks(tmp_path):
@@ -66,3 +83,32 @@ def test_no_transcript_falls_back_to_time_only(tmp_path):
     assert session_debounce(payload, "unit-notranscript", cooldown_seconds=0) is False
     # But within the cooldown window it still skips.
     assert session_debounce(payload, "unit-notranscript", cooldown_seconds=300) is True
+
+
+def test_capture_debounce_stays_silent_for_empty_transcript(tmp_path):
+    payload = {"session_id": _sid("empty"), "transcript_path": _transcript(tmp_path, 0)}
+    assert capture_debounce(payload, marker_basename="unit-empty") is True
+
+
+def test_session_debounce_recovers_from_corrupt_message_count(tmp_path):
+    sid = _sid("corrupt")
+    marker_basename = "unit-corrupt"
+    marker = f"/tmp/.obsidian-hook-{marker_basename}-{sid}"
+    with open(marker, "w") as handle:
+        handle.write("not-an-integer")
+    payload = {"session_id": sid, "transcript_path": _transcript(tmp_path, 1)}
+
+    assert session_debounce(payload, marker_basename, cooldown_seconds=0) is False
+    assert open(marker).read() == "1"
+
+
+def test_session_debounce_treats_unreadable_marker_as_unknown_count(tmp_path):
+    sid = _sid("unreadable")
+    marker_basename = "unit-unreadable"
+    marker = f"/tmp/.obsidian-hook-{marker_basename}-{sid}"
+    os.mkdir(marker)
+    try:
+        payload = {"session_id": sid, "transcript_path": _transcript(tmp_path, 1)}
+        assert session_debounce(payload, marker_basename, cooldown_seconds=300) is True
+    finally:
+        os.rmdir(marker)

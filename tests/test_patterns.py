@@ -144,6 +144,25 @@ def test_empty_frontmatter_returns_empty_dict():
     assert err is None
 
 
+def test_comment_only_frontmatter_returns_empty_dict():
+    parsed, err = patterns.parse_frontmatter("---\n# comment only\n---\n")
+    assert parsed == {}
+    assert err is None
+
+
+def test_non_mapping_frontmatter_returns_clear_error():
+    parsed, err = patterns.parse_frontmatter("---\n- first\n- second\n---\n")
+    assert parsed is None
+    assert err == "frontmatter must be a YAML mapping (key: value)"
+
+
+def test_frontmatter_delimiters_still_work_without_yaml_dependency(monkeypatch):
+    monkeypatch.setattr(patterns, "yaml", None)
+    parsed, err = patterns.parse_frontmatter("---\ntitle: unavailable\n---\n")
+    assert parsed == {}
+    assert err is None
+
+
 def test_no_frontmatter_returns_none():
     content = "# Just a heading\n\nBody text."
     parsed, err = patterns.parse_frontmatter(content)
