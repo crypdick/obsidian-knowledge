@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-knowledge"
-version = "3.22.49"
+version = "3.23.0"
 description = "Obsidian vault knowledge integration for Claude Code and Hermes Agent CLI"
 requires-python = ">=3.12"
 dependencies = [
@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 obsidian-knowledge = "lib.vault_index.cli:cli_main"
+obsidian-knowledge-check = "hooks.i_insist:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -28,6 +29,7 @@ packages = ["lib"]
 [tool.hatch.build.targets.sdist]
 # Keep platform/editor detritus out even when the source checkout is dirty.
 exclude = [
+    ".coverage", ".coverage.*", "coverage.json",
     ".DS_Store?", ".Spotlight-V100", ".Trashes", "._*", "Thumbs.db",
     "ehthumbs.db", "*.egg-info", "*.swp", "*~",
 ]

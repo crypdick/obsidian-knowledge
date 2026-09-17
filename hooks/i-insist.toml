@@ -1,0 +1,61 @@
+[[rules]]
+id = "protected-dirs"
+checker = ["obsidian-knowledge-check", "protected-dirs"]
+message = "Cannot modify _sources directories in configured vaults; these contain irreplaceable originals. Ask the human for consent."
+
+[[rules]]
+id = "ai-readonly"
+checker = ["obsidian-knowledge-check", "ai-readonly"]
+message = "Cannot modify publishable-zone paths listed in ai_readonly_folders or ai_readonly_root_files. Ask the human for consent."
+
+[[rules]]
+id = "destructive-ops"
+checker = ["obsidian-knowledge-check", "destructive-ops"]
+message = "Destructive vault operation blocked. Use Obsidian CLI to preserve links and vault integrity, or ask the human for consent."
+
+[[rules]]
+id = "published-files"
+checker = ["obsidian-knowledge-check", "published-files"]
+message = "Published vault content is read-only without human consent."
+
+[[rules]]
+id = "publish-allowlist"
+checker = ["obsidian-knowledge-check", "publish-allowlist"]
+message = "Cannot set dg-publish: true outside publish_allowlist in the vault policy. No override."
+overridable = false
+
+[[rules]]
+id = "generic-filenames"
+checker = ["obsidian-knowledge-check", "generic-filenames"]
+message = "New vault filename would collide with generic wikilink names. Prefix its basename with context; index.md is exempt. No override."
+overridable = false
+
+[[rules]]
+id = "illegal-filenames"
+checker = ["obsidian-knowledge-check", "illegal-filenames"]
+message = "New vault filename contains characters forbidden by the vault sync policy. Rename the file. No override."
+overridable = false
+
+[[rules]]
+id = "memory-routing"
+checker = ["obsidian-knowledge-check", "memory-routing"]
+message = "Do not write operational facts to agent auto-memory. Search the Obsidian wiki; file only durable, novel facts not recoverable from code, git, docs, or runtime. Use the repo or host memory scope in the vault. No override."
+overridable = false
+
+[[rules]]
+id = "wikilinks"
+checker = ["obsidian-knowledge-check", "wikilinks"]
+message = "Remove .md extensions from wikilinks: use [[foo]], not [[foo.md]]. No override."
+overridable = false
+
+[[rules]]
+id = "dated-filenames"
+checker = ["obsidian-knowledge-check", "dated-filenames"]
+message = "New notes in dated folders need a YYYY-MM-DD filename prefix; index.md is exempt. No override."
+overridable = false
+
+[[rules]]
+id = "frontmatter"
+checker = ["obsidian-knowledge-check", "frontmatter"]
+message = "Vault note has malformed YAML frontmatter. Fix it before writing. No override."
+overridable = false

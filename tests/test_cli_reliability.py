@@ -146,6 +146,8 @@ def test_deadline_includes_index_initialization(tmp_path, command):
 import sys, time
 import lib.vault_index.indexer as indexer
 from lib.vault_index.cli import cli_main
+import lib.vault_index.guard_install as guards
+guards.install_rules = lambda base: base / ".i-insist/obsidian-knowledge.toml"
 def stall(*args, **kwargs):
     time.sleep(30)
 indexer.Indexer = stall

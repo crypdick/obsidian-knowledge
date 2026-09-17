@@ -10,7 +10,7 @@ The following directories contain the shared components and host adapters:
 | Location | Responsibility |
 | --- | --- |
 | `lib/vault_index/` | Retrieval, configuration, verified file I/O, session primer, papercut logs, and CLI orchestration. |
-| `hooks/` | Claude Code hook entrypoints and the dependency-light vault registry. |
+| `hooks/` | Lifecycle hooks, provider-owned i-insist checkers and rule template, and the dependency-light vault registry. |
 | `hooks/hookslib/` | Shared protection, capture, transcript, memory-routing, and reflection logic. |
 | `hermes_plugin/` | Hermes memory provider and lifecycle adapter. The root `__init__.py` registers it. |
 | `scripts/` | Development, migration, packaging, and quality tools. |
