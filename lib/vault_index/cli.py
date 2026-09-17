@@ -316,7 +316,6 @@ def package_root() -> Path:
 def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claude") -> int:
     """Dispatch private hook entry points to the existing hook scripts."""
     scripts = {
-        ("pre-tool-use", "protect-vault"): "protect-vault.py",
         ("post-tool-use", "reflect-nudge"): "reflect-nudge.py",
         ("session-start", "recall-init"): "recall-init.py",
         ("stop", "capture-session"): "capture-session.py",
@@ -329,7 +328,6 @@ def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claud
     effective_kind = kind
     if effective_kind is None:
         defaults = {
-            "pre-tool-use": "protect-vault",
             "post-tool-use": "reflect-nudge",
             "session-start": "recall-init",
         }
@@ -623,7 +621,7 @@ def main() -> int:
 
     p_hook = sub.add_parser("_hook", help=argparse.SUPPRESS)
     hook_sub = p_hook.add_subparsers(dest="hook_event", required=True)
-    for name in ("pre-tool-use", "post-tool-use", "session-start", "stop"):
+    for name in ("post-tool-use", "session-start", "stop"):
         p = hook_sub.add_parser(name, help=argparse.SUPPRESS)
         p.add_argument("--kind", default=None)
         p.add_argument("--agent", choices=("claude", "codex"), default="claude")

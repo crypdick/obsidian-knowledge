@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,8 +10,17 @@ from pathlib import Path
 
 def install_rules(base: Path) -> Path:
     """Install missing rules without replacing user edits or disabled rules."""
-    if shutil.which("i-insist") is None:
-        subprocess.run(["uv", "tool", "install", "git+https://github.com/crypdick/i-insist@main"], check=True)
+    current = None
+    if shutil.which("i-insist"):
+        result = subprocess.run(["i-insist", "--version"], capture_output=True, text=True, check=False)
+        current = (
+            re.fullmatch(r"i-insist (\d+)\.(\d+)\.(\d+)", result.stdout.strip())
+            if result.returncode == 0
+            else None
+        )
+    # NOTE: docs/hooks.md records the minimum version for neutral file changes.
+    if current is None or tuple(map(int, current.groups())) < (0, 3, 0):
+        subprocess.run(["uv", "tool", "install", "--upgrade", "i-insist>=0.3.0"], check=True)
     subprocess.run(["i-insist", "ensure"], check=True)
     source = Path(__file__).resolve().parents[2] / "hooks" / "i-insist.toml"
     text = source.read_text()

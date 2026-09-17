@@ -12,7 +12,7 @@ The tool-call guard applies these rules:
 | Target | Protection |
 | --- | --- |
 | `_sources/` directories | Block writes, renames, moves, and deletion of original files. Reading is allowed. |
-| Files with `dg-publish: true` | Block writes and edits because they affect published pages. |
+| Files with `dg-publish: true` | Block edits and deletions of existing published files. Writes use the publish-allowlist rule. |
 | Vault paths in destructive commands | Block recognized destructive operations, including recursive removal and moves. |
 | Built-in project auto-memory | Redirect operational knowledge to the wiki. |
 
@@ -24,9 +24,9 @@ the same installation path:
 obsidian-knowledge install-rules --global
 ```
 
-It installs a missing runner with uv, then runs `i-insist ensure`. This registers
+It installs or upgrades the runner from PyPI with uv, then runs `i-insist ensure`. This registers
 hooks for available harnesses and rejects explicit disable settings. Existing
-runners need version 0.2.0 or later; upgrade with `uv tool upgrade i-insist`.
+runners need version 0.3.0 or later for neutral file changes; setup upgrades older versions.
 Restart and review `/hooks`, including Codex hook trust. Registration cannot
 verify a running session's hook snapshot or all managed policies.
 
@@ -37,9 +37,11 @@ rules accumulate. The checker executable comes from this package, so normal
 package upgrades update its policy code without copying scripts into config
 directories. The bundled rule template is `hooks/i-insist.toml`.
 
-Checkers receive neutral paths, cwd, and operation kind. Native file content is
-adapted for Write/Edit, MultiEdit, notebooks, and apply_patch; all explicit patch
-targets are checked. Shell checks retain their recognized-command limitations.
+Checkers consume i-insist events directly: paths, cwd, shell commands, and file
+changes with an operation and supplied text. i-insist normalizes Write/Edit,
+MultiEdit, notebooks, and apply_patch. The provider does not parse native tool
+payloads or emit harness hook responses. Patch renames check both source and
+destination; deletion skips content and new-filename rules. Shell checks retain their recognized-command limitations.
 Each checker prints a JSON boolean; the TOML supplies the denial message.
 
 A standalone `I insist` in the latest human message permits overridable calls

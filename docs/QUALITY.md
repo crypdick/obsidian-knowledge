@@ -38,8 +38,8 @@ functions pass the Ruff complexity ceiling. Tests run without an embedding servi
 | `lib/vault_index/cli.py` | 100% | A | Command dispatch, deadlines, error mapping, and subprocess coverage |
 | `lib/vault_index/vault_files.py` | 100% | A | Boundary and atomic-write regressions pass |
 | `hooks/hookslib` | 100% | A | Shared behavior tests; small modules |
-| Hook entrypoints | 100% | A | Subprocess coverage included; protection guard behavior matrix |
-| Overall | 100% | A | 578 tests pass; 2,562 statements and 898 branches covered |
+| Hook entrypoints | 100% | A | Subprocess coverage included; neutral checker behavior matrix |
+| Overall | 100% | A | 573 tests pass; 2,297 statements and 744 branches covered |
 
 Use `uv run pytest --no-cov` for targeted tests and `uv run prek run pytest`
 for coverage. The latter writes missing lines and branches to `coverage.json`,

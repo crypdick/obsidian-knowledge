@@ -253,7 +253,7 @@ def test_empty_candidate_format_and_missing_hook(tmp_path, monkeypatch):
         cli.hook_script_path("missing.py")
 
     monkeypatch.undo()
-    assert cli.hook_script_path("protect-vault.py").is_file()
+    assert cli.hook_script_path("i_insist.py").is_file()
 
 
 @pytest.mark.parametrize(

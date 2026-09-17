@@ -1,7 +1,7 @@
 """Vault discovery from the global config.
 
 Single source of truth for "what counts as a vault." Used by the
-PreToolUse hook (`protect-vault.py`) and the Stop hooks. Replaces the
+i-insist vault checker (`i_insist.py`) and the Stop hooks. Replaces the
 older walk-up-for-`.obsidian/` heuristic, which fired on any vault
 the agent happened to `cd` into — including ones not in the user's
 allowlist.
