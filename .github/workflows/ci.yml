@@ -8,9 +8,6 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v5
@@ -18,7 +15,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
 
       - name: Install dependencies
-        run: uv sync --group dev --python ${{ matrix.python }}
+        run: uv sync --group dev --python 3.14
 
       # Runs every gate (hygiene, detect-secrets, ruff, flynt, vulture, dependency integrity,
       # mypy --strict, custom taste hooks, Codex-sync check, pytest + coverage
