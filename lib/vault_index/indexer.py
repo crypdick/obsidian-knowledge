@@ -174,7 +174,7 @@ def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
     memweave uses one SQLite DB per vault cache. Reindex/sync are writers and
     must be exclusive; search is a reader and takes a shared lock so writers do
     not collide with an in-flight query. The lock is deliberately nonblocking by
-    default because Hermes memory retrieval should degrade, not stall a turn.
+    default so memory retrieval degrades instead of stalling a turn.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     lock_path = cache_dir / ".index.sqlite.lock"

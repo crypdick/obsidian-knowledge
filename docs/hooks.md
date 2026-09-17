@@ -50,8 +50,6 @@ Neither providers nor agents may rewrite rules to evade a block.
 
 The plugin retains its recall, capture, reflection, and secret-scanning hooks.
 Its direct Codex/Claude PreToolUse registrations are replaced by i-insist.
-The Hermes adapter retains its existing in-process guard and shell-only
-`I_AM_BEING_CAREFUL=1` approval path until its lifecycle adapter is migrated.
 These checks do not replace filesystem permissions or backups.
 
 ## Memory and recall
@@ -60,7 +58,7 @@ The session primer gives the agent its memory location and search instructions.
 Repository memory lives in `wiki/repos/<owner>/<repo>/memory/`; outside a
 repository, it lives in `wiki/systems/machines/<hostname>/memory/`.
 Each directory contains a small `MEMORY.md` index linked to individual facts.
-Hermes profile memory uses `wiki/systems/knowledge-base/index.md`.
+Shared profile memory uses `wiki/systems/knowledge-base/index.md`.
 
 The capture reminder invokes `remember-conversations` only for reusable
 knowledge that is not already available elsewhere. It also requests repairs to

@@ -8,8 +8,8 @@ extensions such as `.pdf.pdf`. Skip descriptive names, dotfolders, and `.trash/`
 
 Renames can include `_sources/` only after explicit human approval. In
 Codex/Claude, use i-insist approval (`I insist`, or an explicitly authorized
-`HUMAN_PERMISSION_GRANTED=1` shell call). Hermes retains its
-`I_AM_BEING_CAREFUL=1` shell marker. Do not modify original file content there.
+`HUMAN_PERMISSION_GRANTED=1` shell call). Do not modify original file content
+there.
 
 ## Procedure
 

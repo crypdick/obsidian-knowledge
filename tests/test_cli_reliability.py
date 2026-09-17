@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 import yaml
@@ -13,7 +12,6 @@ import yaml
 from lib.vault_index.cli import (
     SearchTimeoutError,
     init_vault_index,
-    link_hermes_memories,
     run_search_doctor,
     setup,
 )
@@ -71,34 +69,6 @@ def test_setup_reports_claude_install_failure(tmp_path, monkeypatch):
     monkeypatch.setattr("subprocess.run", fail)
     with pytest.raises(subprocess.CalledProcessError):
         setup(tmp_path)
-
-
-def test_link_preflights_both_memories_and_resolves_relative_sources(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    source = tmp_path / "source"
-    source.mkdir()
-    for name in ("MEMORY.md", "USER.md"):
-        (source / name).write_text("fixture")
-    destination = tmp_path / "Utility/obsidian-knowledge/hermes"
-    destination.mkdir(parents=True)
-    (destination / "USER.md").write_text("existing user memory")
-    with pytest.raises(FileExistsError):
-        link_hermes_memories(tmp_path, Path("source"))
-    assert not (destination / "MEMORY.md").exists()
-    assert (destination / "USER.md").read_text() == "existing user memory"
-    (destination / "USER.md").unlink()
-    link_hermes_memories(tmp_path, Path("source"))
-    assert (destination / "MEMORY.md").read_text() == "fixture"
-    assert (destination / "USER.md").read_text() == "fixture"
-
-
-def test_link_missing_source_leaves_no_partial_links(tmp_path):
-    source = tmp_path / "source"
-    source.mkdir()
-    (source / "MEMORY.md").write_text("fixture")
-    with pytest.raises(FileNotFoundError):
-        link_hermes_memories(tmp_path, source)
-    assert not (tmp_path / "Utility").exists()
 
 
 def test_lightweight_cli_import_does_not_load_retrieval_stack():

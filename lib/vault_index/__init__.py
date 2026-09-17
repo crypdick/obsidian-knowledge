@@ -1,8 +1,4 @@
-"""Shared retrieval + primer library for obsidian-knowledge plugin.
-
-Imported by both the Claude Code adapter (hooks/recall-init.py) and the
-Hermes Agent CLI memory provider (hermes-plugin/__init__.py).
-"""
+"""Shared retrieval and primer library for obsidian-knowledge plugins."""
 
 from typing import TYPE_CHECKING, Any
 

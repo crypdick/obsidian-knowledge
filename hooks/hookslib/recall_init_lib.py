@@ -1,7 +1,6 @@
 """Helpers for the SessionStart recall-init hook.
 
-Re-exports build_primer from the shared lib so CC and Hermes adapters
-use a single source.
+Re-exports build_primer from the shared lib for hook adapters.
 
 Import strategy: the CC hook runner inserts hooks/ onto sys.path before
 importing this module, which means 'lib' in sys.modules already resolves

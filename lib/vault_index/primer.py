@@ -1,4 +1,4 @@
-"""Harness primer text. Single source of truth for both CC and Hermes adapters."""
+"""Harness primer text shared by supported agent adapters."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def build_primer(
         f"- Recall: search {wiki}/ before non-trivial answers with "
         '`obsidian-knowledge search "<query>"`. '
         f"Use `rg <pattern> {wiki}/` only for exact-string lookups. "
-        "Use the wiki instead of Hermes/Claude built-in MEMORY.md or USER.md systems.\n"
+        "Use the wiki instead of Claude built-in MEMORY.md systems.\n"
         "- Capture: use remember-conversations only for a durable, novel delta that changes "
         "future action or prevents repeated work and is not recoverable from code, tracked docs, "
         "Git, issues, logs, runtime, or existing notes. Search first, prefer one canonical note, "
@@ -88,7 +88,7 @@ def build_primer(
         "temporary worktrees, commit/test transcripts, or per-cycle handoffs. Every saved note "
         "must be hermetic: explain local labels such as 'category 15' with their system and "
         "meaning so the note works without the conversation.\n"
-        "- Hermes profile: keep `wiki/systems/knowledge-base/index.md` as a thin, bounded "
+        "- Knowledge-base profile: keep `wiki/systems/knowledge-base/index.md` as a thin, bounded "
         "wikilink index; store details in linked notes.\n"
         f"- Agent memory for {scope_desc}: {memory_dir}/. {memory_start}"
         "Use MEMORY.md plus per-fact .md files for stable, in-scope knowledge that meets the "

@@ -229,7 +229,7 @@ def format_search_hits(hits: list[Hit]) -> str:
 
 
 DEFAULT_DOCTOR_QUERIES = (
-    "hermes-agent-operating-profile",
+    "knowledge-base",
     "automated-systems-review",
 )
 
@@ -385,49 +385,6 @@ def init_vault_index(yaml_path: Path) -> None:
         yaml_path.parent.mkdir(parents=True, exist_ok=True)
         yaml_path.write_text(DEFAULT_VAULT_INDEX_TEMPLATE)
     print(f"Wrote vault_index template to {yaml_path}")
-
-
-def link_hermes_memories(vault_root: Path, hermes_memories_dir: Path) -> None:
-    """Symlink Hermes built-in MEMORY.md and USER.md into the vault.
-
-    Symlinks live at <vault>/Utility/obsidian-knowledge/hermes/{MEMORY,USER}.md.
-    Idempotent — replaces symlinks, refuses to overwrite regular files.
-
-    NOTE: Obsidian linter must be configured to skip this directory before
-    symlinks go live, or the linter's frontmatter rewrites will corrupt the
-    section-sign delimiter format Hermes uses. See:
-      <vault>/.obsidian/plugins/obsidian-linter/data.json (excluded_paths)
-    """
-    vault_root = existing_vault(vault_root)
-    hermes_memories_dir = hermes_memories_dir.expanduser().resolve(strict=True)
-    link_dir = vault_root / "Utility" / "obsidian-knowledge" / "hermes"
-    # Preflight both paths so a missing source or destination conflict leaves
-    # both existing memories untouched.
-    for filename in ("MEMORY.md", "USER.md"):
-        target = hermes_memories_dir / filename
-        link = link_dir / filename
-        if not target.is_file():
-            raise FileNotFoundError(f"Hermes memory source is not a file: {target}")
-        if link.exists() and not link.is_symlink():
-            raise FileExistsError(f"refusing to overwrite existing memory file: {link}")
-        if link.resolve() == target.resolve():
-            continue
-        if target.resolve().is_relative_to(link_dir.resolve()):
-            raise ValueError(f"Hermes memory source must be outside the link directory: {target}")
-    link_dir.mkdir(parents=True, exist_ok=True)
-    for filename in ("MEMORY.md", "USER.md"):
-        target = hermes_memories_dir / filename
-        link = link_dir / filename
-        if link.is_symlink():
-            link.unlink()
-        link.symlink_to(target)
-        print(f"Symlinked: {link} -> {target}")
-
-    print(
-        f"\nIMPORTANT: configure your Obsidian linter to exclude '{link_dir.relative_to(vault_root)}/' "
-        "before opening these files in Obsidian. The linter would corrupt Hermes's "
-        "section-sign delimiter format otherwise."
-    )
 
 
 def setup(vault: Path, *, skip_claude_plugin: bool = False) -> None:
@@ -671,17 +628,6 @@ def main() -> int:
         p.add_argument("--kind", default=None)
         p.add_argument("--agent", choices=("claude", "codex"), default="claude")
 
-    p_link = sub.add_parser(
-        "link-hermes-memories",
-        help="Symlink Hermes MEMORY.md/USER.md into the vault",
-    )
-    p_link.add_argument("--vault", type=Path, default=None)
-    p_link.add_argument(
-        "--hermes-memories-dir",
-        type=Path,
-        default=Path.home() / ".hermes" / "memories",
-    )
-
     args = parser.parse_args()
 
     if args.cmd == "setup":
@@ -737,9 +683,6 @@ def main() -> int:
             f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}",
             flush=True,
         )
-    elif args.cmd == "link-hermes-memories":
-        vault = resolve_vault(args.vault)
-        link_hermes_memories(vault, args.hermes_memories_dir)
     elif args.cmd == "papercut":
         return run_papercut(
             vault=resolve_vault(args.vault),
@@ -761,8 +704,7 @@ def _exit_hard(code: int) -> None:
     interpreter hang on shutdown — confirmed on both dream-machine (Linux
     Python 3.13) and mac mini (Apple Silicon Python 3.13), where the hourly
     cron piled up zombie `reindex` processes overnight. Force-exit is the
-    same workaround used in `hermes_plugin` for the asyncio-daemon-thread
-    mismatch.
+    workaround required for the asyncio daemon-thread mismatch.
 
     Called from `cli_main()` (the console-script entry point) so it applies
     whether the CLI is invoked via `python -m lib.vault_index.cli` or via

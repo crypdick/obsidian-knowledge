@@ -40,12 +40,12 @@ def test_build_primer_keeps_capture_and_memory_selective(tmp_path: Path):
 def test_build_primer_injects_knowledge_base_index_with_cap(tmp_path: Path):
     index = tmp_path / "wiki" / "systems" / "knowledge-base" / "index.md"
     index.parent.mkdir(parents=True)
-    index.write_text("# Knowledge Base\n\n[[hermes-agent-operating-profile]]")
+    index.write_text("# Knowledge Base\n\n[[agent-operating-profile]]")
 
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
 
     assert "Knowledge-base memory index" in text
-    assert "[[hermes-agent-operating-profile]]" in text
+    assert "[[agent-operating-profile]]" in text
     assert f"capped at {KNOWLEDGE_BASE_INDEX_MAX_CHARS} chars" in text
 
 

@@ -17,7 +17,6 @@ from lib.vault_index.cli import (
     format_remember_candidates,
     format_search_hits,
     init_vault_index,
-    link_hermes_memories,
     resolve_vault,
     run_hook_entrypoint,
     run_search_doctor,
@@ -266,7 +265,7 @@ def test_run_search_doctor_passes_with_rows_and_known_hits(tmp_path: Path):
         vault=tmp_path / "vault",
         cache=tmp_path / "cache",
         idx=FakeIndexer(),
-        queries=["hermes-agent-operating-profile", "automated-systems-review"],
+        queries=["agent-operating-profile", "automated-systems-review"],
         top_k=1,
         override_digest_filter=True,
     )
@@ -274,8 +273,8 @@ def test_run_search_doctor_passes_with_rows_and_known_hits(tmp_path: Path):
     assert code == 0
     assert "status: PASS" in lines
     assert "rows: 12" in lines
-    assert "query: hermes-agent-operating-profile" in lines
-    assert "top: wiki/hermes-agent-operating-profile.md (88.8)" in lines
+    assert "query: agent-operating-profile" in lines
+    assert "top: wiki/agent-operating-profile.md (88.8)" in lines
 
 
 def test_run_search_doctor_fails_when_known_query_has_no_hits(tmp_path: Path):
@@ -497,48 +496,3 @@ def test_cli_reindex_accepts_timeout_flag(tmp_path: Path):
     )
     assert result.returncode == 0, "reindex subprocess exited non-zero"
     assert "Indexed:" in result.stdout
-
-
-# ---------------------------------------------------------------------------
-# Task 12 — link-hermes-memories
-# ---------------------------------------------------------------------------
-
-
-def test_link_hermes_memories_creates_symlinks(tmp_path: Path):
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    hermes_dir = tmp_path / "hermes_memories"
-    hermes_dir.mkdir()
-    (hermes_dir / "MEMORY.md").write_text("# memory\n§\nfirst entry\n")
-    (hermes_dir / "USER.md").write_text("# user\n§\nfact\n")
-
-    link_hermes_memories(vault, hermes_dir)
-
-    link_dir = vault / "Utility" / "obsidian-knowledge" / "hermes"
-    assert (link_dir / "MEMORY.md").is_symlink()
-    assert (link_dir / "USER.md").is_symlink()
-    assert (link_dir / "MEMORY.md").read_text() == "# memory\n§\nfirst entry\n"
-
-
-def test_link_hermes_memories_idempotent(tmp_path: Path):
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    hermes_dir = tmp_path / "hermes_memories"
-    hermes_dir.mkdir()
-    (hermes_dir / "MEMORY.md").write_text("a")
-    (hermes_dir / "USER.md").write_text("b")
-
-    link_hermes_memories(vault, hermes_dir)
-    link_hermes_memories(vault, hermes_dir)  # second call must not error
-
-    link_dir = vault / "Utility" / "obsidian-knowledge" / "hermes"
-    assert (link_dir / "MEMORY.md").is_symlink()
-
-
-def test_repo_root_is_hermes_plugin():
-    root = Path(__file__).parents[1]
-    assert (root / "plugin.yaml").exists()
-    assert (root / "__init__.py").exists()
-    manifest = (root / "plugin.yaml").read_text()
-    assert "name: obsidian-knowledge" in manifest
-    assert "pre_tool_call" in manifest

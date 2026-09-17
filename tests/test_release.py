@@ -26,7 +26,6 @@ def test_prepare_version_syncs_manifests(tmp_path: Path, current, published, exp
     (tmp_path / "pyproject.toml").write_text(
         f'[project]\nname = "obsidian-knowledge"\nversion = "{current}"\n'
     )
-    (tmp_path / "plugin.yaml").write_text("name: obsidian-knowledge\nversion: 3.22.34\n")
     for name in (".codex-plugin/plugin.json", ".claude-plugin/plugin.json"):
         path = tmp_path / name
         path.parent.mkdir(exist_ok=True)
@@ -36,7 +35,6 @@ def test_prepare_version_syncs_manifests(tmp_path: Path, current, published, exp
 
     assert prepare_version(tmp_path, published) == expected
     assert tomllib.loads((tmp_path / "pyproject.toml").read_text())["project"]["version"] == expected
-    assert f"version: {expected}\n" in (tmp_path / "plugin.yaml").read_text()
     for name in (".codex-plugin/plugin.json", ".claude-plugin/plugin.json"):
         assert json.loads((tmp_path / name).read_text())["version"] == expected
     assert json.loads(marketplace.read_text())["plugins"][0]["version"] == expected

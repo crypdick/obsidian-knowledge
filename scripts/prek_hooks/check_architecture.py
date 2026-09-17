@@ -36,12 +36,10 @@ def forbidden(path: Path, module: str) -> bool:
             module == "hookslib.repo_memory" or module.startswith("hookslib.repo_memory.")
         ):
             return False
-        return top in {"hooks", "hookslib", "hermes_plugin", "vault_registry"}
+        return top in {"hooks", "hookslib", "vault_registry"}
     if path.parts[:2] == ("hooks", "hookslib"):
-        return top in {"lib", "vault_index", "hermes_plugin"}
-    if path.parts[0] == "hermes_plugin":
         return top in {"lib", "vault_index"}
-    return top == "hermes_plugin"
+    return False
 
 
 def main() -> int:
@@ -49,7 +47,7 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     root = parser.parse_args().root
     failed = False
-    for package in ("lib", "hooks", "hermes_plugin"):
+    for package in ("lib", "hooks"):
         for source in sorted((root / package).rglob("*.py")):
             path = source.relative_to(root)
             try:

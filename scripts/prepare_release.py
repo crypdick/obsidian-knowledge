@@ -59,10 +59,6 @@ def prepare_version(root: Path, published: list[str]) -> str:
         else:
             data["version"] = version
         path.write_text(json.dumps(data, indent=2) + "\n")
-    hermes = root / "plugin.yaml"
-    hermes.write_text(
-        re.sub(r"^version: .+$", f"version: {version}", hermes.read_text(), count=1, flags=re.M)
-    )
     return version
 
 

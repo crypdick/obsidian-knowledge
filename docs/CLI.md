@@ -37,7 +37,6 @@ Use these commands to configure, search, and maintain the vault:
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
 | `papercut DESCRIPTION` | Append workflow friction to the repository's vault log, or the global log if no repository is identified. |
 | `doctor [--query TEXT] [--top-k N] [--digest-only]` | Report index rows, semantic availability, and sample retrieval results. Repeat `--query` for multiple checks. |
-| `link-hermes-memories [--hermes-memories-dir PATH]` | Compatibility helper; see [Hermes links](#legacy-hermes-links). |
 | `_hook EVENT [--kind KIND] [--agent claude\|codex]` | Private JSON-on-stdin interface for host hook manifests. |
 
 `PATH`, `QUERY`, `TEXT`, `DESCRIPTION`, `EVENT`, and `KIND` are placeholders for
@@ -142,18 +141,6 @@ and locks the log during writes.
 The log directory and lock file must be writable. If access is blocked, use
 the host's approved permission mechanism. If access remains unavailable, report
 the failure once and continue; do not log a failed papercut with another papercut.
-
-## Legacy Hermes links
-
-`link-hermes-memories` links existing `MEMORY.md` and `USER.md` files from
-`~/.hermes/memories` into `Utility/obsidian-knowledge/hermes/`. Both source files
-must exist. Relative source directories are resolved before linking. Existing
-regular destination files are preserved and reported as conflicts; only symlinks
-are replaced. Configure the Obsidian linter to exclude that directory first.
-
-This helper is not part of the current Hermes provider setup: that provider
-stores durable knowledge in the wiki and disables the built-in Hermes memory
-snapshots. See the [Hermes installation instructions](index.md#hermes-plugin-install).
 
 ## Verification
 
