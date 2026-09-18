@@ -17,13 +17,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-try:
-    import yaml
-
-    _HAVE_YAML = True
-except ImportError:  # pragma: no cover — PyYAML optional but expected
-    _HAVE_YAML = False
-
+import yaml
 
 CONFIG_BASENAME = ".claude/obsidian-knowledge.yaml"
 
@@ -32,19 +26,18 @@ _cache: dict[str, dict[str, Any]] = {}
 
 def load_vault_policy(vault_root: str) -> dict[str, Any]:
     """Load and cache the per-vault policy config. Returns {} if absent."""
-    if not _HAVE_YAML:
-        return {}
     if vault_root in _cache:
         return _cache[vault_root]
     config_path = os.path.join(vault_root, CONFIG_BASENAME)
-    if not os.path.isfile(config_path):
-        _cache[vault_root] = {}
-        return _cache[vault_root]
     try:
         with open(config_path) as f:
-            data = yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError):
+            data = yaml.safe_load(f)
+    except FileNotFoundError:
         data = {}
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        raise ValueError(f"vault policy must be a mapping: {config_path}")
     _cache[vault_root] = data
     return data
 

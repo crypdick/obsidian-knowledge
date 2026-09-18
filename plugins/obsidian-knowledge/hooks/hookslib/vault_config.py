@@ -22,7 +22,7 @@ CONFIG_PATH = Path.home() / ".config" / "obsidian-knowledge" / "vaults.yaml"
 
 
 def load_vault_roots(config_path: Path | None = None) -> list[str]:
-    """Read the shared YAML registry; invalid or absent registries yield no roots."""
+    """Read the shared YAML registry; invalid registries raise an error."""
     path = config_path or Path(os.environ.get("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(CONFIG_PATH)))
     return read_registry(path)
 

@@ -21,7 +21,7 @@ obsidian-knowledge doctor --query "a phrase from one of your notes"
 
 Setup registers and indexes the vault, installs i-insist when missing, and installs
 provider-owned guard rules. Existing i-insist installations require version
-0.2.0 or later (`uv tool upgrade i-insist`). See [guard setup](docs/hooks.md). It also installs the Claude Code plugin
+0.4.0 or later (`uv tool upgrade i-insist`). See [guard setup](docs/hooks.md). It also installs the Claude Code plugin
 when `claude` is on `PATH`. Add `--skip-claude-plugin` for CLI-only or Codex
 use. Setup is safe to rerun. For a large first index, add
 `--timeout-seconds 900`.
@@ -79,8 +79,10 @@ Vault organization requires the Obsidian CLI. In Obsidian, enable
 `CLAUDE.md` and configure [managed zones](docs/configuration.md#vault-configuration).
 
 Hooks provide session recall, selective memory capture, vault protection, and
-secret scanning. See [hooks and vault protection](docs/hooks.md) for their
-behavior and limits.
+secret scanning. Direct overwrites, edits, and deletions of existing published
+notes require human approval. See [hooks and vault protection](docs/hooks.md) for their
+behavior and limits. Setup regenerates provider-owned rule registrations; checkers
+own denial messages, and evaluation failures block the operation.
 
 ## Keep notes searchable
 
