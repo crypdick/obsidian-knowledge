@@ -22,6 +22,9 @@ def test_main_lightweight_dispatches(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "setup", lambda vault, **kwargs: calls.append(("setup", vault, kwargs)))
     assert run_main(monkeypatch, "setup", "--vault", str(tmp_path), "--skip-claude-plugin") == 0
     assert calls[0][0] == "setup"
+    assert calls[0][2] == {"skip_claude_plugin": True, "install_guards": False}
+    assert run_main(monkeypatch, "setup", "--vault", str(tmp_path), "--install-guards") == 0
+    assert calls[-1][2] == {"skip_claude_plugin": False, "install_guards": True}
 
     monkeypatch.setattr(cli, "resolve_vault", lambda _vault: tmp_path)
     monkeypatch.setattr(cli, "init_vault_index", lambda path: calls.append(("init", path)))

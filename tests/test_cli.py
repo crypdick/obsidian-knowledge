@@ -369,7 +369,7 @@ def test_codex_hooks_template_uses_installed_cli():
     """Codex hooks should use the uv-tool-installed CLI, not repo-local paths."""
     template = json.loads((Path(__file__).parents[1] / "hooks" / "codex-hooks.json").read_text())
     rendered = json.dumps(template)
-    assert "obsidian-knowledge install-rules --global" in rendered
+    assert "install-rules" not in rendered
     assert "${CLAUDE_PLUGIN_ROOT}" not in rendered
     assert "/home/" not in rendered
 

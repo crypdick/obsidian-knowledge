@@ -12,7 +12,10 @@ obsidian-knowledge setup --vault /absolute/path/to/vault --skip-claude-plugin
 obsidian-knowledge doctor --query "a phrase from an existing note"
 ```
 
-Setup registers and indexes an existing vault. Omit `--skip-claude-plugin` to
+Setup registers and indexes an existing vault. Add `--install-guards` to install
+or upgrade i-insist and register global harness hooks and vault guard rules.
+Without this flag, setup leaves existing guards unchanged. See [guard setup](hooks.md).
+Omit `--skip-claude-plugin` to
 install the Claude plugin when `claude` is on `PATH`. Rerun setup after fixing
 an error; completed steps are not rolled back. Its default deadline is
 300 seconds. Increase it with `--timeout-seconds 900` for a large vault.
@@ -28,7 +31,7 @@ Use these commands to configure, search, and maintain the vault:
 
 | Command | Behavior |
 | --- | --- |
-| `setup --vault PATH` | Register and index; optionally install the Claude plugin. |
+| `setup --vault PATH` | Register and index; install the Claude plugin unless skipped. Global guards require `--install-guards`. |
 | `init-vault-index [--vault PATH]` | Create `.claude/obsidian-knowledge.yaml` and its parent directory, or append the index template to an existing mapping. An existing `vault_index` section is left unchanged. |
 | `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
 | `write PATH [--replace]` | Read stdin, then atomically write and verify the bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Does not reindex. |

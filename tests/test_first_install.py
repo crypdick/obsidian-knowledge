@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -89,14 +90,25 @@ def test_offline_updates_are_embedded_when_ollama_returns(vault, tmp_path, monke
         asyncio.run(idx._store.close())
 
 
-def test_setup_without_ollama_finishes_and_explains_search_mode(vault, tmp_path, monkeypatch, capsys, embed):
+@pytest.mark.parametrize("install_guards", [False, True])
+def test_setup_without_ollama_finishes_and_explains_search_mode(
+    vault, tmp_path, monkeypatch, capsys, embed, install_guards
+):
     registry = tmp_path / "config" / "vaults.yaml"
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     monkeypatch.setattr("shutil.which", lambda _: None)
-    monkeypatch.setattr(
-        "lib.vault_index.guard_install.install_rules", lambda base: base / ".i-insist/obsidian-knowledge.toml"
-    )
-    setup(vault)
+    installed = []
+
+    def record_install(base):
+        installed.append(base)
+        return base / ".i-insist/obsidian-knowledge.toml"
+
+    monkeypatch.setattr("lib.vault_index.guard_install.install_rules", record_install)
+    if install_guards:
+        setup(vault, install_guards=True)
+    else:
+        setup(vault)
+    assert installed == ([Path.home()] if install_guards else [])
     output = capsys.readouterr().out
     assert "Search mode: keyword-only" in output
     assert "Setup complete." in output

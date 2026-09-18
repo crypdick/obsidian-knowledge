@@ -17,14 +17,19 @@ The tool-call guard applies these rules:
 | Built-in project auto-memory | Redirect operational knowledge to the wiki. |
 
 Codex and Claude use [i-insist](https://github.com/crypdick/i-insist) to execute
-provider-owned rules. `obsidian-knowledge setup` and plugin session startup run
-the same installation path:
+provider-owned rules. Guard installation is opt-in: use
+`obsidian-knowledge setup --vault /absolute/path/to/vault --install-guards`,
+or run this standalone command:
 
 ```bash
 obsidian-knowledge install-rules --global
 ```
 
-It installs or upgrades the runner from PyPI with uv, then runs `i-insist ensure`. This registers
+Codex session startup, resume, and compaction do not install rules or register
+global hooks. Default setup leaves existing guard installations unchanged;
+it neither installs nor removes protection.
+
+The installer installs or upgrades the runner from PyPI with uv, then runs `i-insist ensure`. This registers
 hooks for available harnesses and rejects explicit disable settings. Existing
 runners need version 0.4.0 or later for checker-owned messages; setup upgrades older versions.
 Restart and review `/hooks`, including Codex hook trust. Registration cannot

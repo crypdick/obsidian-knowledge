@@ -19,12 +19,13 @@ obsidian-knowledge setup --vault /absolute/path/to/vault
 obsidian-knowledge doctor --query "a phrase from one of your notes"
 ```
 
-Setup registers and indexes the vault, installs i-insist when missing, and installs
-provider-owned guard rules. Existing i-insist installations require version
-0.4.0 or later (`uv tool upgrade i-insist`). See [guard setup](docs/hooks.md). It also installs the Claude Code plugin
-when `claude` is on `PATH`. Add `--skip-claude-plugin` for CLI-only or Codex
-use. Setup is safe to rerun. For a large first index, add
-`--timeout-seconds 900`.
+Setup registers and indexes the vault. Add `--install-guards` to install or
+upgrade i-insist and register global harness hooks and vault guard rules.
+Guard installation requires i-insist 0.4.0 or later; setup upgrades older
+versions when requested. See [guard setup](docs/hooks.md).
+Setup also installs the Claude Code plugin when `claude` is on `PATH`.
+Add `--skip-claude-plugin` for CLI-only or Codex use. Setup is safe to rerun.
+For a large first index, add `--timeout-seconds 900`.
 
 The CLI requires Python 3.12 or later. The uv installer selects it automatically.
 Upgrade with `uv tool upgrade obsidian-knowledge`.
