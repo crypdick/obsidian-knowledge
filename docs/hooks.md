@@ -12,7 +12,7 @@ The tool-call guard applies these rules:
 | Target | Protection |
 | --- | --- |
 | `_sources/` directories | Block writes, renames, moves, and deletion of original files. Reading is allowed. |
-| Files with `dg-publish: true` | Block edits and deletions of existing published files. Writes use the publish-allowlist rule. |
+| Files with `dg-publish: true` | Block overwrites, edits, and deletions of existing published files without human consent. New files use the publish-allowlist rule. |
 | Vault paths in destructive commands | Block recognized destructive operations, including recursive removal and moves. |
 | Built-in project auto-memory | Redirect operational knowledge to the wiki. |
 
@@ -26,13 +26,14 @@ obsidian-knowledge install-rules --global
 
 It installs or upgrades the runner from PyPI with uv, then runs `i-insist ensure`. This registers
 hooks for available harnesses and rejects explicit disable settings. Existing
-runners need version 0.3.0 or later for neutral file changes; setup upgrades older versions.
+runners need version 0.4.0 or later for checker-owned messages; setup upgrades older versions.
 Restart and review `/hooks`, including Codex hook trust. Registration cannot
 verify a running session's hook snapshot or all managed policies.
 
 Rules live in `~/.i-insist/obsidian-knowledge.toml`; omit `--global` to install
-into the current directory's tracked `.i-insist/` instead. Existing TOML is
-preserved, including custom messages and disabled rules. Global and local
+into the current directory's tracked `.i-insist/` instead. The provider owns this file: setup atomically replaces it from the bundled
+template, removing obsolete rules and prior customizations. Other providers' files
+are left alone. There are no per-rule user customizations. Global and local
 rules accumulate. The checker executable comes from this package, so normal
 package upgrades update its policy code without copying scripts into config
 directories. The bundled rule template is `hooks/i-insist.toml`.
@@ -42,13 +43,20 @@ changes with an operation and supplied text. i-insist normalizes Write/Edit,
 MultiEdit, notebooks, and apply_patch. The provider does not parse native tool
 payloads or emit harness hook responses. Patch renames check both source and
 destination; deletion skips content and new-filename rules. Shell checks retain their recognized-command limitations.
-Each checker prints a JSON boolean; the TOML supplies the denial message.
+Each checker prints JSON `null` to allow or a nonempty denial string to block.
+Messages live in checker code. Policy and registry parse/read failures propagate
+as checker failures; i-insist blocks and displays stderr. Missing optional policy
+files retain their defaults.
 
-A standalone `I insist` in the latest human message permits overridable calls
+The phrase `I insist` anywhere in the latest human message permits overridable calls
 for that response. An explicitly authorized shell call may instead use
 `HUMAN_PERMISSION_GRANTED=1`. Publish allowlists, memory routing, filename
 constraints, and writing conventions set `overridable = false` and still block.
 Neither providers nor agents may rewrite rules to evade a block.
+
+This breaks compatibility with pre-0.4.0 i-insist. Coordinate the runner and provider
+upgrades, rerun setup to replace old registrations, then restart the harness. Old
+registration fields or checker boolean output fail closed during an incomplete upgrade.
 
 The plugin retains its recall, capture, reflection, and secret-scanning hooks.
 Its direct Codex/Claude PreToolUse registrations are replaced by i-insist.

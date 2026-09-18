@@ -33,14 +33,16 @@ def test_registry_override_agrees_across_adapters(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("data", [None, [], "vault", {"vaults": "vault"}, {"vaults": [None]}])
-def test_hooks_ignore_invalid_registry_but_cli_reports_it(tmp_path, monkeypatch, data):
+def test_hooks_and_cli_reject_invalid_registry(tmp_path, monkeypatch, data):
     registry = tmp_path / "vaults.yaml"
     registry.write_text(json.dumps(data))
     monkeypatch.setattr(vault_config, "CONFIG_PATH", registry)
-    assert vault_config.load_vault_roots() == []
     if data is None:
+        assert vault_config.load_vault_roots() == []
         assert load_configured_vaults(registry) == []
     else:
+        with pytest.raises(ValueError):
+            vault_config.load_vault_roots()
         with pytest.raises(ValueError):
             load_configured_vaults(registry)
 
@@ -69,4 +71,21 @@ def test_checker_uses_event_paths_from_another_cwd(subprocess_vault, tmp_path):
         env=env,
         check=True,
     )
-    assert json.loads(result.stdout) is True
+    assert isinstance(json.loads(result.stdout), str)
+
+
+def test_malformed_registry_is_checker_failure(tmp_path):
+    import os
+
+    registry = tmp_path / "vaults.yaml"
+    registry.write_text("vaults: [broken")
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).parents[1] / "hooks/i_insist.py"), "protected-dirs"],
+        input=json.dumps({"kind": "other", "cwd": str(tmp_path), "changes": []}),
+        text=True,
+        capture_output=True,
+        env={**os.environ, "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(registry)},
+    )
+    assert result.returncode != 0
+    assert not result.stdout
+    assert "ParserError" in result.stderr

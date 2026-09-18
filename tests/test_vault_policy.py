@@ -2,16 +2,12 @@
 
 from pathlib import Path
 
-from hookslib import vault_policy
+import pytest
+import yaml
 from hookslib.vault_policy import find_containing_vault, load_vault_policy
 
 
 def test_load_vault_policy_returns_empty_when_config_is_absent(tmp_path: Path):
-    assert load_vault_policy(str(tmp_path)) == {}
-
-
-def test_load_vault_policy_is_disabled_without_yaml(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr(vault_policy, "_HAVE_YAML", False)
     assert load_vault_policy(str(tmp_path)) == {}
 
 
@@ -26,7 +22,7 @@ def test_load_vault_policy_loads_and_caches_mapping(tmp_path: Path):
     assert load_vault_policy(str(tmp_path)) == {"publishable_zones": ["wiki"]}
 
 
-def test_load_vault_policy_treats_empty_or_invalid_yaml_as_empty(tmp_path: Path):
+def test_load_vault_policy_distinguishes_empty_from_invalid_yaml(tmp_path: Path):
     empty_vault = tmp_path / "empty"
     invalid_vault = tmp_path / "invalid"
     for vault, content in ((empty_vault, ""), (invalid_vault, "[unterminated")):
@@ -35,7 +31,8 @@ def test_load_vault_policy_treats_empty_or_invalid_yaml_as_empty(tmp_path: Path)
         config.write_text(content)
 
     assert load_vault_policy(str(empty_vault)) == {}
-    assert load_vault_policy(str(invalid_vault)) == {}
+    with pytest.raises(yaml.YAMLError):
+        load_vault_policy(str(invalid_vault))
 
 
 def test_find_containing_vault_matches_root_and_descendants(tmp_path: Path):

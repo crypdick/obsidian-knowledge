@@ -2,15 +2,18 @@
 
 from pathlib import Path
 
+import pytest
+import yaml
 from vault_registry import load_vault_roots
 
 
-def test_vault_registry_missing_or_malformed_file_yields_no_roots(tmp_path: Path):
+def test_vault_registry_distinguishes_missing_from_malformed_file(tmp_path: Path):
     assert load_vault_roots(tmp_path / "missing.yaml") == []
 
     malformed = tmp_path / "malformed.yaml"
     malformed.write_text("vaults: [unterminated")
-    assert load_vault_roots(malformed) == []
+    with pytest.raises(yaml.YAMLError):
+        load_vault_roots(malformed)
 
 
 def test_vault_registry_normalizes_valid_roots(tmp_path: Path):

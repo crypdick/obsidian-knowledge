@@ -48,18 +48,18 @@ class Event(BaseModel):
     changes: list[Change]
 
 
-RULE_IDS = {
-    "protected-dirs",
-    "ai-readonly",
-    "destructive-ops",
-    "published-files",
-    "publish-allowlist",
-    "generic-filenames",
-    "illegal-filenames",
-    "memory-routing",
-    "wikilinks",
-    "dated-filenames",
-    "frontmatter",
+MESSAGES = {
+    "protected-dirs": "Cannot modify _sources directories in configured vaults; these contain irreplaceable originals. Ask the human for consent.",
+    "ai-readonly": "Cannot modify publishable-zone paths listed in ai_readonly_folders or ai_readonly_root_files. Ask the human for consent.",
+    "destructive-ops": "Destructive vault operation blocked. Use Obsidian CLI to preserve links and vault integrity, or ask the human for consent.",
+    "published-files": "Published vault content is read-only without human consent.",
+    "publish-allowlist": "Cannot set dg-publish: true outside publish_allowlist in the vault policy. No override.",
+    "generic-filenames": "New vault filename would collide with generic wikilink names. Prefix its basename with context; index.md is exempt. No override.",
+    "illegal-filenames": "New vault filename contains characters forbidden by the vault sync policy. Rename the file. No override.",
+    "memory-routing": "Do not write operational facts to agent auto-memory. Search the Obsidian wiki; file only durable, novel facts not recoverable from code, git, docs, or runtime. Use the repo or host memory scope in the vault. No override.",
+    "wikilinks": "Remove .md extensions from wikilinks: use [[foo]], not [[foo.md]]. No override.",
+    "dated-filenames": "New notes in dated folders need a YYYY-MM-DD filename prefix; index.md is exempt. No override.",
+    "frontmatter": "Vault note has malformed YAML frontmatter. Fix it before writing. No override.",
 }
 
 
@@ -100,7 +100,8 @@ def file_blocks(name: str, change: Change, roots: list[str]) -> bool:
     if name == "ai-readonly":
         return readonly(change.path, roots)
     if name == "published-files":
-        return change.operation != "write" and published(path)
+        # NOTE: docs/hooks.md's Vault protection covers existing files for every operation.
+        return published(path)
     if change.operation == "delete":
         return False
     content = change.content
@@ -134,7 +135,7 @@ def file_blocks(name: str, change: Change, roots: list[str]) -> bool:
 
 
 def should_block(name: str, event: Event) -> bool:
-    if name not in RULE_IDS:
+    if name not in MESSAGES:
         raise ValueError(f"unknown rule: {name}")
     roots = load_vault_roots()
     if event.kind == "shell":
@@ -163,7 +164,7 @@ def main() -> int:
     except (ValidationError, ValueError, OSError) as exc:
         print(f"obsidian-knowledge checker: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps(result))
+    print(json.dumps(MESSAGES[sys.argv[1]] if result else None))
     return 0
 
 

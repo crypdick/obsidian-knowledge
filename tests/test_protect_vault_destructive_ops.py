@@ -29,7 +29,9 @@ def _run_hook(
         env=env,
     )
     assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout)
+    decision = json.loads(result.stdout)
+    assert decision is None or isinstance(decision, str)
+    return decision is not None
 
 
 @pytest.mark.parametrize(
