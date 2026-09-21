@@ -301,6 +301,22 @@ def test_missing_vector_table_returns_empty_when_rebuild_lock_is_busy(tmp_path, 
         close(instance)
 
 
+def test_query_embedding_failure_falls_back_to_keyword_search(tmp_path, monkeypatch):
+    instance = vector_indexer(tmp_path)
+
+    async def fail(*args, **kwargs):
+        raise memweave.SearchError("VectorSearch requires a query_vec (got None)")
+
+    instance._store.search = fail
+    fallback = [Hit(path="note.md", score=1, weight_applied=1)]
+    monkeypatch.setattr(instance, "_sqlite_fts_search", lambda query, count: fallback)
+    monkeypatch.setattr(instance, "_with_snippets", lambda hits, query: hits)
+    try:
+        assert instance.search("/data/Videos/Movies") == fallback
+    finally:
+        close(instance)
+
+
 def test_unrelated_memweave_search_error_is_not_hidden(tmp_path):
     instance = vector_indexer(tmp_path)
 
