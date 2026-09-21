@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import threading
+import traceback
 from pathlib import Path
 
 import platformdirs
@@ -732,6 +733,9 @@ def cli_main() -> None:
     except (OSError, ValueError, yaml.YAMLError, subprocess.SubprocessError) as exc:
         print(f"obsidian-knowledge: {exc}", file=sys.stderr)
         code = 2
+    except Exception:  # allow: exception-handling  (CLI must bypass dependency shutdown hangs)
+        traceback.print_exc()
+        code = 1
     _exit_hard(code)
 
 

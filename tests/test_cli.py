@@ -243,6 +243,30 @@ def test_search_ttl_hard_kills_when_signal_is_swallowed():
     assert elapsed < 25, f"watchdog should fire within seconds, took {elapsed:.1f}s"
 
 
+def test_cli_hard_exits_after_unexpected_error_with_live_thread():
+    script = """
+import threading, time
+import lib.vault_index.cli as cli
+
+threading.Thread(target=lambda: time.sleep(60)).start()
+
+def fail():
+    raise RuntimeError("unexpected")
+
+cli.main = fail
+cli.cli_main()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == 1
+    assert "RuntimeError: unexpected" in result.stderr
+
+
 def test_run_search_doctor_passes_with_rows_and_known_hits(tmp_path: Path):
     class Hit:
         def __init__(self, score, path):
