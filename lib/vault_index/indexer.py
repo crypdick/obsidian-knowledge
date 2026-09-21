@@ -599,6 +599,11 @@ class Indexer:
             with index_lock(self.cache_dir, exclusive=False):
                 raw = asyncio.run(self._store.search(query, max_results=candidate_count, min_score=0.0))
         except memweave.SearchError as exc:
+            if "query_vec (got None)" in str(exc):
+                return self._with_snippets(
+                    filtered(self._sqlite_fts_search(query, candidate_count)),
+                    query,
+                )
             # Defensive net: reindex didn't run for some reason but the index
             # is missing chunks_vec. Trigger a rebuild and retry once.
             if "chunks_vec" in str(exc) and self._vector_enabled:
