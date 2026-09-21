@@ -603,6 +603,10 @@ class Indexer:
             with index_lock(self.cache_dir, exclusive=False):
                 raw = asyncio.run(self._store.search(query, max_results=candidate_count, min_score=0.0))
         except memweave.SearchError as exc:
+            # bge-m3 can return input-specific NaN embeddings on CUDA. Prefer
+            # FTS over a CPU retry that reloads Ollama's 1.2 GB model runner.
+            # https://github.com/ollama/ollama/issues/15582
+            # https://github.com/ollama/ollama/issues/16625
             if "query_vec (got None)" in str(exc):
                 return self._with_snippets(
                     filtered(self._sqlite_fts_search(query, candidate_count)),
