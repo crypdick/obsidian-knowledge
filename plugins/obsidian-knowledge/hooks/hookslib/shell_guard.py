@@ -22,6 +22,7 @@ _COMMAND_WRAPPERS = {"command", "exec", "nohup"}
 _PRIVILEGE_WRAPPERS = {"doas", "sudo"}
 _WRAPPER_VALUE_FLAGS = {"-g", "--group", "-h", "--host", "-u", "--user"}
 _REDIRECTIONS = {"<", "<<", "<<<", ">", ">>", "<>", "<&", ">&"}
+_VARIABLE_RE = re.compile(r"\$(?:{(?P<braced>[A-Za-z_][A-Za-z0-9_]*)}|(?P<bare>[A-Za-z_][A-Za-z0-9_]*))")
 
 
 def _without_heredoc_bodies(command: str) -> str:
@@ -115,6 +116,27 @@ def _command_parts(tokens: list[str]) -> tuple[str, list[str]]:
             continue
         return executable, tokens[index + 1 :]
     return "", []
+
+
+def _expand_variables(token: str, variables: dict[str, str]) -> str:
+    """Expand variables assigned earlier in the same shell command."""
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group("braced") or match.group("bare")
+        return variables.get(name, match.group(0))
+
+    return _VARIABLE_RE.sub(replace, token)
+
+
+def _leading_assignments(tokens: list[str], variables: dict[str, str]) -> dict[str, str]:
+    """Resolve assignments that precede a command without executing shell code."""
+    resolved = variables.copy()
+    for token in tokens:
+        if not _ASSIGNMENT_RE.match(token):
+            break
+        name, value = token.split("=", 1)
+        resolved[name] = _expand_variables(value, resolved)
+    return resolved
 
 
 def _flags_and_paths(args: list[str]) -> tuple[list[str], list[str]]:
@@ -276,6 +298,7 @@ def _check_xargs_rm(pipeline: list[list[str]], cwd_in_vault: bool) -> bool:
 def destructive_vault_ops(command: str, cwd: str) -> bool:
     """Block recognized destructive commands whose targets are in a vault."""
     cwd_in_vault = is_in_vault(cwd, VAULT_ROOTS)
+    variables: dict[str, str] = {}
 
     def target_in_vault(token: str) -> bool:
         if not token or token[0] in ('"', "'", "\\", "|", "&", ";", "<", ">"):
@@ -285,11 +308,15 @@ def destructive_vault_ops(command: str, cwd: str) -> bool:
     for pipeline in _shell_pipelines(command):
         for tokens in pipeline:
             executable, args = _command_parts(tokens)
+            command_variables = _leading_assignments(tokens, variables)
+            args = [_expand_variables(arg, command_variables) for arg in args]
             if any(
                 check(executable, args, target_in_vault)
                 for check in (_check_rm_mv, _check_find_delete, _check_rsync_delete, _check_shred)
             ):
                 return True
+            if not executable and len(pipeline) == 1:
+                variables = command_variables
         if _check_xargs_rm(pipeline, cwd_in_vault):
             return True
     return False

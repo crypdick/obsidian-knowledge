@@ -66,6 +66,24 @@ def test_non_destructive_command_text_is_not_blocked(
     assert _run_hook(command, vault, env) is False
 
 
+def test_mv_uses_prior_absolute_assignments_outside_vault(subprocess_vault):
+    vault, env = subprocess_vault
+
+    command = (
+        "SRC='/mnt/tank/Videos/Home-videos/juan-google-photos'\n"
+        "DEST='/mnt/tank/Images/My-Photography/D Photography'\n"
+        'mv -- "$SRC" "$DEST"'
+    )
+
+    assert _run_hook(command, vault, env) is False
+
+
+def test_mv_uses_prior_vault_assignment(subprocess_vault):
+    vault, env = subprocess_vault
+
+    assert _run_hook('TARGET=wiki/old.md\nmv "$TARGET" /tmp/new.md', vault, env) is True
+
+
 @pytest.mark.parametrize(
     "command",
     [
