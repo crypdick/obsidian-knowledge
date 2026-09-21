@@ -223,6 +223,10 @@ class Indexer:
         vector_enabled: bool = True,
         skip_probe: bool = False,
     ):
+        import litellm
+
+        # CLI reports failures itself; suppress LiteLLM's generic support banner.
+        litellm.suppress_debug_info = True
         self.vault_root = vault_root
         self.cache_dir = cache_dir
         self.config = config

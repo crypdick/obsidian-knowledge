@@ -47,6 +47,22 @@ def test_keyword_only_provider_returns_empty_vectors():
     assert asyncio.run(provider.embed_batch(["one", "two"])) == [[], []]
 
 
+def test_indexer_suppresses_litellm_feedback_banner(tmp_path, monkeypatch):
+    import litellm
+
+    monkeypatch.setattr(litellm, "suppress_debug_info", False)
+    instance = indexer.Indexer(
+        tmp_path,
+        tmp_path / "cache",
+        VaultIndexConfig(),
+        vector_enabled=False,
+    )
+    try:
+        assert litellm.suppress_debug_info is True
+    finally:
+        close(instance)
+
+
 def test_indexer_falls_back_when_preferred_cache_is_unwritable(tmp_path, monkeypatch):
     preferred = tmp_path / "preferred"
     sandbox = tmp_path / "sandbox"
