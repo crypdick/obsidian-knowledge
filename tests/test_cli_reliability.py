@@ -461,6 +461,10 @@ def test_exit_and_cli_main_error_mapping(monkeypatch, capsys):
     cli.cli_main()
     assert exits[-1] == 2
     assert "bad input" in capsys.readouterr().err
+    monkeypatch.setattr(cli, "main", lambda: (_ for _ in ()).throw(IndexBusyError("vault index is busy")))
+    cli.cli_main()
+    assert exits[-1] == 2
+    assert capsys.readouterr().err == "obsidian-knowledge: vault index is busy\n"
     monkeypatch.setattr(cli, "main", lambda: (_ for _ in ()).throw(RuntimeError("unexpected")))
     cli.cli_main()
     assert exits[-1] == 1

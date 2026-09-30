@@ -90,7 +90,11 @@ def test_read_origin_url_returns_none_when_git_is_unavailable(tmp_path, monkeypa
 # ── Resolver: host fallback ───────────────────────────────────────────
 
 
-def test_resolve_target_no_git_uses_host(tmp_path):
+def test_resolve_target_no_git_uses_host(tmp_path, monkeypatch):
+    # Isolate the no-repository case from .git entries above pytest's temp tree.
+    real_exists = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda path: False if path.name == ".git" else real_exists(path))
+    assert repo_memory.find_git_root(tmp_path) is None
     t = repo_memory.resolve_target(tmp_path, hostname="mac-mini")
     assert t.kind == "host"
     assert t.rel_path == "systems/machines/mac-mini/memory"

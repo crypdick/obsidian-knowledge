@@ -112,6 +112,12 @@ process Documents or Full Disk Access, restart it, and retry.
 
 `search`, `remember`, and `doctor` have a 30-second deadline covering initialization
 and retrieval. Override it with `OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`.
+Vector searches wait for an active index writer within that deadline, including
+when search needs to rebuild the index. Keyword search can read committed
+SQLite data while indexing continues. If lock waiting exhausts the deadline,
+the command reports a timeout and exits with code 124. Database contention that
+persists after SQLite's own wait reports a busy error with code 2; it does not
+appear as an empty result set.
 `reindex` has no deadline unless you pass `--timeout-seconds`. Always pass it
 for scheduled jobs. Zero or negative deadline values disable the deadline.
 A hard watchdog allows five extra seconds to terminate stuck native calls.
