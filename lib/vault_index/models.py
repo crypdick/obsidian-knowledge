@@ -8,6 +8,8 @@ rather than only under TYPE_CHECKING.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -20,3 +22,12 @@ class Hit(BaseModel):
     score: float
     weight_applied: float = 1.0
     snippet: str = ""
+
+
+class SearchReport(BaseModel):
+    """Hits and the retrieval mode used for one query."""
+
+    # NOTE: docs/CLI.md "JSON search output" defines this stdout contract.
+    mode: Literal["keyword", "hybrid"]
+    degraded_reason: str | None
+    hits: list[Hit]

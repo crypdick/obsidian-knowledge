@@ -36,7 +36,7 @@ Use these commands to configure, search, and maintain the vault:
 | `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
 | `write PATH [--replace]` | Read stdin, then atomically write and verify the bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Does not reindex. |
 | `reindex [--force] [--timeout-seconds N]` | Index changed files and remove stale index entries. `--force` reprocesses unchanged files too. Does not delete vault notes. |
-| `search QUERY [--top-k N] [--all]` | Print ranked paths and snippets. `--all` bypasses the digest filter, not the indexing exclusions. |
+| `search QUERY [--top-k N] [--all] [--json]` | Print ranked paths and snippets, or a JSON search report. `--all` bypasses the digest filter, not the indexing exclusions. |
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
 | `papercut DESCRIPTION` | Append workflow friction to the repository's vault log, or the global log if no repository is identified. |
 | `doctor [--query TEXT] [--top-k N] [--digest-only]` | Report index rows, semantic availability, and sample retrieval results. Repeat `--query` for multiple checks. |
@@ -59,6 +59,46 @@ NOTE
 obsidian-knowledge read wiki/example.md
 obsidian-knowledge reindex --timeout-seconds 300
 ```
+
+## JSON search output
+
+Use `--json` for scripts and agents:
+
+```bash
+obsidian-knowledge search "orchid greenhouse" --json --top-k 5
+```
+
+Successful searches write one JSON object to stdout:
+
+```json
+{
+  "mode": "keyword",
+  "degraded_reason": "query embedding unavailable",
+  "hits": [
+    {
+      "path": "wiki/orchid.md",
+      "score": 42.1,
+      "weight_applied": 1.5,
+      "snippet": "Purple orchids grow in the greenhouse."
+    }
+  ]
+}
+```
+
+`mode` reports the retrieval used for this query: `hybrid` combines keyword and
+vector retrieval; `keyword` uses only the keyword index. `degraded_reason` is
+`null` for hybrid retrieval. For keyword retrieval, it describes the unavailable
+embedding service, query embedding, or vector index. An explicitly disabled
+vector provider reports `disabled-by-caller`. Reason text is diagnostic;
+branch on `mode`, not its wording.
+
+Hits use the same filters, weights, snippets, and ordering as text output.
+`score` is a ranking value, not a confidence percentage; scores from different
+retrieval modes are not directly comparable. A successful search with no matches
+returns `"hits": []` and still includes the retrieval mode and reason.
+
+Warnings and rebuild progress go to stderr. Failed searches exit nonzero and
+do not emit a success object. Timeout and busy exit codes are described below.
 
 ## Search health and network access
 

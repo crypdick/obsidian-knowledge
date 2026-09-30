@@ -510,6 +510,10 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
     if not idx.vector_enabled:
         print(f"# search ranking degraded ({idx.vector_status})", file=sys.stderr)
     query = args.query if args.cmd == "search" else args.memory
+    if args.cmd == "search" and getattr(args, "json", False):
+        search_report = idx.search_report(query, top_k=args.top_k, override_digest_filter=args.all)
+        print(search_report.model_dump_json())
+        return 0
     hits = idx.search(query, top_k=args.top_k, override_digest_filter=args.all)
     if args.cmd == "remember":
         print(format_remember_candidates(hits))
@@ -578,6 +582,9 @@ def main() -> int:
     p_search.add_argument("query", help="Free-text query")
     p_search.add_argument("--vault", type=Path, default=None)
     p_search.add_argument("--top-k", type=positive_int, default=None)
+    p_search.add_argument(
+        "--json", action="store_true", help="Print hits and retrieval mode as one JSON object"
+    )
     p_search.add_argument(
         "--all",
         action="store_true",
