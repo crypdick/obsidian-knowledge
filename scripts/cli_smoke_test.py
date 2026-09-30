@@ -99,6 +99,11 @@ def exercise(executable: str, root: Path) -> None:
     assert "Skipped:" in run("reindex", "--timeout-seconds", "60")
     assert "wiki/orchid.md" in run("search", "orchid greenhouse", "--top-k", "1")
     assert "wiki/orchid.md" in run("search", "orchid", "--all")
+    search_report = json.loads(run("search", "orchid greenhouse", "--json", "--all", "--top-k", "1"))
+    assert search_report["mode"] in {"keyword", "hybrid"}
+    assert "degraded_reason" in search_report
+    assert search_report["hits"][0]["path"] == "wiki/orchid.md"
+    assert "greenhouse" in search_report["hits"][0]["snippet"]
     assert "wiki/orchid.md" in run("remember", "orchid greenhouse", "--all", "--top-k", "1")
     doctor = run("doctor", "--query", "orchid", "--top-k", "1", "--digest-only")
     assert "status: PASS" in doctor

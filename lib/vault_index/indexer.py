@@ -62,7 +62,7 @@ import platformdirs
 
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.filters import path_passes
-from lib.vault_index.models import Hit, IndexBusyError
+from lib.vault_index.models import Hit, IndexBusyError, SearchReport
 
 # Local embeddings do not need a public model-pricing download. LiteLLM reads
 # this at its first lazy import; preserve an explicit operator override.
@@ -568,7 +568,25 @@ class Indexer:
         override_digest_filter: bool = False,
         allow_rebuild: bool = True,
     ) -> list[Hit]:
-        """Run FTS retrieval; apply digest filter + weights; rescale; truncate.
+        """Return ranked hits; see search_report for retrieval metadata."""
+        return self.search_report(
+            query,
+            top_k=top_k,
+            min_score=min_score,
+            override_digest_filter=override_digest_filter,
+            allow_rebuild=allow_rebuild,
+        ).hits
+
+    def search_report(
+        self,
+        query: str,
+        *,
+        top_k: int | None = None,
+        min_score: float | None = None,
+        override_digest_filter: bool = False,
+        allow_rebuild: bool = True,
+    ) -> SearchReport:
+        """Run retrieval and report its actual mode, including query fallbacks.
 
         Always passes ``min_score=0.0`` to memweave so the default 0.35
         threshold (which filters out short-document BM25 scores) doesn't
@@ -587,11 +605,11 @@ class Indexer:
                 cfg = cfg.model_copy(update={"top_k": top_k})
             if min_score is not None:
                 cfg = cfg.model_copy(update={"min_score": min_score})
-            return apply_filters(
-                hits,
-                cfg,
-                override_digest_filter=override_digest_filter,
-            )
+            return apply_filters(hits, cfg, override_digest_filter=override_digest_filter)
+
+        def keyword_report(reason: str) -> SearchReport:
+            hits = self._with_snippets(filtered(self._sqlite_fts_search(query, candidate_count)), query)
+            return SearchReport(mode="keyword", degraded_reason=reason, hits=hits)
 
         # Auto-rebuild when the embedder fingerprint changed since the last
         # successful index. Chat prefetch calls can opt out so stale caches do
@@ -600,7 +618,7 @@ class Indexer:
             self._auto_rebuild(reason="embedder changed")
 
         if not self._vector_enabled:
-            return self._with_snippets(filtered(self._sqlite_fts_search(query, candidate_count)), query)
+            return keyword_report(self.vector_status)
 
         def retrieve():
             try:
@@ -621,22 +639,18 @@ class Indexer:
             # https://github.com/ollama/ollama/issues/15582
             # https://github.com/ollama/ollama/issues/16625
             if "query_vec (got None)" in str(exc):
-                return self._with_snippets(
-                    filtered(self._sqlite_fts_search(query, candidate_count)),
-                    query,
-                )
+                return keyword_report("query embedding unavailable")
             # Defensive net: reindex didn't run for some reason but the index
             # is missing chunks_vec. Trigger a rebuild and retry once.
             if "chunks_vec" in str(exc) and self._vector_enabled:
                 if not allow_rebuild:
-                    return self._with_snippets(
-                        filtered(self._sqlite_fts_search(query, candidate_count)),
-                        query,
-                    )
+                    return keyword_report("vector index unavailable")
                 self._auto_rebuild(reason="chunks_vec missing")
                 raw = retrieve()
             else:
                 raise
         hits = [Hit(path=self._abs_to_rel(r.path), score=_rescale(r.score), weight_applied=1.0) for r in raw]
 
-        return self._with_snippets(filtered(hits), query)
+        return SearchReport(
+            mode="hybrid", degraded_reason=None, hits=self._with_snippets(filtered(hits), query)
+        )
