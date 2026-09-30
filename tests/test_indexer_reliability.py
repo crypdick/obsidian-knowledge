@@ -8,7 +8,10 @@ import fcntl
 import io
 import sqlite3
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 
 import memweave
@@ -206,6 +209,25 @@ def test_invalid_fts_query_with_no_safe_terms_returns_empty(tmp_path, monkeypatc
         close(instance)
 
 
+@pytest.mark.parametrize("retry_safe_query", [False, True])
+def test_keyword_search_reports_database_contention(tmp_path, monkeypatch, retry_safe_query):
+    instance = indexer.Indexer(tmp_path, tmp_path / "cache", VaultIndexConfig(), vector_enabled=False)
+    (instance.cache_dir / "index.sqlite").touch()
+    failures = [sqlite3.OperationalError("database is locked")]
+    if retry_safe_query:
+        failures.insert(0, sqlite3.DatabaseError("invalid FTS query"))
+
+    def connect(*args, **kwargs):
+        raise failures.pop(0)
+
+    monkeypatch.setattr(sqlite3, "connect", connect)
+    try:
+        with pytest.raises(IndexBusyError, match="database is locked"):
+            instance.search("query")
+    finally:
+        close(instance)
+
+
 def test_blocking_index_lock_does_not_request_nonblocking_mode(tmp_path, monkeypatch):
     modes = []
     monkeypatch.setattr(fcntl, "flock", lambda _file, mode: modes.append(mode))
@@ -224,12 +246,31 @@ def vector_indexer(tmp_path) -> indexer.Indexer:
     )
 
 
-def test_vector_search_returns_empty_when_reader_lock_is_busy(tmp_path):
+def test_vector_search_waits_for_writer_then_returns_results(tmp_path):
     instance = vector_indexer(tmp_path)
     lock = open(instance.cache_dir / ".index.sqlite.lock", "w")
+    started = Event()
+
+    async def search(*args, **kwargs):
+        return [SimpleNamespace(path=str(tmp_path / "note.md"), score=0.5)]
+
+    instance._store.search = search
+
+    def retrieve():
+        started.set()
+        return instance.search("query")
+
     try:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        assert instance.search("query") == []
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                pending = executor.submit(retrieve)
+                assert started.wait(5)
+                with pytest.raises(FutureTimeoutError):
+                    pending.result(timeout=0.1)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            assert pending.result(timeout=5) == [Hit(path="note.md", score=50.0, weight_applied=1.0)]
     finally:
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
         lock.close()
@@ -237,26 +278,32 @@ def test_vector_search_returns_empty_when_reader_lock_is_busy(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("error", "expected_empty"),
+    ("error", "expected_error"),
     [
-        (sqlite3.OperationalError("database is locked"), True),
-        (memweave.StorageError("database is locked"), True),
-        (sqlite3.OperationalError("disk failure"), False),
+        (sqlite3.OperationalError("database is locked"), IndexBusyError),
+        (memweave.StorageError("database is locked"), IndexBusyError),
+        (sqlite3.OperationalError("disk failure"), sqlite3.OperationalError),
     ],
 )
-def test_vector_search_handles_only_lock_storage_errors(tmp_path, error, expected_empty):
+@pytest.mark.parametrize("rebuild_before_error", [False, True])
+def test_vector_search_handles_only_lock_storage_errors(
+    tmp_path, monkeypatch, error, expected_error, rebuild_before_error
+):
     instance = vector_indexer(tmp_path)
+    calls = 0
 
     async def fail(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if rebuild_before_error and calls == 1:
+            raise memweave.SearchError("no such table: chunks_vec")
         raise error
 
     instance._store.search = fail
+    monkeypatch.setattr(instance, "_auto_rebuild", lambda reason: None)
     try:
-        if expected_empty:
-            assert instance.search("query") == []
-        else:
-            with pytest.raises(sqlite3.OperationalError, match="disk failure"):
-                instance.search("query")
+        with pytest.raises(expected_error, match=str(error)):
+            instance.search("query")
     finally:
         close(instance)
 
@@ -299,7 +346,7 @@ def test_missing_vector_table_rebuilds_and_retries_once(tmp_path, monkeypatch):
         close(instance)
 
 
-def test_missing_vector_table_returns_empty_when_rebuild_lock_is_busy(tmp_path, monkeypatch):
+def test_missing_vector_table_does_not_hide_rebuild_contention(tmp_path, monkeypatch):
     instance = vector_indexer(tmp_path)
 
     async def fail(*args, **kwargs):
@@ -312,7 +359,8 @@ def test_missing_vector_table_returns_empty_when_rebuild_lock_is_busy(tmp_path, 
         lambda reason: (_ for _ in ()).throw(IndexBusyError("busy")),
     )
     try:
-        assert instance.search("query") == []
+        with pytest.raises(IndexBusyError, match="busy"):
+            instance.search("query")
     finally:
         close(instance)
 
@@ -350,10 +398,12 @@ def test_unrelated_memweave_search_error_is_not_hidden(tmp_path):
 def test_auto_rebuild_reports_reason_and_forces_reindex(tmp_path, monkeypatch, capsys):
     instance = vector_indexer(tmp_path)
     calls = []
-    monkeypatch.setattr(instance, "full_reindex", lambda force=False: calls.append(force))
+    monkeypatch.setattr(
+        instance, "full_reindex", lambda force=False, *, blocking=False: calls.append((force, blocking))
+    )
     try:
         instance._auto_rebuild("model changed")
     finally:
         close(instance)
-    assert calls == [True]
+    assert calls == [(True, True)]
     assert "rebuilding (model changed" in capsys.readouterr().err

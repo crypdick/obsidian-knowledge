@@ -173,8 +173,8 @@ def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
 
     memweave uses one SQLite DB per vault cache. Reindex/sync are writers and
     must be exclusive; search is a reader and takes a shared lock so writers do
-    not collide with an in-flight query. The lock is deliberately nonblocking by
-    default so memory retrieval degrades instead of stalling a turn.
+    not collide with an in-flight query. Scheduled indexing skips contention;
+    searches wait, bounded by the caller's deadline.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     lock_path = cache_dir / ".index.sqlite.lock"
@@ -469,13 +469,17 @@ class Indexer:
 
         try:
             rows = run(query)
-        except sqlite3.DatabaseError:
+        except sqlite3.DatabaseError as exc:
+            if "database is locked" in str(exc).lower():
+                raise IndexBusyError(f"vault index is busy: {exc}") from exc
             safe_query = self._safe_fts_query(query)
             if not safe_query:
                 return []
             try:
                 rows = run(safe_query)
-            except sqlite3.DatabaseError:
+            except sqlite3.DatabaseError as exc:
+                if "database is locked" in str(exc).lower():
+                    raise IndexBusyError(f"vault index is busy: {exc}") from exc
                 return []
 
         best_by_path: dict[str, float] = {}
@@ -507,7 +511,7 @@ class Indexer:
                 allowed.append(str(abs_path))
         return allowed
 
-    def full_reindex(self, force: bool = False) -> SyncStats:
+    def full_reindex(self, force: bool = False, *, blocking: bool = False) -> SyncStats:
         """Walk vault, index every markdown file matching index filters.
 
         Closes the current MemWeave instance and creates a new one with
@@ -519,7 +523,7 @@ class Indexer:
         Writes the embedder fingerprint after a successful run so the next
         Indexer init can detect a model change and auto-rebuild.
         """
-        with index_lock(self.cache_dir, exclusive=True):
+        with index_lock(self.cache_dir, exclusive=True, blocking=blocking):
             return self._full_reindex_unlocked(force=force)
 
     def _full_reindex_unlocked(self, force: bool = False) -> SyncStats:
@@ -549,7 +553,7 @@ class Indexer:
             file=sys.stderr,
             flush=True,
         )
-        self.full_reindex(force=True)
+        self.full_reindex(force=True, blocking=True)
 
     def sync(self) -> SyncStats:
         """Incremental re-index. Same as full_reindex without force."""
@@ -593,15 +597,24 @@ class Indexer:
         # successful index. Chat prefetch calls can opt out so stale caches do
         # not spend the turn-start budget rebuilding before the model responds.
         if self._needs_rebuild and allow_rebuild:
-            with contextlib.suppress(IndexBusyError):
-                self._auto_rebuild(reason="embedder changed")
+            self._auto_rebuild(reason="embedder changed")
 
         if not self._vector_enabled:
             return self._with_snippets(filtered(self._sqlite_fts_search(query, candidate_count)), query)
 
+        def retrieve():
+            try:
+                # NOTE: docs/CLI.md "Search health and network access" documents
+                # waiting within the whole-command search deadline.
+                with index_lock(self.cache_dir, exclusive=False, blocking=True):
+                    return asyncio.run(self._store.search(query, max_results=candidate_count, min_score=0.0))
+            except (sqlite3.OperationalError, memweave.StorageError) as exc:
+                if "database is locked" in str(exc).lower():
+                    raise IndexBusyError(f"vault index is busy: {exc}") from exc
+                raise
+
         try:
-            with index_lock(self.cache_dir, exclusive=False):
-                raw = asyncio.run(self._store.search(query, max_results=candidate_count, min_score=0.0))
+            raw = retrieve()
         except memweave.SearchError as exc:
             # bge-m3 can return input-specific NaN embeddings on CUDA. Prefer
             # FTS over a CPU retry that reloads Ollama's 1.2 GB model runner.
@@ -620,22 +633,10 @@ class Indexer:
                         filtered(self._sqlite_fts_search(query, candidate_count)),
                         query,
                     )
-                try:
-                    self._auto_rebuild(reason="chunks_vec missing")
-                    with index_lock(self.cache_dir, exclusive=False):
-                        raw = asyncio.run(
-                            self._store.search(query, max_results=candidate_count, min_score=0.0)
-                        )
-                except IndexBusyError:
-                    return []
+                self._auto_rebuild(reason="chunks_vec missing")
+                raw = retrieve()
             else:
                 raise
-        except IndexBusyError:
-            return []
-        except (sqlite3.OperationalError, memweave.StorageError) as exc:
-            if "database is locked" in str(exc).lower():
-                return []
-            raise
         hits = [Hit(path=self._abs_to_rel(r.path), score=_rescale(r.score), weight_applied=1.0) for r in raw]
 
         return self._with_snippets(filtered(hits), query)

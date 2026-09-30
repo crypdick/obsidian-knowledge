@@ -730,7 +730,7 @@ def cli_main() -> None:
     except SearchTimeoutError as exc:
         print(f"obsidian-knowledge: timed out ({exc})", file=sys.stderr)
         code = 124
-    except (OSError, ValueError, yaml.YAMLError, subprocess.SubprocessError) as exc:
+    except (OSError, ValueError, yaml.YAMLError, subprocess.SubprocessError, IndexBusyError) as exc:
         print(f"obsidian-knowledge: {exc}", file=sys.stderr)
         code = 2
     except Exception:  # allow: exception-handling  (CLI must bypass dependency shutdown hangs)

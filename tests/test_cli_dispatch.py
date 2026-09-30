@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -79,3 +81,33 @@ def test_main_reindex_outcomes(tmp_path, monkeypatch, capsys, outcome):
     output = capsys.readouterr()
     expected = {"success": "Indexed: 2", "busy": "another index operation", "timeout": "timed out"}
     assert expected[outcome] in output.out + output.err
+
+
+@pytest.mark.parametrize("needs_rebuild", [False, True])
+def test_search_deadline_interrupts_index_lock_wait(tmp_path, needs_rebuild):
+    script = f"""
+import fcntl, sys
+import lib.vault_index.indexer as indexer
+from lib.vault_index.cli import cli_main
+from lib.vault_index.config import VaultIndexConfig
+from pathlib import Path
+vault = Path({str(tmp_path)!r})
+instance = indexer.Indexer(vault, vault / 'cache', VaultIndexConfig(), skip_probe=True)
+instance._needs_rebuild = {needs_rebuild!r}
+indexer.Indexer = lambda *args, **kwargs: instance
+lock = open(instance.cache_dir / '.index.sqlite.lock', 'w')
+fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+sys.argv = ['obsidian-knowledge', 'search', 'query', '--vault', str(vault)]
+cli_main()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS": "1"},
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 124, result.stderr
+    assert "timed out" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert "(no results)" not in result.stdout
