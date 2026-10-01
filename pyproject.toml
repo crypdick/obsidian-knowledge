@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-knowledge"
-version = "3.24.7"
+version = "3.25.0"
 description = "Obsidian vault knowledge integration for Claude Code and Codex"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,10 +13,14 @@ dependencies = [
     "botocore>=1.43.10",
     "beartype>=0.22.9",
     "httpx[socks]>=0.28.1",
+    "mcp>=1.26,<2",
+    "uvicorn>=0.35",
+    "starlette>=0.47",
 ]
 
 [project.scripts]
 obsidian-knowledge = "lib.vault_index.cli:cli_main"
+obsidian-knowledge-mcp = "lib.vault_index.mcp_server:main"
 obsidian-knowledge-check = "hooks.i_insist:main"
 
 [build-system]

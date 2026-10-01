@@ -1,6 +1,6 @@
 # Architecture
 
-The CLI plus Claude Code and Codex hooks share vault retrieval and protection
+The CLI, Streamable HTTP MCP server, and Claude Code and Codex hooks share vault retrieval and protection
 components.
 
 ## Codemap
@@ -18,7 +18,8 @@ The following directories contain the shared components and host adapters:
 In the retrieval core, `config.py` defines Pydantic configuration models,
 `models.py` holds shared result types, `filters.py` handles path filtering and
 weights, and `indexer.py` wraps memweave's keyword and dense retrieval.
-`vault_files.py` handles confined, verified writes. Importing `lib` enables
+`vault_files.py` handles confined, verified writes. `mcp_server.py` exposes these
+file operations and bounded CLI search subprocesses over Streamable HTTP. Importing `lib` enables
 beartype runtime checks.
 
 The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
