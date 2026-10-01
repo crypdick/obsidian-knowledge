@@ -6,6 +6,7 @@ The command-line interface (CLI) also works without an agent or the Obsidian app
 
 [Documentation](https://crypdick.github.io/obsidian-knowledge/) ·
 [CLI reference](docs/CLI.md) ·
+[MCP server](docs/MCP.md) ·
 [Contribute to the docs](docs/contributing-docs.md)
 
 ## Installation
