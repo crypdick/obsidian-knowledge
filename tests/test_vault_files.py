@@ -171,3 +171,18 @@ def test_write_closes_descriptor_and_removes_temporary_file_when_open_fails(
     with pytest.raises(OSError, match="synthetic fdopen failure"):
         write_vault_file(vault, Path("wiki/note.md"), b"content\n")
     assert list((vault / "wiki").iterdir()) == []
+
+
+def test_bounded_read_accepts_limit_and_rejects_overflow(tmp_path):
+    target = tmp_path / "file.bin"
+    target.write_bytes(b"\x00\xff\x80")
+    assert read_vault_file(tmp_path, Path("file.bin"), max_bytes=3) == b"\x00\xff\x80"
+    with pytest.raises(ValueError, match="exceeds"):
+        read_vault_file(tmp_path, Path("file.bin"), max_bytes=2)
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+def test_bounded_read_rejects_invalid_limit(tmp_path, limit):
+    (tmp_path / "file.bin").touch()
+    with pytest.raises(ValueError, match="positive"):
+        read_vault_file(tmp_path, Path("file.bin"), max_bytes=limit)

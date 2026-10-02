@@ -29,12 +29,20 @@ def resolve_vault_file(vault_root: Path, relative_path: Path) -> Path:
     return target
 
 
-def read_vault_file(vault_root: Path, relative_path: Path) -> bytes:
+def read_vault_file(vault_root: Path, relative_path: Path, *, max_bytes: int | None = None) -> bytes:
     """Read exact bytes from a confined vault path."""
     target = resolve_vault_file(vault_root, relative_path)
     if not target.is_file():
         raise FileNotFoundError(f"vault file does not exist: {relative_path}")
-    return target.read_bytes()
+    if max_bytes is None:
+        return target.read_bytes()
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be positive")
+    with target.open("rb") as stream:
+        content = stream.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise ValueError(f"vault file exceeds {max_bytes} byte download limit: {relative_path}")
+    return content
 
 
 def write_vault_file(

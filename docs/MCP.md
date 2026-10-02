@@ -1,6 +1,6 @@
 # MCP server
 
-Expose vault search, read, and write operations over Streamable HTTP:
+Expose vault search, read, write, and binary download operations over Streamable HTTP:
 
 ```bash
 obsidian-knowledge-mcp --vault /absolute/path/to/vault
@@ -35,6 +35,11 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   report with `mode`, `degraded_reason`, and scored `hits`. `top_k` must be
   positive. `all_paths` bypasses the digest filter, retaining index exclusions.
 - `vault_read(path)` returns UTF-8 file content.
+- `download_file(path)` delivers original bytes as an embedded MCP binary
+  resource, with filename, MIME type, byte count, and SHA-256 in structured
+  metadata. Files above 6 MiB are rejected before encoding; the file reader
+  reads at most the limit plus one byte. Empty files are supported. Unknown
+  MIME types use `application/octet-stream`.
 - `vault_write(path, content, replace=False)` atomically writes UTF-8 content,
   verifies final bytes, and returns the vault-relative path and success status.
   Blank content and existing files are rejected unless `replace=True` permits
@@ -56,3 +61,23 @@ Search uses the current index. After changing notes, run the existing
 `obsidian-knowledge reindex --vault /absolute/path/to/vault` workflow to refresh
 it. MCP writes do not automatically reindex. See [CLI reference](CLI.md) for
 indexing, embeddings, and search timeout configuration.
+
+## Binary file delivery
+
+`download_file` works for arbitrary file formats without extracting, converting,
+or decoding their contents. The resource contains a base64 `blob`; it is a
+binary MCP content block, not base64 dumped into a text message. The
+`obsidian-vault:///...` URI identifies the embedded resource and is not a public
+download URL. The client already receives the bytes in the tool response;
+this server does not expose a separate `resources/read` endpoint for that URI.
+
+The client chooses where and how to save the file. No destination filesystem
+path is sent to the server. Client support for turning this resource into an
+attachment or an analysis-workspace file varies and must be tested on the
+intended client. HTTP MCP tests verify byte recovery, not ChatGPT workspace
+materialization. After installing the new version, restart a running MCP
+server and refresh the client's tool discovery before trying `download_file`.
+
+Base64 increases payload size by roughly one third. The raw-byte ceiling bounds
+server memory use; individual clients or transports may impose lower response
+limits. The tool rejects oversized files instead of truncating them.
