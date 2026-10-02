@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import hashlib
 import json
+import mimetypes
 import os
 import secrets
 import sys
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import ToolAnnotations
-from pydantic import Field
+from mcp.types import BlobResourceContents, CallToolResult, EmbeddedResource, ToolAnnotations
+from pydantic import AnyUrl, BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -23,6 +27,16 @@ from starlette.responses import JSONResponse, Response
 from lib.vault_index.cli import positive_int, resolve_vault, search_ttl_seconds
 from lib.vault_index.models import SearchReport
 from lib.vault_index.vault_files import read_vault_file, write_vault_file
+
+# NOTE: docs/MCP.md documents this raw-byte ceiling and client handoff limits.
+MAX_DOWNLOAD_BYTES = 6 * 1024 * 1024
+
+
+class DownloadMetadata(BaseModel):
+    filename: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
 
 
 class BearerAuth(BaseHTTPMiddleware):
@@ -112,6 +126,32 @@ def create_server(
             write_vault_file, vault, Path(path), content.encode("utf-8"), replace=replace
         )
         return {"path": target.relative_to(vault).as_posix(), "status": "wrote and verified"}
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+    async def download_file(path: str) -> Annotated[CallToolResult, DownloadMetadata]:
+        """Deliver original file bytes as an embedded MCP resource, up to 6 MiB. Client handles saving."""
+        relative_path = Path(path)
+        content = await asyncio.to_thread(read_vault_file, vault, relative_path, max_bytes=MAX_DOWNLOAD_BYTES)
+        mime_type = mimetypes.guess_type(relative_path.name)[0] or "application/octet-stream"
+        metadata = DownloadMetadata(
+            filename=relative_path.name,
+            mime_type=mime_type,
+            size_bytes=len(content),
+            sha256=hashlib.sha256(content).hexdigest(),
+        )
+        return CallToolResult(
+            structuredContent=metadata.model_dump(),
+            content=[
+                EmbeddedResource(
+                    type="resource",
+                    resource=BlobResourceContents(
+                        uri=AnyUrl(f"obsidian-vault:///{quote(relative_path.as_posix(), safe='/')}"),
+                        mimeType=mime_type,
+                        blob=base64.b64encode(content).decode("ascii"),
+                    ),
+                )
+            ],
+        )
 
     return server
 
