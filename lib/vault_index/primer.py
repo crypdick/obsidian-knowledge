@@ -84,7 +84,7 @@ def build_primer(
         f"- Recall: search {wiki}/ before non-trivial answers with "
         '`obsidian-knowledge search "<query>"`. '
         f"Use `rg <pattern> {wiki}/` only for exact-string lookups. "
-        "Use the wiki instead of Claude built-in MEMORY.md systems.\n"
+        "Use the wiki instead of Claude or Codex built-in memory stores.\n"
         "- Capture: use remember-conversations only for a durable, novel delta that changes "
         "future action or prevents repeated work and is not recoverable from code, tracked docs, "
         "Git, issues, logs, runtime, or existing notes. Search first, prefer one canonical note, "
@@ -99,7 +99,8 @@ def build_primer(
         "capture criteria. Keep MEMORY.md to at most 20 bullets or 6000 characters, with "
         "summaries under 30 words and per-fact notes under 200 words. Consolidate at the cap. "
         "Do not create a second generated memory/index.md or write under "
-        "~/.claude/projects/*/memory/. Temporary handoffs belong in campaign records.\n"
+        "~/.claude/projects/*/memory/ or ~/.codex/memories/. "
+        "Temporary handoffs belong in campaign records.\n"
         "- Task defects: fix and verify bugs you introduce, failed checks of your changes, "
         "and defects needed to complete the request. Investigate unclear causes before calling "
         "them unrelated. If blocked, report the unfinished work and exact blocker.\n"
