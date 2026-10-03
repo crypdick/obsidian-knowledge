@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 """fix-stacked-frontmatter: detect and auto-fix stray duplicate `---` markers.
 
 The most common cause of STACKED_FRONTMATTER is a stray duplicate `---` line
@@ -10,8 +14,8 @@ are left alone and reported for manual review, since merging may need
 human judgment about which keys win.
 
 Usage:
-  python3 fix-stacked-frontmatter.py <file> [<file>...]            # dry run
-  python3 fix-stacked-frontmatter.py --fix <file> [<file>...]      # rewrite
+  uv run fix-stacked-frontmatter.py <file> [<file>...]            # dry run
+  uv run fix-stacked-frontmatter.py --fix <file> [<file>...]      # rewrite
 
 Exit 0 if no issues or all fixed; exit 1 if files need manual merge.
 """

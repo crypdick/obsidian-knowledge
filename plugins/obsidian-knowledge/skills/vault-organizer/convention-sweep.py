@@ -1,7 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml"]
+# ///
 """convention-sweep: vault-wide check for write-time convention violations.
 
-Usage: python3 convention-sweep.py <vault_root>
+Usage: uv run convention-sweep.py [vault_root]
 
 Walks all `.md` files under <vault_root> (skipping dotfolders, _sources/,
 .trash/, node_modules/) and runs the same three checks as the
@@ -22,31 +26,14 @@ needs-attention.md entry format.
 
 from __future__ import annotations
 
-import sys
+import argparse
 from pathlib import Path
 
+from organizer_context import resolve_vault
 
-# Import shared patterns module from hooks/lib/. Installed plugin layout is:
-#   <plugin>/hooks/hookslib/patterns.py
-#   <plugin>/skills/vault-organizer/convention-sweep.py
-# Source checkout layout is:
-#   <repo>/plugins/obsidian-knowledge/hooks/hookslib/patterns.py
-#   <repo>/skills/vault-organizer/convention-sweep.py
-def _find_hooks_dir() -> Path:
-    here = Path(__file__).resolve()
-    candidates = [
-        here.parent.parent.parent / "hooks",
-        here.parent.parent.parent / "plugins" / "obsidian-knowledge" / "hooks",
-    ]
-    for candidate in candidates:
-        if (candidate / "hookslib" / "patterns.py").exists():
-            return candidate
-    raise ModuleNotFoundError("Could not locate hooks/hookslib/patterns.py from convention-sweep.py")
-
-
-sys.path.insert(0, str(_find_hooks_dir()))
-
-from hookslib.patterns import (  # noqa: E402
+# isort: split
+# organizer_context puts the plugin's hooks on sys.path before this import.
+from hookslib.patterns import (
     DATE_PREFIX_RE,
     PERIODIC_NOTE_RE,
     find_wikilink_ext_violations,
@@ -111,14 +98,9 @@ def print_header(lib_dir: Path, counts: dict[str, int]) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <vault_root>", file=sys.stderr)
-        sys.exit(1)
-
-    vault_root = Path(sys.argv[1]).resolve()
-    if not vault_root.is_dir():
-        print(f"Error: {vault_root} is not a directory", file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("vault_root", type=Path, nargs="?", help="default: configured vault")
+    vault_root = resolve_vault(parser.parse_args().vault_root)
 
     lib_dir = Path(__file__).parent / "lib"
     issues = sweep(vault_root)

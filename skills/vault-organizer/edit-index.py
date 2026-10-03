@@ -1,7 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml", "pydantic>=2"]
+# ///
 """Render reviewed JSON entries into one index section; --apply verifies writes.
 
-Usage: edit-index.py VAULT wiki/topic/index.md [--apply] < reviewed.json
+Usage: uv run edit-index.py [VAULT] wiki/topic/index.md [--apply] < reviewed.json
 Input: {"section": "Notes", "entries": [{"target": "wiki/topic/note",
          "description": "orientation", "label": "optional display name"}]}
 For a new flat index, supply "title" instead of "section". Existing prose and
@@ -15,6 +19,7 @@ import re
 import sys
 from pathlib import Path
 
+from organizer_context import resolve_vault
 from organizer_io import OrganizerPolicy, visible_path, write_checked
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -156,12 +161,12 @@ def render_index(vault: Path, index: Path, before: str | None, review: IndexRevi
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("vault_root", type=Path)
+    parser.add_argument("vault_root", type=Path, nargs="?", help="default: configured vault")
     parser.add_argument("index_path")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     try:
-        vault = args.vault_root.resolve(strict=True)
+        vault = resolve_vault(args.vault_root)
         if Path(args.index_path).name != "index.md":
             raise ValueError("edit-index only edits index.md")
         index = OrganizerPolicy.load(vault).writable(vault, args.index_path)

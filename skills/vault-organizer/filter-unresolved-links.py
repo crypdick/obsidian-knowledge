@@ -1,8 +1,12 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml"]
+# ///
 """filter-unresolved-links: filter `obsidian unresolved` JSON output.
 
 Usage:
-  obsidian unresolved verbose format=json | python3 filter-unresolved-links.py <vault_root>
+  obsidian unresolved verbose format=json | uv run filter-unresolved-links.py [vault_root]
 
 Reads `stub_link_patterns:` from <vault_root>/.claude/obsidian-knowledge.yaml
 to know which link names are intentional concept-stubs (not real broken
@@ -20,21 +24,18 @@ Emits the surviving entries one per line:
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import signal
 import sys
 from pathlib import Path
 
+import yaml
+from organizer_context import resolve_vault
+
 # Don't crash with a BrokenPipeError when stdout is piped to head/less.
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
-
-try:
-    import yaml
-
-    HAS_YAML = True
-except ImportError:
-    HAS_YAML = False
 
 DEFAULT_STUB_PATTERNS = [
     r"^\(PAPER\) ",
@@ -56,7 +57,7 @@ def load_config(vault_root: Path) -> tuple[list[str], list[re.Pattern]]:
     patterns_raw = DEFAULT_STUB_PATTERNS
 
     config_path = vault_root / ".claude" / "obsidian-knowledge.yaml"
-    if HAS_YAML and config_path.exists():
+    if config_path.exists():
         with open(config_path) as f:
             cfg = yaml.safe_load(f) or {}
         zones = cfg.get("ai_managed", zones)
@@ -73,11 +74,9 @@ def is_stub(link: str, patterns: list[re.Pattern]) -> bool:
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <vault_root>", file=sys.stderr)
-        sys.exit(1)
-
-    vault_root = Path(sys.argv[1]).resolve()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("vault_root", type=Path, nargs="?", help="default: configured vault")
+    vault_root = resolve_vault(parser.parse_args().vault_root)
     zones, patterns = load_config(vault_root)
     zone_prefixes = tuple(f"{z}/" for z in zones)
 
