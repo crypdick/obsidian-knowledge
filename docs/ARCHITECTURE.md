@@ -22,6 +22,12 @@ weights, and `indexer.py` wraps memweave's keyword and dense retrieval.
 file operations and bounded CLI search subprocesses over Streamable HTTP. Importing `lib` enables
 beartype runtime checks.
 
+`vector_search.py` registers a memweave hybrid strategy using sqlite-vec's native
+nearest-neighbor query. Memweave normalizes embeddings, so L2 candidate ordering
+matches cosine ordering; the strategy keeps the original cosine scores and
+keyword merge. Model and source filters apply before candidate selection. Pools
+above sqlite-vec's 4096-candidate ceiling retain memweave's exhaustive search.
+
 The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
 module so hooks and the CLI share one registry implementation.
 
