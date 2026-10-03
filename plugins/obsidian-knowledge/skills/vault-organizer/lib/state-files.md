@@ -1,6 +1,9 @@
 # State files
 
 State lives at `<vault_root>/Utility/obsidian-knowledge/`. Create the directory if missing.
+Use the configured vault root, not its `wiki/` subdirectory. `Utility/` and
+`wiki/` are siblings. Pass `Utility/obsidian-knowledge/...` unchanged to
+`obsidian-knowledge write`, regardless of cwd; never prepend `wiki/`.
 
 ## `changelog/`
 

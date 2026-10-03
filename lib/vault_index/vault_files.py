@@ -57,6 +57,9 @@ def write_vault_file(
         raise ValueError("refusing to write empty vault content")
 
     target = resolve_vault_file(vault_root, relative_path)
+    # NOTE: Utility is a vault-root zone; see docs/configuration.md, Vault configuration.
+    if target.relative_to(vault_root.expanduser().resolve()).parts[:2] == ("wiki", "Utility"):
+        raise ValueError("Utility paths must be vault-relative: use Utility/... instead of wiki/Utility/...")
     target.parent.mkdir(parents=True, exist_ok=True)
     target = resolve_vault_file(vault_root, relative_path)
     if target.exists() and not replace:
