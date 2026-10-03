@@ -19,6 +19,14 @@ def test_build_primer_mentions_wiki_path(tmp_path: Path):
     assert "wiki" in text.lower()
 
 
+def test_build_primer_anchors_utility_outside_wiki(tmp_path: Path):
+    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+
+    assert f"Vault root: {tmp_path}/" in text
+    assert f"Plugin state: {tmp_path / 'Utility' / 'obsidian-knowledge'}/" in text
+    assert "Never create `wiki/Utility/`" in text
+
+
 def test_build_primer_instructs_agents_to_log_papercuts(tmp_path: Path):
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
 

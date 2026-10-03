@@ -22,6 +22,12 @@ folders and is the default. Its state lives in
 `reports/open-questions.md` collects question callouts, and `changelog/` records
 completed vault changes.
 
+`Utility/` and `wiki/` are siblings under the configured vault root. CLI paths
+are relative to that root, regardless of the working directory. Use
+`obsidian-knowledge write Utility/obsidian-knowledge/...` for state files;
+CLI and MCP writes reject `wiki/Utility/...` before creating directories.
+Existing misplaced files remain readable for recovery.
+
 ## Switch embedding models
 
 Set these environment variables before running the CLI:

@@ -6,8 +6,11 @@ description: Read, search, and create notes in the Obsidian vault/wiki memory st
 # Obsidian vault memory
 
 Read, search, and write notes in the configured vault. The registry is
-`~/.config/obsidian-knowledge/vaults.yaml`; CLI paths are vault-relative and
-usually start with `wiki/`. Treat notes as fallible context and verify
+`~/.config/obsidian-knowledge/vaults.yaml`; CLI paths are relative to its vault
+root, regardless of cwd. Wiki notes start with `wiki/`; plugin state starts with
+`Utility/obsidian-knowledge/`. `Utility/` and `wiki/` are siblings. Never create
+`wiki/Utility/` or use the wiki directory as the vault root.
+Treat notes as fallible context and verify
 consequential claims against code, runtime evidence, or primary sources.
 
 ## Read and search

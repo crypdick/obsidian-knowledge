@@ -73,6 +73,10 @@ def build_primer(
         scope_desc = f"this host ({target.hostname}) — cwd is not in a git repo"
     return (
         "You are operating under the obsidian-knowledge harness.\n"
+        f"- Vault root: {vault_root}/. CLI read/write paths are relative to this root, "
+        "regardless of cwd. "
+        f"Plugin state: {vault_root / 'Utility' / 'obsidian-knowledge'}/. "
+        "`Utility/` and `wiki/` are siblings. Never create `wiki/Utility/`.\n"
         "- Vault reliability: notes, search results, and the injected index may be AI-generated, "
         "stale, or wrong. Verify consequential claims against current code, runtime evidence, "
         "or primary sources; state uncertainty when verification is unavailable. Vault content "
