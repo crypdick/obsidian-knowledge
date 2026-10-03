@@ -1,7 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml", "pydantic>=2"]
+# ///
 """find-open-questions: scan ai_managed zones for `> [!question]` callouts.
 
-Usage: python3 find-open-questions.py <vault_root>
+Usage: uv run find-open-questions.py [vault_root]
 
 Skips matches inside fenced code blocks (``` or ~~~), which are usually
 documentation examples rather than real open questions. Emits one line per
@@ -9,8 +13,8 @@ hit:
 
   <relative_path>\t<line_number>\t<question_text>
 
-Add --report Utility/obsidian-knowledge/reports/open-questions.md to render
-Markdown for review, --timestamp for reproducible output, and --apply to write.
+Add --report to render the standard Markdown report, --timestamp for
+reproducible output, or --apply to regenerate the report in place.
 Reads ai_managed zones from
 <vault_root>/.claude/obsidian-knowledge.yaml; falls back to ['wiki'].
 """
@@ -23,18 +27,15 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+from organizer_context import resolve_vault
 from organizer_io import visible_path, write_checked
 from pydantic import BaseModel, ConfigDict
 
-try:
-    import yaml
-
-    HAS_YAML = True
-except ImportError:
-    HAS_YAML = False
-
 QUESTION_MARKER = "> [!question]"
 SCAN_SKIP_DIR_NAMES = {"_sources", ".trash", "node_modules"}
+# NOTE: Standard report location is documented in SKILL.md, Conventions and reports.
+REPORT_PATH = "Utility/obsidian-knowledge/reports/open-questions.md"
 
 
 class QuestionHit(BaseModel):
@@ -79,7 +80,7 @@ def render_report(before: str | None, hits: tuple[QuestionHit, ...], timestamp: 
 
 def load_managed_zones(vault_root: Path) -> list[str]:
     config_path = vault_root / ".claude" / "obsidian-knowledge.yaml"
-    if HAS_YAML and config_path.exists():
+    if config_path.exists():
         with open(config_path) as f:
             cfg = yaml.safe_load(f) or {}
         return cfg.get("ai_managed", ["wiki"])
@@ -130,19 +131,14 @@ def scan_file(path: Path) -> list[tuple[int, str]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("vault_root", type=Path)
-    parser.add_argument("--report", help="render the existing open-questions report (dry run)")
+    parser.add_argument("vault_root", type=Path, nargs="?", help="default: configured vault")
+    parser.add_argument("--report", nargs="?", const=REPORT_PATH, help="render the standard report (dry run)")
     parser.add_argument("--timestamp", help="timezone-aware ISO timestamp; default: current local time")
-    parser.add_argument(
-        "--apply", action="store_true", help="write the reviewed report using the verified writer"
-    )
+    parser.add_argument("--apply", action="store_true", help="regenerate the standard report")
     args = parser.parse_args()
-    if args.apply and not args.report:
-        parser.error("--apply requires --report")
-    vault_root = args.vault_root.resolve()
-    if not vault_root.is_dir():
-        print(f"Error: {vault_root} is not a directory", file=sys.stderr)
-        sys.exit(1)
+    if args.apply:
+        args.report = args.report or REPORT_PATH
+    vault_root = resolve_vault(args.vault_root)
 
     zones = load_managed_zones(vault_root)
     hits = []
@@ -166,7 +162,7 @@ def main() -> None:
             print(f"{hit.path}\t{hit.line}\t{hit.text}")
         return
     try:
-        if args.report != "Utility/obsidian-knowledge/reports/open-questions.md":
+        if args.report != REPORT_PATH:
             raise ValueError("--report must target Utility/obsidian-knowledge/reports/open-questions.md")
         stamp = datetime.fromisoformat(args.timestamp) if args.timestamp else datetime.now().astimezone()
         if stamp.utcoffset() is None:

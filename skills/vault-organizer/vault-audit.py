@@ -1,7 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml"]
+# ///
 """vault-audit: structural audit of wiki/ tree + vault-wide content checks.
 
-Usage: python3 vault-audit.py <vault_root>
+Usage: uv run vault-audit.py [vault_root]
 
 Reads zone config from <vault_root>/.claude/obsidian-knowledge.yaml to determine
 which folders are ai_managed. Falls back to 'wiki' if config missing.
@@ -22,16 +26,12 @@ A header block at the top of output points to lib/ reference files.
 
 from __future__ import annotations
 
+import argparse
 import re
-import sys
 from pathlib import Path
 
-try:
-    import yaml
-
-    HAS_YAML = True
-except ImportError:
-    HAS_YAML = False
+import yaml
+from organizer_context import resolve_vault
 
 SKIP_NAMES = {"index.md"}
 SKIP_PATTERNS = [
@@ -61,7 +61,7 @@ MISPLACED_INLINE_PATTERNS = [
 
 def load_managed_zones(vault_root: Path) -> list[str]:
     config_path = vault_root / ".claude" / "obsidian-knowledge.yaml"
-    if HAS_YAML and config_path.exists():
+    if config_path.exists():
         with open(config_path) as f:
             cfg = yaml.safe_load(f) or {}
         return cfg.get("ai_managed", ["wiki"])
@@ -238,14 +238,9 @@ def print_header(lib_dir: Path, counts: dict[str, int]) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <vault_root>", file=sys.stderr)
-        sys.exit(1)
-
-    vault_root = Path(sys.argv[1]).resolve()
-    if not vault_root.is_dir():
-        print(f"Error: {vault_root} is not a directory", file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("vault_root", type=Path, nargs="?", help="default: configured vault")
+    vault_root = resolve_vault(parser.parse_args().vault_root)
 
     lib_dir = Path(__file__).parent / "lib"
 

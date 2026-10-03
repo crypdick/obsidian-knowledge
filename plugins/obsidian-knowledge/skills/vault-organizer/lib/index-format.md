@@ -64,15 +64,14 @@ accepts reviewed entries; it does not infer categories or descriptions:
 }
 ```
 
-Save the review as JSON, then render without writing:
+Pass reviewed entries as JSON:
 
 ```bash
-uv run --no-project --with pyyaml --with pydantic python "$SCRIPTS/edit-index.py" \
-  "$VAULT" wiki/topic/index.md < /tmp/index-review.json > /tmp/index-preview.md
+uv run "$SCRIPTS/edit-index.py" wiki/topic/index.md --apply < entries.json
 ```
 
-Inspect the diff against the current index, then repeat with `--apply`. Supply
-`"title": "Topic"` instead of `section` when creating a flat index. For an
+Omit `--apply` to preview. Supply `"title": "Topic"` instead of `section`
+when creating a flat index. For an
 existing sectioned index, `section` must identify one leaf heading exactly.
 Multiple entry blocks, continuation text, and fenced examples are refused for
 manual review.
@@ -81,7 +80,7 @@ Only the selected entry block is sorted: subfolder indexes first, then files
 alphabetically. Existing matching entries are updated; other prose and sections
 are preserved. Targets must exist and be visible. Protected sources, hidden
 paths, symlinks, read-only paths, and paths outside managed zones are refused.
-All applied writes use `obsidian-knowledge write` and verify final bytes.
+Applied writes use `obsidian-knowledge write`.
 
 ## Stale path-based wikilinks
 
@@ -94,11 +93,7 @@ prefix recovery and ambiguity rules.
 Always use the Obsidian CLI to move files; never use filesystem `mv`:
 
 ```bash
-obsidian vault="<vault>" move path="old/path.md" to="new/folder/file.md" silent
+obsidian vault="$VAULT_NAME" move path="old/path.md" to="new/folder/file.md" silent
 ```
 
-After each move, verify that the new path exists and the old path no longer
-exists within the configured filesystem root. CLI success text alone is
-insufficient. Then search
-the vault for the old filename to verify Obsidian updated all references. Fix any
-stale wikilinks found.
+Check the destination and repair any stale links left by the move.

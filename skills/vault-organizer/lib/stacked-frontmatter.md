@@ -18,10 +18,10 @@ Replace `NOTE_PATH` with the note's filesystem path:
 
 ```bash
 # Dry run (reports what would change)
-uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" NOTE_PATH
+uv run "$SCRIPTS/fix-stacked-frontmatter.py" NOTE_PATH
 
 # Apply the fix
-uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" --fix NOTE_PATH
+uv run "$SCRIPTS/fix-stacked-frontmatter.py" --fix NOTE_PATH
 ```
 
 The script reports these output codes:

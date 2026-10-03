@@ -2,13 +2,7 @@
 
 ## Unresolved links
 
-Use the vault and script paths set in the organizer skill:
-
-```bash
-obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run --no-project --with pyyaml python "$SCRIPTS/filter-unresolved-links.py" "$VAULT"
-```
-
-The filter keeps links from `ai_managed` zones and excludes template placeholders
+The recovery script keeps links from `ai_managed` zones and excludes template placeholders
 and configured `stub_link_patterns` from `.claude/obsidian-knowledge.yaml`.
 Defaults cover prefixes such as `(PAPER)`, `(BOOK)`, and `@Person`.
 
@@ -40,14 +34,9 @@ from candidates. Sources must be visible managed Markdown notes outside
 `_sources/` and configured read-only paths. Apply rechecks write policy and
 delegates to the verified writer; aliases, heading and block suffixes survive.
 
-Before repair, retain exact source bytes as a baseline. After repair, compare
-the diff and confirm only intended link targets changed. Primary prose, aliases,
-headings, block references, and frontmatter must remain intact. Then obtain
-fresh `obsidian vault="$VAULT_NAME" unresolved verbose format=json` results and
-confirm each repaired target disappeared from the relevant source's findings.
-If file contents and CLI results disagree, reload Obsidian with
-`obsidian vault="$VAULT_NAME" command id="app:reload"` and retry after it loads.
-Review fresh orphan results too; unrelated totals can change during sync.
+Review the diff for intended link changes, then check fresh unresolved-link
+results. If CLI results disagree with file contents, reload Obsidian with
+`obsidian vault="$VAULT_NAME" command id="app:reload"` and retry.
 
 ## Orphans
 

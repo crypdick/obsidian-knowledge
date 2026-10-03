@@ -209,3 +209,81 @@ def test_questions_renderer_preserves_header_and_empty_report(tmp_path: Path) ->
     assert again.returncode == 0, again.stderr
     assert "Only managed notes." in again.stdout
     assert '[[wiki/note]] — line 1 — "Again?"' in again.stdout
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "vault-audit.py",
+        "convention-sweep.py",
+        "filter-unresolved-links.py",
+        "recover-unresolved-links.py",
+        "find-open-questions.py",
+    ],
+)
+def test_scanners_default_to_configured_vault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script: str
+) -> None:
+    vault = tmp_path / "vault"
+    (vault / "records").mkdir(parents=True)
+    (vault / ".claude").mkdir()
+    (vault / ".claude/obsidian-knowledge.yaml").write_text("ai_managed: [records]\n")
+    (vault / "records/Default Note.md").write_text("# Note\n")
+    (vault / "records/source.md").write_text(
+        "# Source\n[[default_note.md]]\n> [!question]\n> Defaults select this vault.\n"
+    )
+    registry = tmp_path / "vaults.yaml"
+    registry.write_text(f"vaults:\n  - {vault}\n")
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
+    items = json.dumps([{"link": "default_note.md", "sources": "records/source.md", "count": "1"}])
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS / script)], cwd=tmp_path, input=items, text=True, capture_output=True
+    )
+    assert result.returncode == 0, result.stderr
+    expected = {
+        "vault-audit.py": f"MISSING_INDEX\t{vault / 'records'}",
+        "convention-sweep.py": "WIKILINK_EXT\trecords/source.md:2",
+        "filter-unresolved-links.py": "1\tdefault_note.md\trecords/source.md",
+        "recover-unresolved-links.py": "records/Default Note.md",
+        "find-open-questions.py": "records/source.md\t3\tDefaults select this vault.",
+    }
+    assert expected[script] in result.stdout
+    assert not (tmp_path / "wiki").exists()
+
+
+def test_defaults_choose_containing_vault_and_refuse_ambiguous_registry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = tmp_path / "first", tmp_path / "second"
+    for vault in (first, second):
+        (vault / "wiki").mkdir(parents=True)
+    registry = tmp_path / "vaults.yaml"
+    registry.write_text(f"vaults:\n  - {first}\n  - {second}\n")
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
+    command = [sys.executable, str(SCRIPTS / "edit-index.py"), "wiki/index.md", "--apply"]
+    plan = '{"title":"Second","entries":[]}'
+    ambiguous = subprocess.run(command, cwd=tmp_path, input=plan, text=True, capture_output=True)
+    assert ambiguous.returncode != 0
+    assert not (first / "wiki/index.md").exists()
+    assert not (second / "wiki/index.md").exists()
+    selected = subprocess.run(command, cwd=second / "wiki", input=plan, text=True, capture_output=True)
+    assert selected.returncode == 0, selected.stderr
+    assert (second / "wiki/index.md").read_text() == "# Second\n\n"
+    assert not (first / "wiki/index.md").exists()
+
+
+def test_report_apply_uses_default_destination(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "wiki").mkdir()
+    (tmp_path / "wiki/note.md").write_text("> [!question]\n> What now?\n")
+    registry = tmp_path / "vaults.yaml"
+    registry.write_text(f"vaults: [{tmp_path}]\n")
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS / "find-open-questions.py"), "--apply"],
+        input="",
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    report = tmp_path / "Utility/obsidian-knowledge/reports/open-questions.md"
+    assert '[[wiki/note]] — line 1 — "What now?"' in report.read_text()

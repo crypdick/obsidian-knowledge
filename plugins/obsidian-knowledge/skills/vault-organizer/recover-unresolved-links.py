@@ -1,9 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml", "pydantic>=2"]
+# ///
 """Classify and deterministically recover Obsidian unresolved wikilinks.
 
 Usage:
   obsidian unresolved verbose format=json \
-    | python3 recover-unresolved-links.py <vault_root> [--apply]
+    | uv run recover-unresolved-links.py [vault_root] [--apply]
 
 The script is intentionally conservative. It auto-fixes only unique exact
 filename/alias/path recoveries. Ambiguous and fuzzy-looking items are reported
@@ -22,6 +26,7 @@ from collections.abc import Iterable
 from difflib import SequenceMatcher
 from pathlib import Path
 
+import yaml as yaml_module
 from link_recovery_models import (
     DEFAULT_STUB_PATTERNS,
     CandidateIndex,
@@ -31,15 +36,8 @@ from link_recovery_models import (
     RecoveryDecision,
     UnresolvedItem,
 )
+from organizer_context import resolve_vault
 from organizer_io import OrganizerPolicy, visible_path, write_checked
-
-try:
-    import yaml as yaml_module
-
-    HAS_YAML = True
-except ImportError:  # pragma: no cover - exercised in packaged fallback contexts
-    yaml_module = None
-    HAS_YAML = False
 
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
@@ -50,7 +48,7 @@ WIKILINK_CHARS = set("|#^")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("vault_root", type=Path)
+    parser.add_argument("vault_root", type=Path, nargs="?", help="default: configured vault")
     parser.add_argument(
         "--apply", action="store_true", help="rewrite exact/high-confidence recoveries in source files"
     )
@@ -65,9 +63,8 @@ def parse_args() -> argparse.Namespace:
 
 def load_config(vault_root: Path) -> Config:
     config_path = vault_root / ".claude" / "obsidian-knowledge.yaml"
-    if HAS_YAML and config_path.exists():
+    if config_path.exists():
         with open(config_path, encoding="utf-8") as handle:
-            assert yaml_module is not None
             raw = yaml_module.safe_load(handle) or {}
         return Config(
             ai_managed=tuple(str(zone) for zone in raw.get("ai_managed", ("wiki",))),
@@ -126,10 +123,9 @@ def frontmatter_aliases(text: str) -> tuple[str, ...]:
     if not text.startswith("---\n"):
         return ()
     end = text.find("\n---", 4)
-    if end == -1 or not HAS_YAML:
+    if end == -1:
         return ()
     try:
-        assert yaml_module is not None
         frontmatter = yaml_module.safe_load(text[4:end]) or {}
     except yaml_module.YAMLError:
         return ()
@@ -390,7 +386,7 @@ def emit(decisions: list[RecoveryDecision], output_format: str) -> None:
 
 def main() -> None:
     args = parse_args()
-    vault_root = args.vault_root.resolve()
+    vault_root = resolve_vault(args.vault_root)
     config = load_config(vault_root)
     patterns = tuple(re.compile(pattern) for pattern in config.stub_link_patterns)
     raw_items = json.load(sys.stdin)
