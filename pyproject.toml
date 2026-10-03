@@ -76,6 +76,7 @@ setup = ["uv sync --group dev"]
 pre_merge = ["uv run prek run --all-files --show-diff-on-failure"]
 post_merge = ["uv run prek run --all-files --show-diff-on-failure"]
 teardown = []
+safe_to_delete = ["coverage.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

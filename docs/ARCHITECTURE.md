@@ -75,9 +75,9 @@ checkout.
 
 Install the Git hook with `uv run prek install` from the control checkout.
 Git worktrees share hooks, so installing from a temporary worktree leaves an
-interpreter path that disappears at teardown. Remove generated coverage reports
-from the feature worktree before teardown if transfer conflicts with the control
-checkout's ignored report.
+interpreter path that disappears at teardown. Repository configuration marks
+generated `coverage.json` as disposable, so differing coverage reports do not
+block worktree transfer or teardown.
 
 Tests use temporary caches and disable live Ollama probes. For manual indexing
 in concurrent worktrees, set `OBSIDIAN_VAULT_ROOT` and
