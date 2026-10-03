@@ -6,7 +6,10 @@ import asyncio
 import errno
 import fcntl
 import io
+import json
 import sqlite3
+import subprocess
+import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
@@ -19,6 +22,7 @@ import pytest
 
 from lib.vault_index import indexer
 from lib.vault_index.config import VaultIndexConfig
+from lib.vault_index.embeddings import KeywordOnlyEmbeddingProvider
 from lib.vault_index.models import Hit, IndexBusyError
 
 REAL_OLLAMA_PROBE = indexer._ollama_probe
@@ -45,25 +49,32 @@ def test_ollama_probe_validates_endpoint_and_response(monkeypatch, api_base, pay
 
 
 def test_keyword_only_provider_returns_empty_vectors():
-    provider = indexer.KeywordOnlyEmbeddingProvider()
+    provider = KeywordOnlyEmbeddingProvider()
     assert asyncio.run(provider.embed_query("query")) == []
     assert asyncio.run(provider.embed_batch(["one", "two"])) == [[], []]
 
 
-def test_indexer_suppresses_litellm_feedback_banner(tmp_path, monkeypatch):
-    import litellm
-
-    monkeypatch.setattr(litellm, "suppress_debug_info", False)
-    instance = indexer.Indexer(
-        tmp_path,
-        tmp_path / "cache",
-        VaultIndexConfig(),
-        vector_enabled=False,
+def test_keyword_index_and_search_do_not_import_litellm(tmp_path):
+    script = """
+import json, sys, asyncio
+from pathlib import Path
+from lib.vault_index.indexer import Indexer
+from lib.vault_index.config import VaultIndexConfig
+root = Path(sys.argv[1])
+(root / 'note.md').write_text('Purple orchids grow in a greenhouse.')
+instance = Indexer(root, root / 'cache', VaultIndexConfig(), vector_enabled=False)
+instance.full_reindex()
+hits = instance.search('orchids')
+asyncio.run(instance._store.close())
+print(json.dumps({'paths': [hit.path for hit in hits], 'litellm_loaded': 'litellm' in sys.modules}))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True, timeout=20
     )
-    try:
-        assert litellm.suppress_debug_info is True
-    finally:
-        close(instance)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report["paths"] == ["note.md"]
+    assert report["litellm_loaded"] is False
 
 
 def test_indexer_falls_back_when_preferred_cache_is_unwritable(tmp_path, monkeypatch):

@@ -88,17 +88,3 @@ class IndexedHybridSearch:
             text_weight=self.config.text_weight,
             limit=limit,
         )
-
-
-class KeywordOnlyEmbeddingProvider:
-    """Keep memweave's indexing pipeline offline when vectors are disabled.
-
-    memweave 0.2 still calls its provider with vector.enabled=False. Empty
-    vectors retain chunks and FTS entries without caching fake embeddings.
-    """
-
-    async def embed_query(self, text: str) -> list[float]:
-        return []
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        return [[] for _ in texts]

@@ -27,7 +27,7 @@ def embed(monkeypatch):
         return [[1.0, 0.0] for _ in texts]
 
     provider = AsyncMock(side_effect=vectors)
-    monkeypatch.setattr("memweave.embedding.provider.LiteLLMEmbeddingProvider._embed_one_batch", provider)
+    monkeypatch.setattr("lib.vault_index.embeddings.OllamaEmbeddingProvider.embed_batch", provider)
     return provider
 
 
