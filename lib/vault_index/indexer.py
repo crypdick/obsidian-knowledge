@@ -63,6 +63,7 @@ import platformdirs
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.filters import path_passes
 from lib.vault_index.models import Hit, IndexBusyError, SearchReport
+from lib.vault_index.vector_search import IndexedHybridSearch, KeywordOnlyEmbeddingProvider
 
 # Local embeddings do not need a public model-pricing download. LiteLLM reads
 # this at its first lazy import; preserve an explicit operator override.
@@ -151,20 +152,6 @@ class SyncStats:
     indexed: int
     skipped: int
     deleted: int
-
-
-class KeywordOnlyEmbeddingProvider:
-    """Keep memweave's indexing pipeline offline when vectors are disabled.
-
-    memweave 0.2 still calls its provider with vector.enabled=False. Empty
-    vectors retain chunks and FTS entries without caching fake embeddings.
-    """
-
-    async def embed_query(self, text: str) -> list[float]:
-        return []
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        return [[] for _ in texts]
 
 
 @contextlib.contextmanager
@@ -261,10 +248,14 @@ class Indexer:
         return self._vector_enabled
 
     def _make_store(self, extra_paths: list[str]) -> memweave.MemWeave:
-        return memweave.MemWeave(
-            self._make_config(extra_paths=extra_paths),
+        config = self._make_config(extra_paths=extra_paths)
+        store = memweave.MemWeave(
+            config,
             embedding_provider=None if self._vector_enabled else KeywordOnlyEmbeddingProvider(),
         )
+        if self._vector_enabled:
+            store.register_strategy("hybrid", IndexedHybridSearch(config.query.hybrid))
+        return store
 
     def _embedder_fingerprint(self) -> str:
         """Stable string identifying the current embedding setup.
