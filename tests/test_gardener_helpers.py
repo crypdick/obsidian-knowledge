@@ -1,23 +1,34 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[1] / "skills" / "vault-organizer"
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_script(name: str, vault: Path, *args: str, input_text: str = "") -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(SCRIPTS / name), str(vault), *args],
-        input=input_text,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+def run_garden(name: str, vault: Path, *args: str, input_text: str = "") -> subprocess.CompletedProcess[str]:
+    from gardener.cli import main
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    command = [name, "--vault", str(vault), *args]
+    with (
+        patch("sys.stdin", io.StringIO(input_text)),
+        contextlib.redirect_stdout(stdout),
+        contextlib.redirect_stderr(stderr),
+    ):
+        try:
+            code = main(command)
+        except SystemExit as exc:
+            code = int(exc.code or 0)
+    return subprocess.CompletedProcess(command, code, stdout.getvalue(), stderr.getvalue())
 
 
 def test_audit_requires_child_index_not_descendant_link(tmp_path: Path) -> None:
@@ -26,12 +37,12 @@ def test_audit_requires_child_index_not_descendant_link(tmp_path: Path) -> None:
     (child / "note.md").write_text("# Note\n")
     (child / "index.md").write_text("# Child\n\n- [[note#Section]] — note\n")
     (child.parent / "index.md").write_text("# Topic\n\n- [[wiki/topic/child/note]] — note\n")
-    result = run_script("vault-audit.py", tmp_path)
+    result = run_garden("audit", tmp_path)
     assert result.returncode == 0
     assert f"NOT_INDEXED\t{child.parent / 'index.md'}\tentry=child/" in result.stdout
     assert "entry=note.md" not in result.stdout
     (child.parent / "index.md").write_text("# Topic\n\n- [[child/index|Child]] — notes\n")
-    assert "entry=child/" not in run_script("vault-audit.py", tmp_path).stdout
+    assert "entry=child/" not in run_garden("audit", tmp_path).stdout
 
 
 def test_audit_distinguishes_empty_and_typed_folders(tmp_path: Path) -> None:
@@ -45,7 +56,7 @@ def test_audit_distinguishes_empty_and_typed_folders(tmp_path: Path) -> None:
     (diary / "index.md").write_text("# Diary\n\n- [[archive/index]] — archive\n" + links)
     for i in range(1, 5):
         (diary / f"2026-01-0{i}.md").write_text("# Entry\n")
-    result = run_script("vault-audit.py", tmp_path)
+    result = run_garden("audit", tmp_path)
     assert result.returncode == 0
     assert "\nDUMPING_GROUND\t" not in result.stdout
     assert f"EMPTY_FOLDER\t{tmp_path / 'wiki' / 'empty'}" in result.stdout
@@ -64,7 +75,7 @@ def test_audit_still_flags_misplaced_dates_and_ancestor_name_collision(tmp_path:
         links += f"- [[2026-01-0{i}]] — entry\n"
     (folder / "topic.md").write_text("# Topic note\n")
     (folder / "index.md").write_text("# Topic\n\n" + links)
-    result = run_script("vault-audit.py", tmp_path)
+    result = run_garden("audit", tmp_path)
     assert f"\nDUMPING_GROUND\t{folder}\tmisplaced=4" in result.stdout
     assert f"NOT_INDEXED\t{folder / 'index.md'}\tentry=topic.md" in result.stdout
 
@@ -87,16 +98,16 @@ def test_index_editor_preserves_sections_and_dry_run(tmp_path: Path) -> None:
             ],
         }
     )
-    result = run_script("edit-index.py", tmp_path, "wiki/topic/index.md", input_text=plan)
+    result = run_garden("index", tmp_path, "wiki/topic/index.md", input_text=plan)
     assert result.returncode == 0, result.stderr
     assert index.read_text() == original
     expected = "# Topic\n\nIntro stays.\n\n## Notes\n\n- [[wiki/topic/child/index|Child]] — children\n- [[wiki/topic/alpha]] — first\n- [[zeta]] — last\n\n## Related\n\nRelated prose stays.\n- [[wiki/elsewhere]] — related\n"
     assert result.stdout == expected
-    applied = run_script("edit-index.py", tmp_path, "wiki/topic/index.md", "--apply", input_text=plan)
+    applied = run_garden("index", tmp_path, "wiki/topic/index.md", "--apply", input_text=plan)
     assert applied.returncode == 0, applied.stderr
     assert index.read_text() == expected
     # A second run does not duplicate or reorder unrelated entries.
-    again = run_script("edit-index.py", tmp_path, "wiki/topic/index.md", input_text=plan)
+    again = run_garden("index", tmp_path, "wiki/topic/index.md", input_text=plan)
     assert again.stdout == expected
 
 
@@ -106,13 +117,13 @@ def test_index_editor_refuses_ambiguous_section_and_missing_target(tmp_path: Pat
     index = folder / "index.md"
     original = "# Wiki\n\n## Same\n\n## Same\n"
     index.write_text(original)
-    result = run_script(
-        "edit-index.py", tmp_path, "wiki/index.md", "--apply", input_text='{"section":"Same","entries":[]}'
+    result = run_garden(
+        "index", tmp_path, "wiki/index.md", "--apply", input_text='{"section":"Same","entries":[]}'
     )
     assert result.returncode != 0
     assert index.read_text() == original
-    result = run_script(
-        "edit-index.py",
+    result = run_garden(
+        "index",
         tmp_path,
         "wiki/index.md",
         "--apply",
@@ -127,12 +138,10 @@ def test_index_editor_creates_child_before_parent_and_accepts_dotted_notes(tmp_p
     (folder / "child").mkdir(parents=True)
     (folder / "child" / "example.app.md").write_text("# Note\n")
     child_plan = '{"title":"Child","entries":[{"target":"example.app","description":"dotted note"}]}'
-    child = run_script(
-        "edit-index.py", tmp_path, "wiki/topic/child/index.md", "--apply", input_text=child_plan
-    )
+    child = run_garden("index", tmp_path, "wiki/topic/child/index.md", "--apply", input_text=child_plan)
     assert child.returncode == 0, child.stderr
-    parent = run_script(
-        "edit-index.py",
+    parent = run_garden(
+        "index",
         tmp_path,
         "wiki/topic/index.md",
         "--apply",
@@ -145,7 +154,7 @@ def test_index_editor_creates_child_before_parent_and_accepts_dotted_notes(tmp_p
 @pytest.mark.parametrize("relative", ["wiki/_sources/index.md", "wiki/.hidden/index.md", "wiki/../index.md"])
 def test_index_editor_refuses_protected_paths_even_during_preview(tmp_path: Path, relative: str) -> None:
     (tmp_path / "wiki").mkdir()
-    result = run_script("edit-index.py", tmp_path, relative, input_text='{"title":"Bad","entries":[]}')
+    result = run_garden("index", tmp_path, relative, input_text='{"title":"Bad","entries":[]}')
     assert result.returncode != 0
     assert not (tmp_path / relative).exists()
 
@@ -160,8 +169,8 @@ def test_index_editor_refuses_complex_entry_blocks(tmp_path: Path, body: str) ->
     original = "# Wiki\n\n" + body
     index.write_text(original)
     (tmp_path / "wiki" / "note.md").write_text("# Note\n")
-    result = run_script(
-        "edit-index.py",
+    result = run_garden(
+        "index",
         tmp_path,
         "wiki/index.md",
         "--apply",
@@ -189,7 +198,7 @@ def test_questions_renderer_preserves_header_and_empty_report(tmp_path: Path) ->
         "--timestamp",
         "2026-10-03T12:00:00-07:00",
     )
-    result = run_script("find-open-questions.py", tmp_path, *args)
+    result = run_garden("questions", tmp_path, *args)
     assert result.returncode == 0, result.stderr
     expected = (
         header.replace("**Last run:** old", "**Last run:** 2026-10-03T12:00:00-07:00")
@@ -197,15 +206,15 @@ def test_questions_renderer_preserves_header_and_empty_report(tmp_path: Path) ->
     )
     assert result.stdout == expected
     assert report.read_text() == original
-    applied = run_script("find-open-questions.py", tmp_path, *args, "--apply")
+    applied = run_garden("questions", tmp_path, *args, "--apply")
     assert applied.returncode == 0, applied.stderr
     assert report.read_text() == expected
     source.write_text("# Resolved\n")
-    empty = run_script("find-open-questions.py", tmp_path, *args, "--apply")
+    empty = run_garden("questions", tmp_path, *args, "--apply")
     assert empty.returncode == 0, empty.stderr
     assert "[[" not in report.read_text()
     source.write_text("> [!question]\n> Again?\n")
-    again = run_script("find-open-questions.py", tmp_path, *args)
+    again = run_garden("questions", tmp_path, *args)
     assert again.returncode == 0, again.stderr
     assert "Only managed notes." in again.stdout
     assert '[[wiki/note]] — line 1 — "Again?"' in again.stdout
@@ -214,11 +223,9 @@ def test_questions_renderer_preserves_header_and_empty_report(tmp_path: Path) ->
 @pytest.mark.parametrize(
     "script",
     [
-        "vault-audit.py",
-        "convention-sweep.py",
-        "filter-unresolved-links.py",
-        "recover-unresolved-links.py",
-        "find-open-questions.py",
+        "audit",
+        "links",
+        "questions",
     ],
 )
 def test_scanners_default_to_configured_vault(
@@ -237,15 +244,17 @@ def test_scanners_default_to_configured_vault(
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     items = json.dumps([{"link": "default_note.md", "sources": "records/source.md", "count": "1"}])
     result = subprocess.run(
-        [sys.executable, str(SCRIPTS / script)], cwd=tmp_path, input=items, text=True, capture_output=True
+        [sys.executable, "-m", "lib.vault_index.cli", "garden", script],
+        cwd=tmp_path,
+        input=items,
+        text=True,
+        capture_output=True,
     )
     assert result.returncode == 0, result.stderr
     expected = {
-        "vault-audit.py": f"MISSING_INDEX\t{vault / 'records'}",
-        "convention-sweep.py": "WIKILINK_EXT\trecords/source.md:2",
-        "filter-unresolved-links.py": "1\tdefault_note.md\trecords/source.md",
-        "recover-unresolved-links.py": "records/Default Note.md",
-        "find-open-questions.py": "records/source.md\t3\tDefaults select this vault.",
+        "audit": f"MISSING_INDEX\t{vault / 'records'}",
+        "links": "records/Default Note.md",
+        "questions": "records/source.md\t3\tDefaults select this vault.",
     }
     assert expected[script] in result.stdout
     assert not (tmp_path / "wiki").exists()
@@ -260,13 +269,27 @@ def test_defaults_choose_containing_vault_and_refuse_ambiguous_registry(
     registry = tmp_path / "vaults.yaml"
     registry.write_text(f"vaults:\n  - {first}\n  - {second}\n")
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
-    command = [sys.executable, str(SCRIPTS / "edit-index.py"), "wiki/index.md", "--apply"]
+    command = [sys.executable, "-m", "lib.vault_index.cli", "garden", "index", "wiki/index.md", "--apply"]
     plan = '{"title":"Second","entries":[]}'
-    ambiguous = subprocess.run(command, cwd=tmp_path, input=plan, text=True, capture_output=True)
+    ambiguous = subprocess.run(
+        command,
+        cwd=tmp_path,
+        input=plan,
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
+    )
     assert ambiguous.returncode != 0
     assert not (first / "wiki/index.md").exists()
     assert not (second / "wiki/index.md").exists()
-    selected = subprocess.run(command, cwd=second / "wiki", input=plan, text=True, capture_output=True)
+    selected = subprocess.run(
+        command,
+        cwd=second / "wiki",
+        input=plan,
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
+    )
     assert selected.returncode == 0, selected.stderr
     assert (second / "wiki/index.md").read_text() == "# Second\n\n"
     assert not (first / "wiki/index.md").exists()
@@ -279,7 +302,7 @@ def test_report_apply_uses_default_destination(tmp_path: Path, monkeypatch: pyte
     registry.write_text(f"vaults: [{tmp_path}]\n")
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     result = subprocess.run(
-        [sys.executable, str(SCRIPTS / "find-open-questions.py"), "--apply"],
+        [sys.executable, "-m", "lib.vault_index.cli", "garden", "questions", "--apply"],
         input="",
         text=True,
         capture_output=True,

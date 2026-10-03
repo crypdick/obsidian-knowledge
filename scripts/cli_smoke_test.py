@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -34,6 +35,8 @@ def exercise(executable: str, root: Path) -> None:
         "OBSIDIAN_KNOWLEDGE_CACHE_ROOT": str(root / "cache"),
         "TMPDIR": str(root),
     }
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
     checks = 0
 
     def run(*args: str, content: str = "", expected: int = 0) -> str:
@@ -65,6 +68,7 @@ def exercise(executable: str, root: Path) -> None:
         "remember",
         "papercut",
         "doctor",
+        "garden",
         "_hook",
     )
     help_text = run("--help")
@@ -127,7 +131,90 @@ def exercise(executable: str, root: Path) -> None:
             if kind != "nudge-index-sync":
                 assert json.loads(output)["decision"] == "block"
     run("_hook", "stop", "--kind", "invalid", content="{}", expected=2)
+    exercise_garden(vault, run)
     print(f"All {checks} installed CLI checks passed.")
+
+
+def exercise_garden(vault: Path, run: Callable[..., str]) -> None:
+    """Exercise bundled gardener modules through the installed executable."""
+    for operation in ("audit", "links", "index", "questions", "frontmatter"):
+        run("garden", operation, "--help")
+
+    folder = vault / "wiki/garden-smoke"
+    folder.mkdir()
+    config = vault / ".claude/obsidian-knowledge.yaml"
+    with config.open("a") as handle:
+        handle.write("\nai_managed: [wiki]\nai_readonly_folders: [wiki/garden-smoke/readonly]\n")
+    source = folder / "source.md"
+    original = "# Source\n\nSee [[renamed_file#Heading|display]].\n\n> [!question]\n> Which flower?\n"
+    source.write_text(original)
+    (folder / "Renamed File.md").write_text("# Renamed flower\n")
+    index = folder / "index.md"
+    index_before = "# Garden smoke\n\nContext stays.\n\n"
+    index.write_text(index_before)
+    stacked = folder / "stacked.md"
+    stacked_before = "---\r\ntitle: Flower\r\n---\r\n---\r\n# Flower\r\n"
+    stacked.write_bytes(stacked_before.encode())
+    protected = {}
+    for relative in (
+        "_sources/protected.md",
+        "wiki/garden-smoke/readonly/readonly.md",
+        "wiki/garden-smoke/.hidden/ignored.md",
+        "wiki/garden-smoke/ignored.sync-conflict-20261003-120000-device.md",
+    ):
+        path = vault / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        question = "Readonly question" if "/readonly/" in relative else "Protected question"
+        body = stacked_before + f"> [!question]\r\n> {question}\r\n"
+        path.write_bytes(body.encode())
+        protected[relative] = path.read_bytes()
+    outside = vault.parent / "outside-garden.md"
+    outside.write_bytes(stacked_before.encode())
+    (folder / "symlink.md").symlink_to(outside)
+
+    def garden(operation: str, *args: str, **kwargs: object) -> str:
+        return run("garden", operation, "--vault", str(vault), *args, **kwargs)
+
+    audit = garden("audit")
+    assert f"STACKED_FRONTMATTER\t{stacked}" in audit
+    assert "protected.md" not in audit and "ignored" not in audit and "symlink.md" not in audit
+    assert stacked.read_bytes() == stacked_before.encode()
+
+    review = json.dumps(
+        {"entries": [{"target": "wiki/garden-smoke/source", "description": "flower question"}]}
+    )
+    rendered_index = garden("index", "wiki/garden-smoke/index.md", content=review)
+    assert "Context stays." in rendered_index
+    assert "- [[wiki/garden-smoke/source]] — flower question" in rendered_index
+    assert index.read_text() == index_before
+    garden("index", "wiki/garden-smoke/index.md", "--apply", content=review)
+    assert index.read_text() == rendered_index
+
+    links = json.dumps([{"link": "renamed_file", "sources": "wiki/garden-smoke/source.md"}])
+    decisions = json.loads(garden("links", "--format", "json", content=links))
+    assert len(decisions) == 1 and decisions[0]["auto_fixable"]
+    assert decisions[0]["candidates"] == ["wiki/garden-smoke/Renamed File.md"]
+    assert source.read_text() == original
+    assert "# applied_rewrites\t1" in garden("links", "--apply", content=links)
+    assert source.read_text() == original.replace("renamed_file", "wiki/garden-smoke/Renamed File")
+
+    report = vault / "Utility/obsidian-knowledge/reports/open-questions.md"
+    report_args = ("--report", "--timestamp", "2026-10-03T12:00:00+00:00")
+    report_text = garden("questions", *report_args)
+    assert "Which flower?" in report_text and "Readonly question" in report_text
+    assert "Protected question" not in report_text
+    assert not report.exists()
+    garden("questions", *report_args, "--apply")
+    assert report.read_text() == report_text
+
+    assert "WOULD_FIX" in garden("frontmatter", "wiki/garden-smoke/stacked.md")
+    assert stacked.read_bytes() == stacked_before.encode()
+    assert "FIXED" in garden("frontmatter", "wiki/garden-smoke/stacked.md", "--apply")
+    assert stacked.read_bytes() == b"---\r\ntitle: Flower\r\n---\r\n# Flower\r\n"
+    for relative in (*protected, "wiki/garden-smoke/symlink.md", "../outside-garden.md"):
+        garden("frontmatter", relative, "--apply", expected=1)
+    assert outside.read_bytes() == stacked_before.encode()
+    assert all((vault / relative).read_bytes() == body for relative, body in protected.items())
 
 
 def exercise_guards(vault: Path, env: dict[str, str]) -> None:

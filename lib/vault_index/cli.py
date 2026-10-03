@@ -320,8 +320,8 @@ def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claud
         ("post-tool-use", "reflect-nudge"): "reflect-nudge.py",
         ("session-start", "recall-init"): "recall-init.py",
         ("stop", "capture-session"): "capture-session.py",
-        # Rolling-compatibility aliases for older cached hook manifests. Both
-        # wrappers use the consolidated capture-session cooldown marker.
+        # Rolling-compatibility aliases for older cached hook manifests.
+        # Aliases share the consolidated capture-session cooldown marker.
         ("stop", "update-changelog"): "capture-session.py",
         ("stop", "remind-convos"): "capture-session.py",
         ("stop", "nudge-index-sync"): "nudge-index-sync.py",
@@ -530,6 +530,11 @@ def positive_int(value: str) -> int:
 
 
 def main() -> int:
+    if sys.argv[1:2] == ["garden"]:
+        from gardener.cli import main as garden_main
+
+        return garden_main(sys.argv[2:])
+
     parser = argparse.ArgumentParser(prog="obsidian-knowledge")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -639,6 +644,7 @@ def main() -> int:
         p.add_argument("--kind", default=None)
         p.add_argument("--agent", choices=("claude", "codex"), default="claude")
 
+    sub.add_parser("garden", help="audit and repair vault structure, links and reports")
     args = parser.parse_args()
 
     if args.cmd == "setup":

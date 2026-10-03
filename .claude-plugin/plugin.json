@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.26.4",
+  "version": "3.27.0",
   "description": "Claude Code plugin that manages an Obsidian knowledge vault: capture, organize, index, and garden",
   "author": {
     "name": "Ricardo Decal"
@@ -35,11 +35,6 @@
       {
         "matcher": "startup|resume|compact",
         "hooks": [
-          {
-            "type": "command",
-            "command": "obsidian-knowledge install-rules --global",
-            "timeout": 120
-          },
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/recall-init.py"

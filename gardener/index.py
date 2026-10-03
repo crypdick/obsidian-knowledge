@@ -1,16 +1,4 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["pyyaml", "pydantic>=2"]
-# ///
-"""Render reviewed JSON entries into one index section; --apply verifies writes.
-
-Usage: uv run edit-index.py [VAULT] wiki/topic/index.md [--apply] < reviewed.json
-Input: {"section": "Notes", "entries": [{"target": "wiki/topic/note",
-         "description": "orientation", "label": "optional display name"}]}
-For a new flat index, supply "title" instead of "section". Existing prose and
-other sections remain byte-for-byte intact. Ambiguous entry blocks are refused.
-"""
+"""Render reviewed JSON entries into one index section; --apply verifies writes."""
 
 from __future__ import annotations
 
@@ -19,9 +7,9 @@ import re
 import sys
 from pathlib import Path
 
-from organizer_context import resolve_vault
-from organizer_io import OrganizerPolicy, visible_path, write_checked
 from pydantic import BaseModel, ConfigDict, field_validator
+
+from gardener.io import OrganizerPolicy, resolve_vault, visible_path, write_checked
 
 ENTRY = re.compile(r"^- \[\[([^\]|#^]+)(?:\|[^\]]+)?\]\].*$")
 HEADING = re.compile(r"^(#{1,6}) (.+?)\s*$")
@@ -159,16 +147,16 @@ def render_index(vault: Path, index: Path, before: str | None, review: IndexRevi
     return prefix + "".join(entries) + suffix
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("vault_root", type=Path, nargs="?", help="default: configured vault")
+    parser.add_argument("--vault", dest="vault_root", type=Path, help="default: configured vault")
     parser.add_argument("index_path")
     parser.add_argument("--apply", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         vault = resolve_vault(args.vault_root)
         if Path(args.index_path).name != "index.md":
-            raise ValueError("edit-index only edits index.md")
+            raise ValueError("garden index only edits index.md")
         index = OrganizerPolicy.load(vault).writable(vault, args.index_path)
         before = index.read_bytes().decode("utf-8") if index.exists() else None
         review = IndexReview.model_validate_json(sys.stdin.read())
@@ -179,7 +167,3 @@ def main() -> None:
             sys.stdout.write(after)
     except (ValueError, OSError) as exc:
         parser.exit(1, f"Error: {exc}\n")
-
-
-if __name__ == "__main__":
-    main()

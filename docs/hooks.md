@@ -25,7 +25,7 @@ or run this standalone command:
 obsidian-knowledge install-rules --global
 ```
 
-Codex session startup, resume, and compaction do not install rules or register
+Codex and Claude session startup, resume, and compaction do not install rules or register
 global hooks. Default setup leaves existing guard installations unchanged;
 it neither installs nor removes protection.
 

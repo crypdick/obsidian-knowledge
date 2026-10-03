@@ -1,23 +1,27 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
-import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "skills" / "vault-organizer" / "recover-unresolved-links.py"
-
 
 def run_recover(vault: Path, items: list[dict[str, str]], *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(SCRIPT), str(vault), *args],
-        input=json.dumps(items),
-        text=True,
-        capture_output=True,
-        check=True,
-    )
+    from gardener.cli import main
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    command = ["links", "--vault", str(vault), *args]
+    with (
+        patch("sys.stdin", io.StringIO(json.dumps(items))),
+        contextlib.redirect_stdout(stdout),
+        contextlib.redirect_stderr(stderr),
+    ):
+        code = main(command)
+    return subprocess.CompletedProcess(command, code, stdout.getvalue(), stderr.getvalue())
 
 
 def test_classifies_unique_normalized_match_without_applying(tmp_path: Path) -> None:

@@ -1,23 +1,4 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["pyyaml", "pydantic>=2"]
-# ///
-"""find-open-questions: scan ai_managed zones for `> [!question]` callouts.
-
-Usage: uv run find-open-questions.py [vault_root]
-
-Skips matches inside fenced code blocks (``` or ~~~), which are usually
-documentation examples rather than real open questions. Emits one line per
-hit:
-
-  <relative_path>\t<line_number>\t<question_text>
-
-Add --report to render the standard Markdown report, --timestamp for
-reproducible output, or --apply to regenerate the report in place.
-Reads ai_managed zones from
-<vault_root>/.claude/obsidian-knowledge.yaml; falls back to ['wiki'].
-"""
+"""Scan managed notes for open questions; preview or apply a preserved-header report."""
 
 from __future__ import annotations
 
@@ -27,15 +8,18 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-from organizer_context import resolve_vault
-from organizer_io import visible_path, write_checked
 from pydantic import BaseModel, ConfigDict
 
+from gardener.io import (
+    REPORT_PATH,
+    OrganizerPolicy,
+    iter_markdown,
+    resolve_vault,
+    visible_path,
+    write_checked,
+)
+
 QUESTION_MARKER = "> [!question]"
-SCAN_SKIP_DIR_NAMES = {"_sources", ".trash", "node_modules"}
-# NOTE: Standard report location is documented in SKILL.md, Conventions and reports.
-REPORT_PATH = "Utility/obsidian-knowledge/reports/open-questions.md"
 
 
 class QuestionHit(BaseModel):
@@ -76,15 +60,6 @@ def render_report(before: str | None, hits: tuple[QuestionHit, ...], timestamp: 
         prefix += "\n" if prefix.endswith("\n") else "\n\n"
     entries = "".join(render_question(hit) for hit in hits)
     return prefix + entries
-
-
-def load_managed_zones(vault_root: Path) -> list[str]:
-    config_path = vault_root / ".claude" / "obsidian-knowledge.yaml"
-    if config_path.exists():
-        with open(config_path) as f:
-            cfg = yaml.safe_load(f) or {}
-        return cfg.get("ai_managed", ["wiki"])
-    return ["wiki"]
 
 
 def scan_file(path: Path) -> list[tuple[int, str]]:
@@ -129,32 +104,22 @@ def scan_file(path: Path) -> list[tuple[int, str]]:
     return hits
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("vault_root", type=Path, nargs="?", help="default: configured vault")
+    parser.add_argument("--vault", dest="vault_root", type=Path, help="default: configured vault")
     parser.add_argument("--report", nargs="?", const=REPORT_PATH, help="render the standard report (dry run)")
     parser.add_argument("--timestamp", help="timezone-aware ISO timestamp; default: current local time")
     parser.add_argument("--apply", action="store_true", help="regenerate the standard report")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.apply:
         args.report = args.report or REPORT_PATH
     vault_root = resolve_vault(args.vault_root)
 
-    zones = load_managed_zones(vault_root)
+    zones = OrganizerPolicy.load(vault_root).ai_managed
     hits = []
     for zone in zones:
-        zone_root = vault_root / zone
-        if not zone_root.is_dir():
-            continue
-        for md in sorted(zone_root.rglob("*.md")):
-            rel_parts = md.relative_to(vault_root).parts
-            if any(part.startswith(".") or part in SCAN_SKIP_DIR_NAMES for part in rel_parts):
-                continue
+        for md in iter_markdown(vault_root, zone):
             rel = md.relative_to(vault_root).as_posix()
-            try:
-                visible_path(vault_root, rel)
-            except ValueError:
-                continue
             for line_no, text in scan_file(md):
                 hits.append(QuestionHit(path=rel, line=line_no, text=text))
     if not args.report:
@@ -176,7 +141,3 @@ def main() -> None:
             sys.stdout.write(after)
     except (ValueError, OSError) as exc:
         parser.exit(1, f"Error: {exc}\n")
-
-
-if __name__ == "__main__":
-    main()

@@ -32,13 +32,15 @@ def forbidden(path: Path, module: str) -> bool:
     if top == "<invalid-relative-import>":
         return True
     if path.parts[0] == "lib":
+        if top == "gardener":
+            return path.as_posix() != "lib/vault_index/cli.py"
         if path.as_posix() == "lib/vault_index/primer.py" and (
             module == "hookslib.repo_memory" or module.startswith("hookslib.repo_memory.")
         ):
             return False
         return top in {"hooks", "hookslib", "vault_registry"}
     if path.parts[:2] == ("hooks", "hookslib"):
-        return top in {"lib", "vault_index"}
+        return top in {"lib", "vault_index", "gardener"}
     return False
 
 
@@ -47,7 +49,7 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     root = parser.parse_args().root
     failed = False
-    for package in ("lib", "hooks"):
+    for package in ("lib", "hooks", "gardener"):
         for source in sorted((root / package).rglob("*.py")):
             path = source.relative_to(root)
             try:

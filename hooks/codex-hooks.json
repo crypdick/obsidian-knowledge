@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "obsidian-knowledge _hook stop --kind remind-convos --agent codex"
+            "command": "obsidian-knowledge _hook stop --kind capture-session --agent codex"
           },
           {
             "type": "command",

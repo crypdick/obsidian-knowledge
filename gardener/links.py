@@ -1,25 +1,10 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["pyyaml", "pydantic>=2"]
-# ///
-"""Classify and deterministically recover Obsidian unresolved wikilinks.
-
-Usage:
-  obsidian unresolved verbose format=json \
-    | uv run recover-unresolved-links.py [vault_root] [--apply]
-
-The script is intentionally conservative. It auto-fixes only unique exact
-filename/alias/path recoveries. Ambiguous and fuzzy-looking items are reported
-for human review instead of rewritten.
-"""
+"""Filter and classify unresolved wikilinks; apply only unique deterministic recoveries."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import re
-import signal
 import sys
 from collections import defaultdict
 from collections.abc import Iterable
@@ -27,28 +12,24 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 import yaml as yaml_module
-from link_recovery_models import (
-    DEFAULT_STUB_PATTERNS,
+
+from gardener.io import OrganizerPolicy, iter_paths, resolve_vault, visible_path, write_checked
+from gardener.models import (
     CandidateIndex,
     Classification,
-    Config,
     NoteCandidate,
     RecoveryDecision,
     UnresolvedItem,
 )
-from organizer_context import resolve_vault
-from organizer_io import OrganizerPolicy, visible_path, write_checked
-
-signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 TEMPLATE_PLACEHOLDER = re.compile(r"\{\{|\<%")
 DATEISH = re.compile(r"^(?:\d{4}-\d{2}-\d{2}|\d{4}-\d{2}|\d{8}|\d{4}-\d{1,2}-\d{1,2})(?:\b|[-_ ])")
 WIKILINK_CHARS = set("|#^")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("vault_root", type=Path, nargs="?", help="default: configured vault")
+    parser.add_argument("--vault", dest="vault_root", type=Path, help="default: configured vault")
     parser.add_argument(
         "--apply", action="store_true", help="rewrite exact/high-confidence recoveries in source files"
     )
@@ -58,21 +39,7 @@ def parse_args() -> argparse.Namespace:
         help="show items matching configured stub patterns instead of dropping them",
     )
     parser.add_argument("--format", choices=("tsv", "json"), default="tsv")
-    return parser.parse_args()
-
-
-def load_config(vault_root: Path) -> Config:
-    config_path = vault_root / ".claude" / "obsidian-knowledge.yaml"
-    if config_path.exists():
-        with open(config_path, encoding="utf-8") as handle:
-            raw = yaml_module.safe_load(handle) or {}
-        return Config(
-            ai_managed=tuple(str(zone) for zone in raw.get("ai_managed", ("wiki",))),
-            stub_link_patterns=tuple(
-                str(pattern) for pattern in raw.get("stub_link_patterns", DEFAULT_STUB_PATTERNS)
-            ),
-        )
-    return Config()
+    return parser.parse_args(argv)
 
 
 def normalize_name(value: str) -> str:
@@ -103,7 +70,7 @@ def is_stub(link: str, patterns: Iterable[re.Pattern[str]]) -> bool:
     return bool(TEMPLATE_PLACEHOLDER.search(link) or any(pattern.search(link) for pattern in patterns))
 
 
-def managed_sources(item: UnresolvedItem, config: Config, vault_root: Path) -> tuple[str, ...]:
+def managed_sources(item: UnresolvedItem, config: OrganizerPolicy, vault_root: Path) -> tuple[str, ...]:
     prefixes = tuple(f"{zone.rstrip('/')}/" for zone in config.ai_managed)
     policy = OrganizerPolicy.load(vault_root)
     sources = []
@@ -129,6 +96,8 @@ def frontmatter_aliases(text: str) -> tuple[str, ...]:
         frontmatter = yaml_module.safe_load(text[4:end]) or {}
     except yaml_module.YAMLError:
         return ()
+    if not isinstance(frontmatter, dict):
+        return ()
     aliases = frontmatter.get("aliases", [])
     if isinstance(aliases, str):
         aliases = [aliases]
@@ -138,7 +107,7 @@ def frontmatter_aliases(text: str) -> tuple[str, ...]:
 
 
 def iter_notes(vault_root: Path) -> Iterable[NoteCandidate]:
-    for path in vault_root.rglob("*"):
+    for path in iter_paths(vault_root):
         if not path.is_file():
             continue
         rel_path = path.relative_to(vault_root).as_posix()
@@ -336,7 +305,7 @@ def replacement_for(decision: RecoveryDecision) -> str:
 
 
 def rewrite_source(vault_root: Path, source: str, old_link: str, new_target: str) -> int:
-    path = vault_root / source
+    path = OrganizerPolicy.load(vault_root).writable(vault_root, source)
     text = path.read_bytes().decode("utf-8")
     escaped = re.escape(old_link)
     pattern = re.compile(r"\[\[(" + escaped + r")(?P<suffix>[#^|\]])")
@@ -384,12 +353,14 @@ def emit(decisions: list[RecoveryDecision], output_format: str) -> None:
         )
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
     vault_root = resolve_vault(args.vault_root)
-    config = load_config(vault_root)
+    config = OrganizerPolicy.load(vault_root)
     patterns = tuple(re.compile(pattern) for pattern in config.stub_link_patterns)
     raw_items = json.load(sys.stdin)
+    if not isinstance(raw_items, list):
+        raise ValueError("unresolved input must be a JSON array")
     items = [UnresolvedItem.from_json(raw_item) for raw_item in raw_items]
     index = build_index(vault_root)
 
@@ -414,7 +385,3 @@ def main() -> None:
         print(f"# applied_rewrites\t{rewrites}")
 
     emit(decisions, args.format)
-
-
-if __name__ == "__main__":
-    main()

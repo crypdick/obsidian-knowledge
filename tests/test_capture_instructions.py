@@ -1,10 +1,11 @@
-"""Regression tests for durable-note capture instructions."""
+"""Regression tests for hook registration and durable-note capture instructions."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
+import pytest
 from hookslib.capture import build_reason, capture_session_key, main, resolve_capture_vault
 
 ROOT = Path(__file__).parents[1]
@@ -73,10 +74,17 @@ def test_manifests_register_one_capture_hook() -> None:
         if "capture" in hook["command"] or "changelog" in hook["command"] or "convos" in hook["command"]
     ]
 
-    # Keep one legacy kind in the manifest for new-plugin/old-CLI rolling
-    # compatibility. CLI 3.22.30+ dispatches it to capture-session.py.
-    assert codex_commands == ["obsidian-knowledge _hook stop --kind remind-convos --agent codex"]
+    assert codex_commands == ["obsidian-knowledge _hook stop --kind capture-session --agent codex"]
     assert claude_commands == ["python3 ${CLAUDE_PLUGIN_ROOT}/hooks/capture-session.py"]
+
+
+@pytest.mark.parametrize("manifest", ["hooks/codex-hooks.json", ".claude-plugin/plugin.json"])
+def test_session_start_requires_explicit_guard_installation(manifest: str) -> None:
+    config = json.loads(_read(manifest))
+    commands = [hook["command"] for group in config["hooks"]["SessionStart"] for hook in group["hooks"]]
+
+    assert commands
+    assert all("install-rules" not in command and "--install-guards" not in command for command in commands)
 
 
 def test_capture_policy_reverses_old_overcapture_defaults() -> None:
