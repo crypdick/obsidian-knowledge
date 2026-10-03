@@ -79,6 +79,8 @@ Vault organization requires the Obsidian CLI. In Obsidian, enable
 **Settings > General > Command line interface**, **Use [[Wikilinks]]**, and
 **Automatically update internal links**. Put naming conventions in your vault's
 `CLAUDE.md` and configure [managed zones](docs/configuration.md#vault-configuration).
+Maintenance tools ship in the CLI: run `obsidian-knowledge garden --help`.
+See [vault maintenance](docs/CLI.md#vault-maintenance) for audit and repair commands.
 
 Hooks provide session recall, selective memory capture, vault protection, and
 secret scanning. Direct overwrites, edits, and deletions of existing published

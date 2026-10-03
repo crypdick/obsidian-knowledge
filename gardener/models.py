@@ -28,12 +28,6 @@ DEFAULT_STUB_PATTERNS = [
 
 
 @dataclass(frozen=True)
-class Config:
-    ai_managed: tuple[str, ...] = ("wiki",)
-    stub_link_patterns: tuple[str, ...] = tuple(DEFAULT_STUB_PATTERNS)
-
-
-@dataclass(frozen=True)
 class UnresolvedItem:
     link: str
     count: str | int = 0

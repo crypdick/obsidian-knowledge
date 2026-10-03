@@ -67,7 +67,7 @@ accepts reviewed entries; it does not infer categories or descriptions:
 Pass reviewed entries as JSON:
 
 ```bash
-uv run "$SCRIPTS/edit-index.py" wiki/topic/index.md --apply < entries.json
+obsidian-knowledge garden index wiki/topic/index.md --apply < entries.json
 ```
 
 Omit `--apply` to preview. Supply `"title": "Topic"` instead of `section`

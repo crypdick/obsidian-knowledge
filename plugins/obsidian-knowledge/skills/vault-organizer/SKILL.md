@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.4.12
+version: 1.5.0
 ---
 
 # Vault organizer
@@ -18,13 +18,10 @@ reference only when its step applies.
 
 ## Setup
 
-Set `SCRIPTS` to the directory containing the loaded `SKILL.md`. Use that copy,
-not an arbitrary plugin cache or the working directory. Scripts declare their
-own dependencies; run them with `uv run`.
-
-Scripts default to the configured vault containing cwd, or the sole registered
-vault. Pass a vault root as the first argument to override it. When multiple
-vaults are configured and cwd selects none, an explicit root is required.
+Use the installed `obsidian-knowledge garden` commands. They default to the
+configured vault containing cwd, or the sole registered vault. Pass `--vault
+ROOT` to override it. When multiple vaults are configured and cwd selects none,
+an explicit root is required. All note paths are vault-relative.
 
 Read the vault's local instructions, `.claude/obsidian-knowledge.yaml`, and
 `Utility/obsidian-knowledge/needs-attention.md`. Set `VAULT_NAME` to its registered
@@ -33,13 +30,14 @@ it, the CLI can silently ignore the option. Enable automatic internal-link
 updates in Obsidian.
 
 Exclude hidden files, protected sources, and Syncthing sync conflicts from
-maintenance. Handle conflicts separately. Use `obsidian-knowledge write` for
-manual Markdown edits; its writer verifies the result. Helpers already use it.
+maintenance. Handle conflicts separately. Repairs refuse existing published
+notes; use the manual edit and human-consent workflow. Use `obsidian-knowledge
+write` for manual Markdown edits; its writer verifies the result.
 
 ## Structure
 
 ```bash
-uv run "$SCRIPTS/vault-audit.py"
+obsidian-knowledge garden audit
 ```
 
 Triage all findings:
@@ -51,7 +49,7 @@ Triage all findings:
   or delete folders automatically.
 - `DUMPING_GROUND`: classify misplaced dated, design, diary, and conversation
   notes by meaning. Follow [note locations](lib/note-types.md).
-- `STACKED_FRONTMATTER`: use `uv run "$SCRIPTS/fix-stacked-frontmatter.py" --fix NOTE_PATH`.
+- `STACKED_FRONTMATTER`: use `obsidian-knowledge garden frontmatter --apply NOTE_PATH`.
   `NEEDS_MERGE` requires [manual frontmatter repair](lib/stacked-frontmatter.md).
 
 Rename ambiguous files using [rename guidance](lib/rename-files.md).
@@ -60,7 +58,7 @@ Use Obsidian move and rename commands so internal links update.
 ## Links
 
 ```bash
-obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run "$SCRIPTS/recover-unresolved-links.py"
+obsidian vault="$VAULT_NAME" unresolved verbose format=json | obsidian-knowledge garden links
 ```
 
 Inspect the report. Add `--apply` for unique recoveries; triage remaining links
@@ -74,15 +72,14 @@ obsidian vault="$VAULT_NAME" orphans
 Add managed notes to their parent indexes where appropriate. Respect established
 exceptions and ignore orphans outside managed zones.
 
-## Conventions and reports
+## Question report
 
 ```bash
-uv run "$SCRIPTS/convention-sweep.py"
-uv run "$SCRIPTS/find-open-questions.py" --apply
+obsidian-knowledge garden questions --apply
 ```
 
 Fix `WIKILINK_EXT` (`.md` in note links), `UNDATED_FILE` (missing required date
-prefix), and `YAML_ERR`. The question report defaults to
+prefix), and `YAML_ERR` from the audit. The question report defaults to
 `Utility/obsidian-knowledge/reports/open-questions.md`, preserving its header,
 frontmatter, and scope. Use `--report` to preview or `--timestamp` to override
 current local time. With no flags, the scanner emits TSV.

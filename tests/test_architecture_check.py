@@ -21,6 +21,11 @@ CHECK = Path(__file__).resolve().parents[1] / "scripts/prek_hooks/check_architec
         ("hooks/doctor.py", "from vault_index.indexer import Indexer", True),
         ("lib/vault_index/indexer.py", "from ...hooks import doctor", False),
         ("lib/vault_index/models.py", "def broken(", False),
+        ("lib/vault_index/cli.py", "from gardener.cli import main", True),
+        ("lib/vault_index/indexer.py", "from gardener.cli import main", False),
+        ("hooks/hookslib/capture.py", "import gardener", False),
+        ("gardener/io.py", "from hookslib.patterns import parse_frontmatter", True),
+        ("gardener/io.py", "def broken(", False),
     ],
 )
 def test_import_boundary(tmp_path, filename, source, allowed):

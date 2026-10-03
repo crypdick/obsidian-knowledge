@@ -22,7 +22,7 @@ add the issue to the worklist rather than silently skipping it.
 
 ## Deterministic recovery and verification
 
-`recover-unresolved-links.py` defaults to reporting. Review before `--apply`.
+`obsidian-knowledge garden links` defaults to reporting. Review before `--apply`.
 It can recover a stale prefix only when removing leading path components leaves
 a unique existing suffix of at least `directory/name`. It never falls back from
 a path-shaped target to an unrelated basename. Existing directories are not
