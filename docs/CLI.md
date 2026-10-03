@@ -110,6 +110,10 @@ The default embedding service is Ollama at `http://127.0.0.1:11434`, using
 back to keyword retrieval. Install the model with `ollama pull bge-m3`, then
 reindex to add embeddings to keyword-indexed files.
 
+Models with the `ollama/` prefix use Ollama’s batch `/api/embed` endpoint directly,
+without importing LiteLLM. Other model identifiers retain memweave’s LiteLLM
+provider. LiteLLM remains installed because memweave requires it.
+
 `doctor` passes when the index is nonempty and each query returns a result.
 `PASS` alone does not confirm semantic ranking or that the intended note ranked
 first. Check `vector: enabled` and the printed top paths. The default sample

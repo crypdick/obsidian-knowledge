@@ -226,7 +226,7 @@ def test_full_reindex_writes_fingerprint(monkeypatch, vault: Path, cfg, tmp_path
     async def embed(self, texts):
         return [[1.0, 0.0] for _ in texts]
 
-    monkeypatch.setattr("memweave.embedding.provider.LiteLLMEmbeddingProvider._embed_one_batch", embed)
+    monkeypatch.setattr("lib.vault_index.embeddings.OllamaEmbeddingProvider.embed_batch", embed)
     cache_dir = tmp_path / "cache"
     idx = Indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
     idx.full_reindex()
@@ -256,7 +256,7 @@ def test_init_auto_rebuilds_on_embedder_change(monkeypatch, vault: Path, cfg, tm
         return vecs
 
     monkeypatch.setattr(
-        "memweave.embedding.provider.LiteLLMEmbeddingProvider._embed_one_batch",
+        "lib.vault_index.embeddings.OllamaEmbeddingProvider.embed_batch",
         _fake_embed_batch,
     )
     cache_dir = tmp_path / "cache"

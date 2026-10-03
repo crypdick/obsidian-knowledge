@@ -19,6 +19,10 @@ The following directories contain the shared components and host adapters:
 In the retrieval core, `config.py` defines Pydantic configuration models,
 `models.py` holds shared result types, `filters.py` handles path filtering and
 weights, and `indexer.py` wraps memweave's keyword and dense retrieval.
+`embeddings.py` supplies memweave providers: direct Ollama HTTP embeddings for
+`ollama/` models, an offline provider for keyword-only indexing, and the default
+LiteLLM provider for other model identifiers. Ollama and keyword-only paths never
+import LiteLLM.
 `vault_files.py` handles confined, verified writes. `mcp_server.py` exposes these
 file operations and bounded CLI search subprocesses over Streamable HTTP. Importing `lib` enables
 beartype runtime checks.
