@@ -22,12 +22,14 @@ there.
 3. Choose a descriptive name using the vault's `CLAUDE.md` conventions. Prefer
    dates from file content, then EXIF metadata, then the filename, then the
    parent folder. Omit the date when none is reliable.
-4. For a confident match, rename the file:
+4. For a confident match, record the original file's SHA-256, then rename it:
 
    ```bash
    obsidian vault="$VAULT_NAME" rename path="old/name.ext" name="new-name.ext"
    ```
 
-5. Verify the new path exists and the old path is gone. Search for the old name
+5. Verify the new path exists, its SHA-256 matches the original, and the old path
+   is gone. If content changed intentionally (such as orientation correction),
+   take the rename baseline after that change. Search for the old name
    and repair stale links. For low-confidence cases, add the proposed name and
    reasoning to `needs-attention.md` instead of renaming.

@@ -26,6 +26,29 @@ Dates, paths, extensions, and missing embeds usually indicate expected files.
 A bare concept such as `[[anxiety]]` might be an intentional stub. When uncertain,
 add the issue to the worklist rather than silently skipping it.
 
+## Deterministic recovery and verification
+
+`recover-unresolved-links.py` defaults to reporting. Review before `--apply`.
+It can recover a stale prefix only when removing leading path components leaves
+a unique existing suffix of at least `directory/name`. It never falls back from
+a path-shaped target to an unrelated basename. Existing directories are not
+note candidates. Attachments require exact filenames, including extensions;
+normalized and fuzzy comparisons apply only to Markdown notes.
+
+Hidden paths, dependency directories, sync conflicts, and symlinks are excluded
+from candidates. Sources must be visible managed Markdown notes outside
+`_sources/` and configured read-only paths. Apply rechecks write policy and
+delegates to the verified writer; aliases, heading and block suffixes survive.
+
+Before repair, retain exact source bytes as a baseline. After repair, compare
+the diff and confirm only intended link targets changed. Primary prose, aliases,
+headings, block references, and frontmatter must remain intact. Then obtain
+fresh `obsidian vault="$VAULT_NAME" unresolved verbose format=json` results and
+confirm each repaired target disappeared from the relevant source's findings.
+If file contents and CLI results disagree, reload Obsidian with
+`obsidian vault="$VAULT_NAME" command id="app:reload"` and retry after it loads.
+Review fresh orphan results too; unrelated totals can change during sync.
+
 ## Orphans
 
 Run `obsidian vault="$VAULT_NAME" orphans`. Add managed-zone orphans to their

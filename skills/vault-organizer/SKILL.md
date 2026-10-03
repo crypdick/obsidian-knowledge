@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.4.10
+version: 1.4.11
 ---
 
 # Vault organizer
@@ -80,6 +80,10 @@ Use the issue codes to select the repair instructions.
 
 **`NOT_INDEXED <index> entry=<name>`**: Add the entry. Read `lib/index-format.md`.
 
+**`EMPTY_FOLDER <folder>`**: Triage separately. Do not create an empty index or
+delete the folder. Sync arrivals, runtime directories, and established memory
+layouts can explain it. Check local instructions before proposing a repair.
+
 **`DUMPING_GROUND <folder> misplaced=N inline_total=T subfolders=M`**: Classify
 the misplaced inline files, which have date prefixes or `*-design`, `*-convo`,
 or `*-diary` names, and move them to typed subfolders. Read `lib/note-types.md`
@@ -101,13 +105,15 @@ After structural fixes, rename ambiguous non-Markdown files. Read `lib/rename-fi
 
 ```bash
 obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run --no-project --with pyyaml python "$SCRIPTS/filter-unresolved-links.py" "$VAULT"
-obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run --no-project --with pyyaml python "$SCRIPTS/recover-unresolved-links.py" "$VAULT" > /tmp/vault-unresolved-recovery.tsv
+obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run --no-project --with pyyaml --with pydantic python "$SCRIPTS/recover-unresolved-links.py" "$VAULT" > /tmp/vault-unresolved-recovery.tsv
 obsidian vault="$VAULT_NAME" orphans
 ```
 
 Read [broken-link triage](lib/broken-links.md) for each remaining candidate.
 Review the recovery report before using `recover-unresolved-links.py --apply`;
-it changes only unique, high-confidence matches.
+it changes only unique, high-confidence matches. Preserve aliases, headings,
+block references, and all text outside link targets. Read the verification
+checks in `lib/broken-links.md` before applying repairs.
 
 ### Fix convention violations
 
@@ -130,18 +136,26 @@ Only the organizer writes this worklist.
 
 ### Regenerate reports
 
-Rewrite `$VAULT/Utility/obsidian-knowledge/reports/open-questions.md` from scratch:
+Render `$VAULT/Utility/obsidian-knowledge/reports/open-questions.md` for review:
 
 ```bash
-uv run --no-project --with pyyaml python "$SCRIPTS/find-open-questions.py" "$VAULT"
+uv run --no-project --with pyyaml --with pydantic python "$SCRIPTS/find-open-questions.py" "$VAULT" \
+  --report Utility/obsidian-knowledge/reports/open-questions.md > /tmp/open-questions-review.md
 ```
 
-Output is `<rel_path>\t<line>\t<question_text>` per question. Code-block examples
-are filtered automatically. Build one entry per line:
-`- [[wiki/path/to/page]] — line N — "question text"`
+Review the rendered file, then repeat with `--apply`. The renderer preserves
+frontmatter, heading, regeneration notice, and scope. It changes only the entry
+list and `Last run:` timestamp. Use `--timestamp` with a timezone-aware ISO value
+for repeatable output; the default is current local time. Without `--report`,
+output remains `<rel_path>\t<line>\t<question_text>` per question. Fenced examples,
+hidden files, protected sources, and sync conflicts are excluded.
 
-Preserve the existing heading, regeneration notice, and scope section. Change
-only the entry list and `Last run:` timestamp.
+### Verify completed repairs
+
+Re-run the structural audit and obtain fresh Obsidian unresolved and orphan
+results. Check repaired targets and files individually; a lower total count
+does not prove a repair. If CLI results disagree with verified file contents,
+refresh Obsidian's cache and repeat. Record remaining exceptions in the worklist.
 
 ### Update the worklist
 
