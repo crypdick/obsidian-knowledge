@@ -12,6 +12,23 @@ from gardener.questions import QuestionHit, render_report, scan_file
 
 
 @pytest.mark.parametrize(
+    ("operation", "argument"),
+    [
+        ("audit", "--vault"),
+        ("links", "--format"),
+        ("index", "index_path"),
+        ("questions", "--timestamp"),
+        ("frontmatter", "paths"),
+    ],
+)
+def test_operation_help_exposes_its_arguments(operation: str, argument: str, capsys) -> None:
+    with pytest.raises(SystemExit) as error:
+        main([operation, "--help"])
+    assert error.value.code == 0
+    assert argument in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
     ("content", "stacked"),
     [
         ("", False),

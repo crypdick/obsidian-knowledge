@@ -40,7 +40,7 @@ functions pass the Ruff complexity ceiling. Tests run without an embedding servi
 | `hooks/hookslib` | 100% | A | Shared behavior tests; small modules |
 | Hook entrypoints | 100% | A | Subprocess coverage included; neutral checker behavior matrix |
 | Gardener commands | 100% | A | Installed CLI behavior, conservative recovery, scan exclusions, and protected-write regressions |
-| Overall | 100% | A | 774 tests pass; 3,318 statements and 1,126 branches covered |
+| Overall | 100% | A | Every measured statement and branch covered; tests exercise public behavior |
 
 Use `uv run pytest --no-cov` for targeted tests and `uv run prek run pytest`
 for coverage. The latter writes missing lines and branches to `coverage.json`,

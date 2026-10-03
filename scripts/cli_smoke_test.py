@@ -138,7 +138,7 @@ def exercise(executable: str, root: Path) -> None:
 def exercise_garden(vault: Path, run: Callable[..., str]) -> None:
     """Exercise bundled gardener modules through the installed executable."""
     for operation in ("audit", "links", "index", "questions", "frontmatter"):
-        run("garden", operation, "--help")
+        assert "--vault" in run("garden", operation, "--help")
 
     folder = vault / "wiki/garden-smoke"
     folder.mkdir()
