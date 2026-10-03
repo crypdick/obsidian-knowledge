@@ -209,13 +209,62 @@ def test_conventions_do_not_apply_outside_vault(tmp_path):
         ("feedback_x.md", True),
         ("project_x.md", True),
         ("reference_x.md", True),
-        ("user_profile.md", False),
-        ("MEMORY.md", False),
+        ("user_profile.md", True),
+        ("MEMORY.md", True),
+        ("nested/fact.md", True),
     ],
 )
 def test_memory_routing(tmp_path, basename, blocked):
     event = file_event(tmp_path, f".claude/projects/slug/memory/{basename}")
     assert (json.loads(run_check(tmp_path, "memory-routing", event).stdout) is not None) is blocked
+
+
+@pytest.mark.parametrize("operation", ["write", "edit", "delete"])
+@pytest.mark.parametrize("path", [".codex/memories/MEMORY.md", ".codex/memories/rollout_summaries/fact.md"])
+def test_codex_memory_routing(tmp_path, path, operation):
+    event = file_event(tmp_path, path, operation=operation)
+    assert json.loads(run_check(tmp_path, "memory-routing", event).stdout) is not None
+
+
+def test_memory_routing_honors_codex_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "custom-codex"))
+    event = file_event(tmp_path, "custom-codex/memories/MEMORY.md")
+    assert json.loads(run_check(tmp_path, "memory-routing", event).stdout) is not None
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "MEMORY.md",
+        "wiki/repos/owner/repo/memory/MEMORY.md",
+        ".codex/memories-backup/note.md",
+        ".claude/projects/slug/memory-backup/note.md",
+    ],
+)
+def test_memory_routing_allows_other_destinations(tmp_path, path):
+    assert json.loads(run_check(tmp_path, "memory-routing", file_event(tmp_path, path)).stdout) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "printf fact > .claude/projects/slug/memory/MEMORY.md",
+        "cat <<'NOTE' >> .codex/memories/MEMORY.md\nfact\nNOTE",
+        "sed -i 's/old/new/' .codex/memories/MEMORY.md",
+        "printf fact | tee .codex/memories/MEMORY.md",
+    ],
+)
+def test_shell_memory_routing(tmp_path, command):
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": command, "changes": []}
+    assert json.loads(run_check(tmp_path, "memory-routing", event).stdout) is not None
+
+
+@pytest.mark.parametrize(
+    "command", ["cat .codex/memories/MEMORY.md", "printf fact > wiki/repos/owner/repo/memory/MEMORY.md"]
+)
+def test_shell_memory_routing_allows_reads_and_vault_writes(tmp_path, command):
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": command, "changes": []}
+    assert json.loads(run_check(tmp_path, "memory-routing", event).stdout) is None
 
 
 @pytest.mark.parametrize("installed_version", [None, "0.3.3", "0.4.0"])

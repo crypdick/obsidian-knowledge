@@ -14,7 +14,7 @@ The tool-call guard applies these rules:
 | `_sources/` directories | Block writes, renames, moves, and deletion of original files. Reading is allowed. |
 | Files with `dg-publish: true` | Block overwrites, edits, and deletions of existing published files without human consent. New files use the publish-allowlist rule. |
 | Vault paths in destructive commands | Block recognized destructive operations, including recursive removal and moves. |
-| Built-in project auto-memory | Redirect operational knowledge to the wiki. |
+| Claude and Codex native memory stores | Block modifications and redirect knowledge to the wiki. |
 
 Codex and Claude use [i-insist](https://github.com/crypdick/i-insist) to execute
 provider-owned rules. Guard installation is opt-in: use
@@ -74,6 +74,23 @@ Repository memory lives in `wiki/repos/<owner>/<repo>/memory/`; outside a
 repository, it lives in `wiki/systems/machines/<hostname>/memory/`.
 Each directory contains a small `MEMORY.md` index linked to individual facts.
 Shared profile memory uses `wiki/systems/knowledge-base/index.md`.
+
+The memory-routing guard blocks modifications anywhere under
+`~/.claude/projects/*/memory/` and `~/.codex/memories/`, including `MEMORY.md`
+and individual fact files. A custom `CODEX_HOME` is respected. Vault memory
+indexes remain writable. Recognized shell writes, including redirects, `tee`,
+and `sed -i`, use the same rule; arbitrary script bodies remain opaque.
+
+Codex native memory runs separately from plugin recall and capture. To use this
+plugin as your memory source without competing native-memory instructions,
+disable Codex native memory explicitly:
+
+```bash
+codex features disable memories
+```
+
+Restart Codex afterward. This preserves existing native memory files. Plugin
+setup and lifecycle hooks do not change this preference.
 
 The capture reminder invokes `remember-conversations` only for reusable
 knowledge that is not already available elsewhere. It also requests repairs to
