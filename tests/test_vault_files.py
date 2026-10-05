@@ -116,6 +116,40 @@ def test_write_refuses_empty_content_and_unintended_overwrite(tmp_path: Path) ->
     assert read_vault_file(vault, Path("wiki/note.md")) == b"second\n"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "wiki/Utility",
+        "wiki/Utility/obsidian-knowledge/changelog/session.md",
+        "wiki/topic/../Utility/obsidian-knowledge/state.md",
+    ],
+)
+def test_write_rejects_misplaced_utility_before_creating_directories(tmp_path: Path, path: str) -> None:
+    with pytest.raises(ValueError, match="Utility paths must be vault-relative"):
+        write_vault_file(tmp_path, Path(path), b"changelog\n")
+    assert not (tmp_path / "wiki").exists()
+
+
+def test_utility_write_is_anchored_to_vault_from_wiki_cwd(tmp_path: Path, monkeypatch) -> None:
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    monkeypatch.chdir(wiki)
+
+    target = write_vault_file(tmp_path, Path("Utility/obsidian-knowledge/changelog/session.md"), b"entry\n")
+
+    assert target == tmp_path / "Utility" / "obsidian-knowledge" / "changelog" / "session.md"
+    assert target.read_bytes() == b"entry\n"
+    assert not (wiki / "Utility").exists()
+
+
+def test_misplaced_utility_remains_readable_for_recovery(tmp_path: Path) -> None:
+    old = tmp_path / "wiki" / "Utility" / "obsidian-knowledge" / "old.md"
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"preserved\n")
+
+    assert read_vault_file(tmp_path, Path("wiki/Utility/obsidian-knowledge/old.md")) == b"preserved\n"
+
+
 def test_write_fails_if_final_filesystem_bytes_do_not_match(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -171,3 +205,18 @@ def test_write_closes_descriptor_and_removes_temporary_file_when_open_fails(
     with pytest.raises(OSError, match="synthetic fdopen failure"):
         write_vault_file(vault, Path("wiki/note.md"), b"content\n")
     assert list((vault / "wiki").iterdir()) == []
+
+
+def test_bounded_read_accepts_limit_and_rejects_overflow(tmp_path):
+    target = tmp_path / "file.bin"
+    target.write_bytes(b"\x00\xff\x80")
+    assert read_vault_file(tmp_path, Path("file.bin"), max_bytes=3) == b"\x00\xff\x80"
+    with pytest.raises(ValueError, match="exceeds"):
+        read_vault_file(tmp_path, Path("file.bin"), max_bytes=2)
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+def test_bounded_read_rejects_invalid_limit(tmp_path, limit):
+    (tmp_path / "file.bin").touch()
+    with pytest.raises(ValueError, match="positive"):
+        read_vault_file(tmp_path, Path("file.bin"), max_bytes=limit)

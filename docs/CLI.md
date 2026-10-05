@@ -20,10 +20,12 @@ install the Claude plugin when `claude` is on `PATH`. Rerun setup after fixing
 an error; completed steps are not rolled back. Its default deadline is
 300 seconds. Increase it with `--timeout-seconds 900` for a large vault.
 
-Commands accept `--vault` except the private `_hook` dispatcher. Without it,
-they select the registered vault containing the working directory, then the
+Vault commands accept `--vault`. Without it, retrieval and file commands
+select the registered vault containing the working directory, then the
 first registered vault. With no registry, they use the working directory for
 backward compatibility. A malformed registry is an error, not a fallback.
+Gardener commands instead require the enclosing registered vault, a sole
+registered vault, or an explicit `--vault`; they refuse an ambiguous selection.
 
 ## Commands
 
@@ -40,6 +42,7 @@ Use these commands to configure, search, and maintain the vault:
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
 | `papercut DESCRIPTION` | Append workflow friction to the repository's vault log, or the global log if no repository is identified. |
 | `doctor [--query TEXT] [--top-k N] [--digest-only]` | Report index rows, semantic availability, and sample retrieval results. Repeat `--query` for multiple checks. |
+| `garden OPERATION [--vault PATH]` | Audit vault structure and conventions, recover links, edit reviewed indexes, report questions, or repair frontmatter. See [vault maintenance](#vault-maintenance). |
 | `_hook EVENT [--kind KIND] [--agent claude\|codex]` | Private JSON-on-stdin interface for host hook manifests. |
 
 `PATH`, `QUERY`, `TEXT`, `DESCRIPTION`, `EVENT`, and `KIND` are placeholders for
@@ -106,6 +109,10 @@ The default embedding service is Ollama at `http://127.0.0.1:11434`, using
 `bge-m3`. If it is unavailable or the model is absent, indexing and search fall
 back to keyword retrieval. Install the model with `ollama pull bge-m3`, then
 reindex to add embeddings to keyword-indexed files.
+
+Models with the `ollama/` prefix use Ollama’s batch `/api/embed` endpoint directly,
+without importing LiteLLM. Other model identifiers retain memweave’s LiteLLM
+provider. LiteLLM remains installed because memweave requires it.
 
 `doctor` passes when the index is nonempty and each query returns a result.
 `PASS` alone does not confirm semantic ranking or that the intended note ranked
@@ -190,6 +197,44 @@ and locks the log during writes.
 The log directory and lock file must be writable. If access is blocked, use
 the host's approved permission mechanism. If access remains unavailable, report
 the failure once and continue; do not log a failed papercut with another papercut.
+
+## Vault maintenance
+
+Gardener commands ship with the installed CLI. They do not require executable
+scripts from a plugin cache. Use `obsidian-knowledge garden --help` to list
+operations, or `obsidian-knowledge garden OPERATION --help` for their arguments.
+
+| Operation | Behavior |
+| --- | --- |
+| `audit` | Report structure, index, stacked-frontmatter, and convention findings. Structural checks use configured managed zones; content checks cover visible vault Markdown. Findings do not change files or cause a nonzero exit. |
+| `links [--format tsv\|json] [--include-stubs] [--apply]` | Read unresolved-link JSON from stdin. Filter intentional stubs and unmanaged sources; classify recoveries. Apply only unique recoveries; report ambiguous and fuzzy candidates for review. |
+| `index PATH [--apply]` | Read reviewed JSON entries from stdin and render an index section. Preserve unrelated sections and prose; require a vault-relative `index.md` path. |
+| `questions [--report] [--timestamp ISO_TIME] [--apply]` | Scan managed Markdown for question callouts. Default output is TSV; `--report` previews the standard Markdown report. `--apply` writes `Utility/obsidian-knowledge/reports/open-questions.md`. |
+| `frontmatter PATH... [--apply]` | Preview removal of stray stacked frontmatter markers. Real second YAML blocks require a manual merge and return nonzero. Paths must be vault-relative Markdown files. |
+
+Repairs default to previews. Add `--apply` after reviewing the output.
+Maintenance excludes hidden files, dependency directories, protected sources,
+Syncthing conflicts, and symlinks. Writes require a managed path, respect
+configured read-only paths, reject changed baselines, and use the verified
+atomic writer. The standard question report is an allowed derivative state path.
+Repairs refuse existing published notes (`dg-publish: true`); use the manual
+edit and consent workflow described in [vault protection](hooks.md#vault-protection).
+Malformed frontmatter also requires manual repair before applying changes.
+
+```bash
+obsidian-knowledge garden audit
+obsidian-knowledge garden frontmatter wiki/example.md
+obsidian-knowledge garden questions --report
+```
+
+Link recovery still needs the Obsidian CLI to supply unresolved links:
+
+```bash
+obsidian vault="My Vault" unresolved verbose format=json | obsidian-knowledge garden links
+```
+
+Use Obsidian's move and rename commands for structural changes so it updates
+internal links. The vault-organizer skill describes triage and index review.
 
 ## Verification
 

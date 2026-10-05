@@ -10,11 +10,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-CAPTURE_HOOK = PLUGIN_ROOT / "hooks" / "capture-session.py"
-LEGACY_HOOKS = (
-    PLUGIN_ROOT / "hooks" / "update-changelog.py",
-    PLUGIN_ROOT / "hooks" / "remind-convos.py",
-)
+CAPTURE_KIND = "capture-session"
+COMPATIBILITY_KINDS = ("update-changelog", "remind-convos")
 
 
 def _transcript(tmp_path: Path, messages: int) -> Path:
@@ -27,14 +24,14 @@ def _transcript(tmp_path: Path, messages: int) -> Path:
     return path
 
 
-def _run(hook: Path, payload: dict, *, cwd: Path, env: dict) -> dict:
+def _run(kind: str, payload: dict, *, cwd: Path, env: dict) -> dict:
     result = subprocess.run(
-        [sys.executable, str(hook)],
+        [sys.executable, "-m", "lib.vault_index.cli", "_hook", "stop", "--kind", kind],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
         cwd=cwd,
-        env=env,
+        env={**env, "PYTHONPATH": str(PLUGIN_ROOT)},
         check=False,
     )
     assert result.returncode == 0, result.stderr
@@ -54,7 +51,7 @@ def test_capture_hook_uses_sole_configured_vault_from_repo_cwd(tmp_path, subproc
     outside = tmp_path / "outside"
     outside.mkdir()
 
-    output = _run(CAPTURE_HOOK, _payload(tmp_path), cwd=outside, env=env)
+    output = _run(CAPTURE_KIND, _payload(tmp_path), cwd=outside, env=env)
 
     assert output["decision"] == "block"
     assert str(vault / "Utility" / "obsidian-knowledge" / "changelog") in output["reason"]
@@ -66,7 +63,7 @@ def test_capture_hook_is_silent_without_a_configured_vault(tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
 
-    assert _run(CAPTURE_HOOK, _payload(tmp_path), cwd=outside, env={"HOME": str(home)}) == {}
+    assert _run(CAPTURE_KIND, _payload(tmp_path), cwd=outside, env={"HOME": str(home)}) == {}
 
 
 def test_capture_hook_does_not_guess_between_multiple_vaults(tmp_path):
@@ -81,13 +78,13 @@ def test_capture_hook_does_not_guess_between_multiple_vaults(tmp_path):
     outside.mkdir()
     (config / "vaults.yaml").write_text(f"vaults:\n  - {first}\n  - {second}\n")
 
-    assert _run(CAPTURE_HOOK, _payload(tmp_path), cwd=outside, env={"HOME": str(home)}) == {}
+    assert _run(CAPTURE_KIND, _payload(tmp_path), cwd=outside, env={"HOME": str(home)}) == {}
 
 
 def test_capture_hook_emits_selective_gate_inside_vault(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
 
-    output = _run(CAPTURE_HOOK, _payload(tmp_path), cwd=vault, env=env)
+    output = _run(CAPTURE_KIND, _payload(tmp_path), cwd=vault, env=env)
 
     assert output["decision"] == "block"
     reason = output["reason"]
@@ -105,8 +102,8 @@ def test_same_user_message_generation_emits_once(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
     payload = _payload(tmp_path)
 
-    first = _run(CAPTURE_HOOK, payload, cwd=vault, env=env)
-    second = _run(CAPTURE_HOOK, payload, cwd=vault, env=env)
+    first = _run(CAPTURE_KIND, payload, cwd=vault, env=env)
+    second = _run(CAPTURE_KIND, payload, cwd=vault, env=env)
 
     assert first["decision"] == "block"
     assert second == {}
@@ -117,19 +114,21 @@ def test_new_user_message_allows_new_capture_decision(tmp_path, subprocess_vault
     payload = _payload(tmp_path)
     transcript = Path(payload["transcript_path"])
 
-    assert _run(CAPTURE_HOOK, payload, cwd=vault, env=env)["decision"] == "block"
+    assert _run(CAPTURE_KIND, payload, cwd=vault, env=env)["decision"] == "block"
     with transcript.open("a") as handle:
         handle.write(json.dumps({"type": "user", "message": {"content": "new message"}}) + "\n")
 
-    assert _run(CAPTURE_HOOK, payload, cwd=vault, env=env)["decision"] == "block"
+    assert _run(CAPTURE_KIND, payload, cwd=vault, env=env)["decision"] == "block"
 
 
-def test_legacy_aliases_share_one_capture_claim(tmp_path, subprocess_vault):
+def test_cli_compatibility_aliases_share_one_capture_claim(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
     payload = _payload(tmp_path)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        outputs = list(executor.map(lambda hook: _run(hook, payload, cwd=vault, env=env), LEGACY_HOOKS))
+        outputs = list(
+            executor.map(lambda kind: _run(kind, payload, cwd=vault, env=env), COMPATIBILITY_KINDS)
+        )
 
     assert sum(output.get("decision") == "block" for output in outputs) == 1
 
@@ -137,26 +136,28 @@ def test_legacy_aliases_share_one_capture_claim(tmp_path, subprocess_vault):
 def test_stop_hook_continuation_is_silent(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
 
-    assert _run(CAPTURE_HOOK, _payload(tmp_path, active=True), cwd=vault, env=env) == {}
+    assert _run(CAPTURE_KIND, _payload(tmp_path, active=True), cwd=vault, env=env) == {}
 
 
 def test_missing_transcript_claims_once_per_session(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
     payload = {"session_id": f"capture-no-transcript-{uuid.uuid4()}"}
 
-    first = _run(CAPTURE_HOOK, payload, cwd=vault, env=env)
-    second = _run(CAPTURE_HOOK, payload, cwd=vault, env=env)
+    first = _run(CAPTURE_KIND, payload, cwd=vault, env=env)
+    second = _run(CAPTURE_KIND, payload, cwd=vault, env=env)
 
     assert first["decision"] == "block"
     assert second == {}
 
 
-def test_missing_transcript_legacy_aliases_claim_atomically(tmp_path, subprocess_vault):
+def test_cli_compatibility_aliases_without_transcript_claim_atomically(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
     payload = {"session_id": f"capture-no-transcript-race-{uuid.uuid4()}"}
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        outputs = list(executor.map(lambda hook: _run(hook, payload, cwd=vault, env=env), LEGACY_HOOKS))
+        outputs = list(
+            executor.map(lambda kind: _run(kind, payload, cwd=vault, env=env), COMPATIBILITY_KINDS)
+        )
 
     assert sum(output.get("decision") == "block" for output in outputs) == 1
 
@@ -184,12 +185,12 @@ def test_codex_hook_and_goal_continuations_do_not_rearm_capture(tmp_path, subpro
 
     transcript.write_text("")
     append_user("Please review the code")
-    assert _run(CAPTURE_HOOK, payload, cwd=vault, env=env)["decision"] == "block"
+    assert _run(CAPTURE_KIND, payload, cwd=vault, env=env)["decision"] == "block"
     append_user('<hook_prompt hook_run_id="stop:1">Capture once</hook_prompt>')
     append_user('<codex_internal_context source="goal">Continue</codex_internal_context>')
-    assert _run(CAPTURE_HOOK, payload, cwd=vault, env=env) == {}
+    assert _run(CAPTURE_KIND, payload, cwd=vault, env=env) == {}
     append_user("Here is a new decision to remember")
-    assert _run(CAPTURE_HOOK, payload, cwd=vault, env=env)["decision"] == "block"
+    assert _run(CAPTURE_KIND, payload, cwd=vault, env=env)["decision"] == "block"
 
 
 def test_capture_without_transcript_does_not_rearm_when_time_passes(monkeypatch):

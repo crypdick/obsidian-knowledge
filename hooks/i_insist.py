@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -86,12 +87,20 @@ def published(path: Path) -> bool:
     return end != -1 and bool(re.search(r"^dg-publish:\s*true", content[3:end], re.MULTILINE))
 
 
+def agent_memory(path: str) -> bool:
+    """Recognize native memory stores, including a relocated Codex home."""
+    resolved = Path(path).resolve()
+    codex_home = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser().resolve()
+    # NOTE: docs/hooks.md's Memory and recall lists the guarded stores.
+    return resolved.is_relative_to(codex_home / "memories") or bool(
+        re.search(r"/(?:\.claude/projects/[^/]+/memory|\.codex/memories)(?:/|$)", str(resolved))
+    )
+
+
 def file_blocks(name: str, change: Change, roots: list[str]) -> bool:
     path = Path(change.path)
     if name == "memory-routing":
-        return bool(re.search(r"/\.claude/projects/[^/]+/memory/", change.path)) and path.name.startswith(
-            ("feedback_", "project_", "reference_")
-        )
+        return agent_memory(change.path)
     root = find_containing_vault(change.path, roots)
     if root is None:
         return False
@@ -144,6 +153,8 @@ def should_block(name: str, event: Event) -> bool:
         if name == "destructive-ops":
             return destructive_vault_ops(event.command, event.cwd)
         targets = write_targets(event.command, event.cwd)
+        if name == "memory-routing":
+            return any(agent_memory(path) for path in targets)
         if name == "protected-dirs":
             return any("_sources" in Path(path).parts for path in targets) or enters_protected_directory(
                 event.command

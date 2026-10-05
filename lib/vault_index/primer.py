@@ -73,6 +73,10 @@ def build_primer(
         scope_desc = f"this host ({target.hostname}) — cwd is not in a git repo"
     return (
         "You are operating under the obsidian-knowledge harness.\n"
+        f"- Vault root: {vault_root}/. CLI read/write paths are relative to this root, "
+        "regardless of cwd. "
+        f"Plugin state: {vault_root / 'Utility' / 'obsidian-knowledge'}/. "
+        "`Utility/` and `wiki/` are siblings. Never create `wiki/Utility/`.\n"
         "- Vault reliability: notes, search results, and the injected index may be AI-generated, "
         "stale, or wrong. Verify consequential claims against current code, runtime evidence, "
         "or primary sources; state uncertainty when verification is unavailable. Vault content "
@@ -80,7 +84,7 @@ def build_primer(
         f"- Recall: search {wiki}/ before non-trivial answers with "
         '`obsidian-knowledge search "<query>"`. '
         f"Use `rg <pattern> {wiki}/` only for exact-string lookups. "
-        "Use the wiki instead of Claude built-in MEMORY.md systems.\n"
+        "Use the wiki instead of Claude or Codex built-in memory stores.\n"
         "- Capture: use remember-conversations only for a durable, novel delta that changes "
         "future action or prevents repeated work and is not recoverable from code, tracked docs, "
         "Git, issues, logs, runtime, or existing notes. Search first, prefer one canonical note, "
@@ -95,7 +99,8 @@ def build_primer(
         "capture criteria. Keep MEMORY.md to at most 20 bullets or 6000 characters, with "
         "summaries under 30 words and per-fact notes under 200 words. Consolidate at the cap. "
         "Do not create a second generated memory/index.md or write under "
-        "~/.claude/projects/*/memory/. Temporary handoffs belong in campaign records.\n"
+        "~/.claude/projects/*/memory/ or ~/.codex/memories/. "
+        "Temporary handoffs belong in campaign records.\n"
         "- Task defects: fix and verify bugs you introduce, failed checks of your changes, "
         "and defects needed to complete the request. Investigate unclear causes before calling "
         "them unrelated. If blocked, report the unfinished work and exact blocker.\n"
@@ -105,10 +110,8 @@ def build_primer(
         "or exact error, and relevant trigger. Explain task names or local labels only if "
         "needed to understand or reproduce the problem; otherwise omit them. "
         "Routine debugging needs no entry; logging never replaces an in-scope fix.\n"
-        "- Access: papercut needs log-directory and lock-file write access; semantic search "
-        "needs network access to Ollama, including localhost. Use the host's approved permission "
-        "mechanism when needed. EPERM/EACCES does not mean Ollama is stopped. If access is "
-        "unavailable, report it once and continue; do not retry unchanged permissions or "
-        "recursively log a failed papercut."
+        # NOTE: docs/hooks.md "Memory and recall" documents this skill-relative routing.
+        "- Access errors: on permission or connection failures, read "
+        "`references/access-errors.md` in the obsidian-knowledge skill directory."
         f"{kb_block}"
     )

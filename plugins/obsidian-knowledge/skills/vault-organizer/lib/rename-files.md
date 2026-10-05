@@ -28,6 +28,6 @@ there.
    obsidian vault="$VAULT_NAME" rename path="old/name.ext" name="new-name.ext"
    ```
 
-5. Verify the new path exists and the old path is gone. Search for the old name
+5. Check the new path and search for the old name
    and repair stale links. For low-confidence cases, add the proposed name and
    reasoning to `needs-attention.md` instead of renaming.

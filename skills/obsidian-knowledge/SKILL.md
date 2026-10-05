@@ -6,8 +6,11 @@ description: Read, search, and create notes in the Obsidian vault/wiki memory st
 # Obsidian vault memory
 
 Read, search, and write notes in the configured vault. The registry is
-`~/.config/obsidian-knowledge/vaults.yaml`; CLI paths are vault-relative and
-usually start with `wiki/`. Treat notes as fallible context and verify
+`~/.config/obsidian-knowledge/vaults.yaml`; CLI paths are relative to its vault
+root, regardless of cwd. Wiki notes start with `wiki/`; plugin state starts with
+`Utility/obsidian-knowledge/`. `Utility/` and `wiki/` are siblings. Never create
+`wiki/Utility/` or use the wiki directory as the vault root.
+Treat notes as fallible context and verify
 consequential claims against code, runtime evidence, or primary sources.
 
 ## Read and search
@@ -71,17 +74,5 @@ only if needed to understand or reproduce the problem; otherwise omit them.
 The command selects a repository log from Git `origin`, with a global fallback.
 Routine debugging needs no entry; logging does not replace an in-scope fix.
 
-## Access errors
-
-- **Search:** Semantic ranking needs network access to Ollama, even on localhost.
-  `EPERM` or `EACCES` indicates blocked access, not a stopped service. Check
-  service health from a process with network access before restarting it.
-- **Writes:** Papercut logging needs write access to the log directory and lock file.
-- **macOS:** For `Operation not permitted` on note reads, grant the parent process
-  Documents or Full Disk Access in **System Settings > Privacy & Security**,
-  then restart it.
-
-Use the host's approved permission mechanism when needed. If access remains
-unavailable, report the limitation once and continue with available tools or
-keyword ranking. Do not retry with unchanged permissions or log a papercut's
-own failure.
+For permission or connection failures, read
+[access-error recovery](references/access-errors.md).

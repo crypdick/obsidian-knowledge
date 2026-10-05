@@ -45,6 +45,8 @@ knowledge and behavioral rules belong in the wiki.
 
 Only after changing durable vault content, create or reuse one same-session file:
 `Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`.
+This path is relative to the configured vault root, regardless of cwd.
+Pass it unchanged to `obsidian-knowledge write`; never prepend `wiki/`.
 Use terse audit pointers: `YYYY-MM-DD HH:MM — <vault change> [→ [[wikilink]]]`.
 Do not log code, Git, host, test, release, or deployment work alone. Include no
 narrative or code blocks, and do not update a shared changelog index.

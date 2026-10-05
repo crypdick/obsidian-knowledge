@@ -19,11 +19,29 @@ def test_build_primer_mentions_wiki_path(tmp_path: Path):
     assert "wiki" in text.lower()
 
 
+def test_build_primer_anchors_utility_outside_wiki(tmp_path: Path):
+    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+
+    assert f"Vault root: {tmp_path}/" in text
+    assert f"Plugin state: {tmp_path / 'Utility' / 'obsidian-knowledge'}/" in text
+    assert "Never create `wiki/Utility/`" in text
+
+
 def test_build_primer_instructs_agents_to_log_papercuts(tmp_path: Path):
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
 
     assert "obsidian-knowledge papercut" in text
     assert "/improve-harness" not in text
+
+
+def test_build_primer_defers_access_recovery_to_skill(tmp_path: Path):
+    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+
+    assert "obsidian-knowledge skill" in text
+    assert "references/access-errors.md" in text
+    assert "Ollama" not in text
+    assert "EPERM" not in text
+    assert "EACCES" not in text
 
 
 def test_build_primer_keeps_capture_and_memory_selective(tmp_path: Path):

@@ -2,13 +2,7 @@
 
 ## Unresolved links
 
-Use the vault and script paths set in the organizer skill:
-
-```bash
-obsidian vault="$VAULT_NAME" unresolved verbose format=json | uv run --no-project --with pyyaml python "$SCRIPTS/filter-unresolved-links.py" "$VAULT"
-```
-
-The filter keeps links from `ai_managed` zones and excludes template placeholders
+The recovery script keeps links from `ai_managed` zones and excludes template placeholders
 and configured `stub_link_patterns` from `.claude/obsidian-knowledge.yaml`.
 Defaults cover prefixes such as `(PAPER)`, `(BOOK)`, and `@Person`.
 
@@ -25,6 +19,24 @@ be intentional concept stubs or broken references. Apply these rules:
 Dates, paths, extensions, and missing embeds usually indicate expected files.
 A bare concept such as `[[anxiety]]` might be an intentional stub. When uncertain,
 add the issue to the worklist rather than silently skipping it.
+
+## Deterministic recovery and verification
+
+`obsidian-knowledge garden links` defaults to reporting. Review before `--apply`.
+It can recover a stale prefix only when removing leading path components leaves
+a unique existing suffix of at least `directory/name`. It never falls back from
+a path-shaped target to an unrelated basename. Existing directories are not
+note candidates. Attachments require exact filenames, including extensions;
+normalized and fuzzy comparisons apply only to Markdown notes.
+
+Hidden paths, dependency directories, sync conflicts, and symlinks are excluded
+from candidates. Sources must be visible managed Markdown notes outside
+`_sources/` and configured read-only paths. Apply rechecks write policy and
+delegates to the verified writer; aliases, heading and block suffixes survive.
+
+Review the diff for intended link changes, then check fresh unresolved-link
+results. If CLI results disagree with file contents, reload Obsidian with
+`obsidian vault="$VAULT_NAME" command id="app:reload"` and retry.
 
 ## Orphans
 

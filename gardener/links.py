@@ -1,125 +1,35 @@
-#!/usr/bin/env python3
-"""Classify and deterministically recover Obsidian unresolved wikilinks.
-
-Usage:
-  obsidian unresolved verbose format=json \
-    | python3 recover-unresolved-links.py <vault_root> [--apply]
-
-The script is intentionally conservative. It auto-fixes only unique exact
-filename/alias/path recoveries. Ambiguous and fuzzy-looking items are reported
-for human review instead of rewritten.
-"""
+"""Filter and classify unresolved wikilinks; apply only unique deterministic recoveries."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import re
-import signal
 import sys
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Literal
 
-try:
-    import yaml as yaml_module
+import yaml as yaml_module
 
-    HAS_YAML = True
-except ImportError:  # pragma: no cover - exercised in packaged fallback contexts
-    yaml_module = None
-    HAS_YAML = False
+from gardener.io import OrganizerPolicy, iter_paths, resolve_vault, visible_path, write_checked
+from gardener.models import (
+    CandidateIndex,
+    Classification,
+    NoteCandidate,
+    RecoveryDecision,
+    UnresolvedItem,
+)
 
-signal.signal(signal.SIGPIPE, signal.SIG_DFL)
-
-Classification = Literal[
-    "exact filename recovery",
-    "high-confidence moved/renamed file",
-    "ambiguous candidate",
-    "likely intentional concept stub",
-    "missing-note/date/path reference",
-]
-
-DEFAULT_STUB_PATTERNS = [
-    r"^\(PAPER\) ",
-    r"^\(VIDEO\) ",
-    r"^\(POST\) ",
-    r"^\(PODCAST\) ",
-    r"^\(RECIPE\) ",
-    r"^\(BOOK\) ",
-    r"^\(Vision\) ",
-    r"^\(Pillar\) ",
-    r"^@",
-]
 TEMPLATE_PLACEHOLDER = re.compile(r"\{\{|\<%")
 DATEISH = re.compile(r"^(?:\d{4}-\d{2}-\d{2}|\d{4}-\d{2}|\d{8}|\d{4}-\d{1,2}-\d{1,2})(?:\b|[-_ ])")
 WIKILINK_CHARS = set("|#^")
 
 
-@dataclass(frozen=True)
-class Config:
-    ai_managed: tuple[str, ...] = ("wiki",)
-    stub_link_patterns: tuple[str, ...] = tuple(DEFAULT_STUB_PATTERNS)
-
-
-@dataclass(frozen=True)
-class UnresolvedItem:
-    link: str
-    count: str | int = 0
-    sources: str = ""
-
-    @classmethod
-    def from_json(cls, value: object) -> UnresolvedItem:
-        if not isinstance(value, dict):
-            raise ValueError(f"expected unresolved item object, got {type(value).__name__}")
-        return cls(
-            link=str(value.get("link", "")),
-            count=value.get("count", 0),
-            sources=str(value.get("sources", "")),
-        )
-
-    @property
-    def source_paths(self) -> list[str]:
-        return [source.strip() for source in self.sources.split(",") if source.strip()]
-
-
-@dataclass(frozen=True)
-class NoteCandidate:
-    rel_path: str
-    stem: str
-    aliases: tuple[str, ...]
-
-    @property
-    def link_target(self) -> str:
-        return self.rel_path[:-3] if self.rel_path.endswith(".md") else self.rel_path
-
-
-@dataclass(frozen=True)
-class RecoveryDecision:
-    classification: Classification
-    link: str
-    sources: tuple[str, ...]
-    candidates: tuple[NoteCandidate, ...] = ()
-    score: float = 0.0
-    rationale: str = ""
-
-    @property
-    def auto_fixable(self) -> bool:
-        return (
-            self.classification
-            in {
-                "exact filename recovery",
-                "high-confidence moved/renamed file",
-            }
-            and len(self.candidates) == 1
-        )
-
-
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("vault_root", type=Path)
+    parser.add_argument("--vault", dest="vault_root", type=Path, help="default: configured vault")
     parser.add_argument(
         "--apply", action="store_true", help="rewrite exact/high-confidence recoveries in source files"
     )
@@ -129,22 +39,7 @@ def parse_args() -> argparse.Namespace:
         help="show items matching configured stub patterns instead of dropping them",
     )
     parser.add_argument("--format", choices=("tsv", "json"), default="tsv")
-    return parser.parse_args()
-
-
-def load_config(vault_root: Path) -> Config:
-    config_path = vault_root / ".claude" / "obsidian-knowledge.yaml"
-    if HAS_YAML and config_path.exists():
-        with open(config_path, encoding="utf-8") as handle:
-            assert yaml_module is not None
-            raw = yaml_module.safe_load(handle) or {}
-        return Config(
-            ai_managed=tuple(str(zone) for zone in raw.get("ai_managed", ("wiki",))),
-            stub_link_patterns=tuple(
-                str(pattern) for pattern in raw.get("stub_link_patterns", DEFAULT_STUB_PATTERNS)
-            ),
-        )
-    return Config()
+    return parser.parse_args(argv)
 
 
 def normalize_name(value: str) -> str:
@@ -175,21 +70,33 @@ def is_stub(link: str, patterns: Iterable[re.Pattern[str]]) -> bool:
     return bool(TEMPLATE_PLACEHOLDER.search(link) or any(pattern.search(link) for pattern in patterns))
 
 
-def managed_sources(item: UnresolvedItem, config: Config) -> tuple[str, ...]:
+def managed_sources(item: UnresolvedItem, config: OrganizerPolicy, vault_root: Path) -> tuple[str, ...]:
     prefixes = tuple(f"{zone.rstrip('/')}/" for zone in config.ai_managed)
-    return tuple(source for source in item.source_paths if source.startswith(prefixes))
+    policy = OrganizerPolicy.load(vault_root)
+    sources = []
+    for source in item.source_paths:
+        if not source.startswith(prefixes) or not source.endswith(".md"):
+            continue
+        try:
+            path = policy.writable(vault_root, source)
+        except ValueError:
+            continue
+        if path.is_file():
+            sources.append(source)
+    return tuple(sources)
 
 
 def frontmatter_aliases(text: str) -> tuple[str, ...]:
     if not text.startswith("---\n"):
         return ()
     end = text.find("\n---", 4)
-    if end == -1 or not HAS_YAML:
+    if end == -1:
         return ()
     try:
-        assert yaml_module is not None
         frontmatter = yaml_module.safe_load(text[4:end]) or {}
     except yaml_module.YAMLError:
+        return ()
+    if not isinstance(frontmatter, dict):
         return ()
     aliases = frontmatter.get("aliases", [])
     if isinstance(aliases, str):
@@ -200,47 +107,41 @@ def frontmatter_aliases(text: str) -> tuple[str, ...]:
 
 
 def iter_notes(vault_root: Path) -> Iterable[NoteCandidate]:
-    ignored_parts = {".obsidian", ".stversions", ".trash"}
-    for path in vault_root.rglob("*.md"):
+    for path in iter_paths(vault_root):
+        if not path.is_file():
+            continue
         rel_path = path.relative_to(vault_root).as_posix()
-        if any(part in ignored_parts for part in path.relative_to(vault_root).parts):
-            continue
-        if ".sync-conflict-" in rel_path:
-            continue
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+            visible_path(vault_root, rel_path)
+            text = path.read_text(encoding="utf-8", errors="replace") if path.suffix == ".md" else ""
+        except (OSError, ValueError):
             # Vaults can contain broken cross-host symlinks, and files can
             # disappear while a live sync or organizer pass is running.
             continue
-        yield NoteCandidate(rel_path=rel_path, stem=path.stem, aliases=frontmatter_aliases(text))
-
-
-@dataclass(frozen=True)
-class CandidateIndex:
-    by_stem: dict[str, tuple[NoteCandidate, ...]]
-    by_link_target: dict[str, NoteCandidate]
-    by_norm: dict[str, tuple[NoteCandidate, ...]]
-    by_alias_norm: dict[str, tuple[NoteCandidate, ...]]
-    all_candidates: tuple[NoteCandidate, ...]
+        stem = path.stem if path.suffix == ".md" else path.name
+        yield NoteCandidate(rel_path=rel_path, stem=stem, aliases=frontmatter_aliases(text))
 
 
 def build_index(vault_root: Path) -> CandidateIndex:
     stem_map: dict[str, list[NoteCandidate]] = defaultdict(list)
     norm_map: dict[str, list[NoteCandidate]] = defaultdict(list)
     alias_map: dict[str, list[NoteCandidate]] = defaultdict(list)
+    target_map: dict[str, list[NoteCandidate]] = defaultdict(list)
     candidates = tuple(iter_notes(vault_root))
     for candidate in candidates:
         stem_map[candidate.stem].append(candidate)
-        norm_map[normalize_name(candidate.stem)].append(candidate)
+        target_map[candidate.link_target].append(candidate)
+        if candidate.rel_path.endswith(".md"):
+            norm_map[normalize_name(candidate.stem)].append(candidate)
         for alias in candidate.aliases:
             alias_map[normalize_name(alias)].append(candidate)
     return CandidateIndex(
         by_stem={key: tuple(value) for key, value in stem_map.items()},
-        by_link_target={candidate.link_target: candidate for candidate in candidates},
+        by_link_target={key: tuple(value) for key, value in target_map.items()},
         by_norm={key: tuple(value) for key, value in norm_map.items() if key},
         by_alias_norm={key: tuple(value) for key, value in alias_map.items() if key},
         all_candidates=candidates,
+        vault_root=vault_root,
     )
 
 
@@ -259,6 +160,8 @@ def best_fuzzy_candidates(
         return 0.0, ()
     scored = []
     for candidate in all_candidates:
+        if not candidate.rel_path.endswith(".md"):
+            continue
         score = SequenceMatcher(None, normalized, normalize_name(candidate.stem)).ratio()
         if score >= 0.82:
             scored.append((score, candidate))
@@ -268,6 +171,41 @@ def best_fuzzy_candidates(
     top_score = scored[0][0]
     top = tuple(candidate for score, candidate in scored if score >= top_score - 0.02)[:5]
     return top_score, top
+
+
+def classify_path(link: str, sources: tuple[str, ...], index: CandidateIndex) -> RecoveryDecision:
+    try:
+        target_path = visible_path(index.vault_root, link)
+    except ValueError:
+        return RecoveryDecision(
+            "missing-note/date/path reference", link, sources, rationale="unsafe target path"
+        )
+    path_key = link.removesuffix(".md")
+    candidates = index.by_link_target.get(path_key, ())
+    if candidates:
+        kind: Classification = "exact filename recovery" if len(candidates) == 1 else "ambiguous candidate"
+        return RecoveryDecision(kind, link, sources, candidates, 1.0, "relative-path match")
+    # A stale prefix must leave at least directory/name, never just a basename.
+    if not target_path.exists():
+        parts = path_key.split("/")
+        for start in range(1, len(parts) - 1):
+            suffix = "/".join(parts[start:])
+            matches = tuple(
+                c
+                for c in index.all_candidates
+                if c.link_target == suffix or c.link_target.endswith("/" + suffix)
+            )
+            if matches:
+                kind = "high-confidence moved/renamed file" if len(matches) == 1 else "ambiguous candidate"
+                return RecoveryDecision(
+                    kind, link, sources, matches, 1.0, "existing path suffix after stale prefix"
+                )
+    return RecoveryDecision(
+        "missing-note/date/path reference",
+        link,
+        sources,
+        rationale="path-shaped target with no exact relative-path match",
+    )
 
 
 def classify(
@@ -288,20 +226,7 @@ def classify(
         )
 
     if "/" in link:
-        path_key = link[:-3] if link.endswith(".md") else link
-        path_candidate = index.by_link_target.get(path_key)
-        if path_candidate is not None:
-            return RecoveryDecision(
-                "exact filename recovery", link, sources, (path_candidate,), 1.0, "unique relative-path match"
-            )
-        if looks_real_file_reference(link):
-            return RecoveryDecision(
-                "missing-note/date/path reference",
-                link,
-                sources,
-                score=0.0,
-                rationale="path-shaped target with no exact relative-path match",
-            )
+        return classify_path(link, sources, index)
 
     stem = link_stem(link)
     exact_stem = unique(index.by_stem.get(stem, ()))
@@ -312,6 +237,14 @@ def classify(
     if len(exact_stem) > 1:
         return RecoveryDecision(
             "ambiguous candidate", link, sources, exact_stem, 1.0, "multiple basename matches"
+        )
+
+    if Path(link).suffix and not link.endswith(".md"):
+        return RecoveryDecision(
+            "missing-note/date/path reference",
+            link,
+            sources,
+            rationale="extension-shaped target requires an exact filename",
         )
 
     norm = normalize_name(stem)
@@ -372,8 +305,8 @@ def replacement_for(decision: RecoveryDecision) -> str:
 
 
 def rewrite_source(vault_root: Path, source: str, old_link: str, new_target: str) -> int:
-    path = vault_root / source
-    text = path.read_text(encoding="utf-8")
+    path = OrganizerPolicy.load(vault_root).writable(vault_root, source)
+    text = path.read_bytes().decode("utf-8")
     escaped = re.escape(old_link)
     pattern = re.compile(r"\[\[(" + escaped + r")(?P<suffix>[#^|\]])")
 
@@ -382,9 +315,10 @@ def rewrite_source(vault_root: Path, source: str, old_link: str, new_target: str
         return "[[" + new_target + suffix
 
     new_text, count = pattern.subn(repl, text)
-    if count:
-        path.write_text(new_text, encoding="utf-8")
-    return count
+    if count and new_text != text:
+        write_checked(vault_root, source, text, new_text)
+        return count
+    return 0
 
 
 def emit(decisions: list[RecoveryDecision], output_format: str) -> None:
@@ -419,18 +353,20 @@ def emit(decisions: list[RecoveryDecision], output_format: str) -> None:
         )
 
 
-def main() -> None:
-    args = parse_args()
-    vault_root = args.vault_root.resolve()
-    config = load_config(vault_root)
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    vault_root = resolve_vault(args.vault_root)
+    config = OrganizerPolicy.load(vault_root)
     patterns = tuple(re.compile(pattern) for pattern in config.stub_link_patterns)
     raw_items = json.load(sys.stdin)
+    if not isinstance(raw_items, list):
+        raise ValueError("unresolved input must be a JSON array")
     items = [UnresolvedItem.from_json(raw_item) for raw_item in raw_items]
     index = build_index(vault_root)
 
     decisions = []
     for item in items:
-        sources = managed_sources(item, config)
+        sources = managed_sources(item, config, vault_root)
         decision = classify(item, sources, index, patterns)
         if decision is None:
             continue
@@ -449,7 +385,3 @@ def main() -> None:
         print(f"# applied_rewrites\t{rewrites}")
 
     emit(decisions, args.format)
-
-
-if __name__ == "__main__":
-    main()

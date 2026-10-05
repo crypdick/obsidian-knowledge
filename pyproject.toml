@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-knowledge"
-version = "3.25.0"
+version = "3.27.2"
 description = "Obsidian vault knowledge integration for Claude Code and Codex"
 requires-python = ">=3.12"
 dependencies = [
@@ -16,6 +16,7 @@ dependencies = [
     "mcp>=1.26,<2",
     "uvicorn>=0.35",
     "starlette>=0.47",
+    "aiosqlite>=0.20,<1",
 ]
 
 [project.scripts]
@@ -28,7 +29,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["lib"]
+packages = ["lib", "gardener"]
 
 [tool.hatch.build.targets.sdist]
 # Keep platform/editor detritus out even when the source checkout is dirty.
@@ -41,6 +42,7 @@ exclude = [
 [tool.hatch.build.targets.wheel.force-include]
 hooks = "hooks"
 "hooks/vault_registry.py" = "vault_registry.py"
+"hooks/hookslib" = "hookslib"
 
 [dependency-groups]
 dev = [
@@ -74,6 +76,7 @@ setup = ["uv sync --group dev"]
 pre_merge = ["uv run prek run --all-files --show-diff-on-failure"]
 post_merge = ["uv run prek run --all-files --show-diff-on-failure"]
 teardown = []
+safe_to_delete = ["coverage.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -119,6 +122,7 @@ max-complexity = 15
 "scripts/**/*.py" = ["C901", "T20"]
 # stdout is the protocol at hook and standalone-tool boundaries.
 "hooks/**/*.py" = ["T201"]
+"gardener/**/*.py" = ["T201"]
 "skills/**/*.py" = ["T201"]
 "spikes/**/*.py" = ["T201"]
 "**/cli.py" = ["T201"]
@@ -149,8 +153,9 @@ ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true
-patch = ["subprocess"]
-source = ["lib", "hooks"]
+# The CLI force-exits after flushing output; save subprocess coverage first.
+patch = ["subprocess", "_exit"]
+source = ["lib", "hooks", "gardener"]
 omit = ["*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/conftest.py"]
 
 [tool.coverage.report]
@@ -171,7 +176,7 @@ exclude_also = [
 
 [tool.vulture]
 min_confidence = 80
-paths = ["lib", "hooks"]
+paths = ["lib", "hooks", "gardener"]
 exclude = [".venv/", "plugins/"]
 ignore_names = ["kwargs"]
 
@@ -180,7 +185,7 @@ exclude-newer = "3 days"
 
 [tool.deptry]
 extend_exclude = ["plugins/", "scripts/", "skills/", "spikes/"]
-known_first_party = ["lib", "vault_index", "hooks", "hookslib", "vault_registry"]
+known_first_party = ["lib", "vault_index", "hooks", "hookslib", "vault_registry", "gardener"]
 
 [tool.deptry.per_rule_ignores]
 # Explicit compatibility constraints for memweave's lazy embedding stack;

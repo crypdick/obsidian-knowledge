@@ -13,15 +13,15 @@ STACKED_FRONTMATTER	<path>
 
 ## Fix
 
-For a stray duplicate `---` after the frontmatter, use the helper script.
+For a stray duplicate `---` after the frontmatter, use the gardener command.
 Replace `NOTE_PATH` with the note's filesystem path:
 
 ```bash
 # Dry run (reports what would change)
-uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" NOTE_PATH
+obsidian-knowledge garden frontmatter NOTE_PATH
 
 # Apply the fix
-uv run --no-project --with pyyaml python "$SCRIPTS/fix-stacked-frontmatter.py" --fix NOTE_PATH
+obsidian-knowledge garden frontmatter --apply NOTE_PATH
 ```
 
 The script reports these output codes:

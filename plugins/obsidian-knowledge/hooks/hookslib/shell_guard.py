@@ -207,7 +207,7 @@ def write_targets(command: str, cwd: str) -> list[str]:
             cli_target = _obsidian_knowledge_write_target(executable, args, cwd)
             if cli_target is not None:
                 targets.append(cli_target)
-            elif executable in destructive:
+            elif executable in destructive or executable == "tee":
                 targets.extend(paths)
             elif executable == "sed" and any("i" in flag.lstrip("-") for flag in flags):
                 targets.extend(paths[1:])

@@ -1,25 +1,11 @@
-#!/usr/bin/env python3
-"""fix-stacked-frontmatter: detect and auto-fix stray duplicate `---` markers.
-
-The most common cause of STACKED_FRONTMATTER is a stray duplicate `---` line
-right after a normal frontmatter close — typically left by a Templater
-template or merge artifact. This script collapses those automatically.
-
-True two-block merges (where the second `---...---` block contains real keys)
-are left alone and reported for manual review, since merging may need
-human judgment about which keys win.
-
-Usage:
-  python3 fix-stacked-frontmatter.py <file> [<file>...]            # dry run
-  python3 fix-stacked-frontmatter.py --fix <file> [<file>...]      # rewrite
-
-Exit 0 if no issues or all fixed; exit 1 if files need manual merge.
-"""
+"""Repair stray stacked frontmatter markers; real second blocks require manual review."""
 
 from __future__ import annotations
 
-import sys
+import argparse
 from pathlib import Path
+
+from gardener.io import OrganizerPolicy, resolve_vault, write_checked
 
 FRONTMATTER_SCAN_LIMIT = 60
 
@@ -83,10 +69,12 @@ def find_stacked_region(lines: list[str]) -> tuple[list[int], list[int]] | None:
     return (extra_markers, extra_content)
 
 
-def fix_file(path: Path, write: bool) -> str:
+def fix_file(vault: Path, relative: str, write: bool) -> str:
     """Return one of: 'OK', 'STRAY_FIXED', 'STRAY_DRY', 'NEEDS_MERGE'."""
-    text = path.read_text(encoding="utf-8", errors="replace")
-    lines = text.split("\n")
+    path = OrganizerPolicy.load(vault).writable(vault, relative)
+    text = path.read_bytes().decode("utf-8")
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.split(newline)
 
     region = find_stacked_region(lines)
     if region is None:
@@ -103,49 +91,28 @@ def fix_file(path: Path, write: bool) -> str:
     if not write:
         return "STRAY_DRY"
 
-    path.write_text("\n".join(new_lines), encoding="utf-8")
+    write_checked(vault, relative, text, newline.join(new_lines))
     return "STRAY_FIXED"
 
 
-def main() -> None:
-    args = sys.argv[1:]
-    write = False
-    if args and args[0] == "--fix":
-        write = True
-        args = args[1:]
-
-    if not args:
-        print("Usage: fix-stacked-frontmatter.py [--fix] <file> [<file>...]", file=sys.stderr)
-        sys.exit(2)
-
-    needs_merge = []
-    fixed = []
-    stray = []
-
-    for arg in args:
-        path = Path(arg)
-        if not path.is_file():
-            print(f"SKIP: {path} (not a file)", file=sys.stderr)
-            continue
-        result = fix_file(path, write)
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Preview or repair stray stacked frontmatter markers")
+    parser.add_argument("--vault", type=Path, help="default: configured vault")
+    parser.add_argument("--apply", action="store_true", help="apply reviewed marker repairs")
+    parser.add_argument("paths", nargs="+", help="vault-relative Markdown paths")
+    args = parser.parse_args(argv)
+    vault = resolve_vault(args.vault)
+    needs_merge = False
+    for relative in args.paths:
+        if Path(relative).suffix != ".md":
+            raise ValueError("frontmatter only edits Markdown files")
+        result = fix_file(vault, relative, args.apply)
         if result == "NEEDS_MERGE":
-            needs_merge.append(path)
-            print(f"NEEDS_MERGE\t{path}")
+            needs_merge = True
+            print(f"NEEDS_MERGE\t{relative}")
         elif result == "STRAY_FIXED":
-            fixed.append(path)
-            print(f"FIXED\t{path}")
+            print(f"FIXED\t{relative}")
         elif result == "STRAY_DRY":
-            stray.append(path)
-            print(f"WOULD_FIX\t{path}")
-
+            print(f"WOULD_FIX\t{relative}")
     if needs_merge:
-        print(
-            f"\n{len(needs_merge)} file(s) have a real second frontmatter block — "
-            "merge keys manually per lib/stacked-frontmatter.md.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+        parser.exit(1, "Real second frontmatter block: merge keys manually.\n")
