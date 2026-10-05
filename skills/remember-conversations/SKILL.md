@@ -11,62 +11,67 @@ version: 0.11.1
 
 # Remember conversations
 
-Save reusable knowledge that a future session would otherwise lose.
-Filing nothing is a successful outcome.
+The memory system replaces `MEMORY.md` and serves several goals:
 
-## Acceptance gate
+1) capture reusable knowledge or rules that benefits future AI agents trying to complete tasks.
+   If you spend effort figuring out how something works, write or update a guide.
+2) storing research findings for topics the user is exploring.
+3) tracking historical changes in case we need to do archeology
 
-1. Search the vault and read the best existing note on the topic.
-2. State, in one sentence, the reusable knowledge missing from that note.
-3. File it only if it changes a future decision or prevents repeated work and
-   is not cheaply recoverable from code, tracked docs, Git, issues, logs, or runtime.
+## Guides benefiting future agents
 
-An explicit request to preserve a result qualifies. Other candidates include
-user preferences, decision rationale, verified procedures, non-obvious failure
-modes with recovery steps, and sourced syntheses that are expensive to recreate.
-Skip routine progress, test or release results, transient state, PIDs, job IDs,
-temporary worktrees, handoffs, generic answers, raw output, and duplicates.
+Do:
+- ensure that guides reflect current state and is self-consistent
+- integrate edits into note's natural prose rather than appending a transcript
+- clean up notes that are messy or are not complaint with these guidelines
+- capture reasoning for major decisions, user preferences and guidance, important contraints.
+- add related wikilinks
 
-Verify claims before saving them as facts. For volatile technical or product
-facts, include a source and verification date. For medical, legal, or financial
-claims, include sources and uncertainty.
+Don't:
+- litter guides with historical trivia. Use changelog for tracking important historical changes.
+- over-generalize user preferences and constraints -- ask for clarification if unsure.
+- document knowledge already captured in repos (always use pointers rather than duplicating content)
+  or cheaply recoverable from the environment.
+- overexplain concepts or document unnecessary details
+- over-capture. Don't document transient state (PIDs, job IDs), test results, etc.
 
-## Outputs
+## Changelog entry
 
-Prefer updating one canonical note. Create a second only for an explicit user
-request or two independently reusable topics. Do not duplicate the same facts
-across learning, conversation, and diary notes or create a suffixed copy of an
-existing canonical filename.
+Changelogs are an insurance policy to help agents that need to investigate inconsistent state
+or perplexing issues. For example, if we migrate files from one drive to another, but that accidentally
+breaks something and the future agent is trying to investigate why the thing is broken.
 
-Never write to `CLAUDE.md` unless the user explicitly requests it. Durable
-knowledge and behavioral rules belong in the wiki.
+It is not meant to exhaustively record every single action we take.
 
-### Changelog entry
+Changelogs keep operational guides focused on the current state and facts without littering them
+with historical trivia that are unnecessary for agents trying to complete a task.
 
-Only after changing durable vault content, create or reuse one same-session file:
-`Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`.
-This path is relative to the configured vault root, regardless of cwd.
-Pass it unchanged to `obsidian-knowledge write`; never prepend `wiki/`.
-Use terse audit pointers: `YYYY-MM-DD HH:MM — <vault change> [→ [[wikilink]]]`.
-Do not log code, Git, host, test, release, or deployment work alone. Include no
-narrative or code blocks, and do not update a shared changelog index.
-
+Create or reuse one same-session file:
+`obsidian-knowledge write <vault_root>/Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`.
 When the Stop hook supplies a capture key, reuse `*-session-<capture-key>.md`
-if present; otherwise end the filename with `-session-<capture-key>.md`.
-Without a key, check current-day fragments for the canonical note's wikilink
-before creating another file.
 
-## Note structure
+Use terse audit pointers: `YYYY-MM-DD HH:MM — <vault change> [→ [[wikilink]]]`.
+Entries shouldn't be long narratives
+or code blocks; rather, self-contained bread crumbs that give future agents the context they
+need to understand potentially relevant major breaking changes that happened in the past
 
-Write only the context, evidence, reasoning, and result needed for reuse. Add
-related wikilinks. Use sections that fit the content; a fixed template is not
-required. Preserve exact user wording only when it carries a durable preference,
-constraint, or rationale. Prefer 150-350 words; exceed 500 only for a verified
-procedure that needs the detail.
+## User research
 
-Every durable note must be self-contained: explain local labels such as "category 15"
-or "scenario 9" with their system and meaning. The note must be usable without
-the originating conversation; links can supply further detail.
+When a user is researching a topic in-depth, suggest capturing the conversation as a report with citations.
+Ensure that the report captures the answers to all the user's questions.
+
+## Rules
+
+- Verify claims before saving them as facts. Cite sources and state your uncertainty.
+- For volatile technical or product facts, include a verification date.
+- Prefer linking to existing notes instead of duplicating content. Split into more notes
+if it makes sense to but don't over-fragment content.
+- Don't create notes if they aren't necessary.
+- Never write to `CLAUDE.md` or `AGENTS.md` without explicit approval (you may suggest
+updates).
+- Notes must be self-contained. They must be understandable without the originating conversation.
+  Avoid local labels such as "category 15" or "scenario 9", or explain their meaning or link to
+  clarifying context.
 
 ## Filing location
 
@@ -75,34 +80,30 @@ the most specific topic subtree. Follow vault-specific naming conventions.
 
 | Content | Location and filename |
 | --- | --- |
-| Reusable concept or guide | Existing topic subtree; concept name without a date prefix. Use a learning subtree only when no topic home fits. |
+| Repo-specific knowledge | `wiki/repos/<owner>/<repo>/` |
+| Deployed state, operations, or runbooks | `wiki/systems/<system>/`, or topic subtree if applicable|
+| Log of an incident or process | Topic's `diary/YYYY-MM-DD-<slug>.md` |
 | Analysis, comparison, or decision rationale | Topic's `convos/YYYY-MM-DD-<slug>.md` |
-| Reusable account of an incident or process | Topic's `diary/YYYY-MM-DD-<slug>.md` |
-| Codebase architecture or implementation decisions | `wiki/repos/<owner>/<repo>/` |
-| Deployed state, operations, or runbooks | `wiki/systems/<system>/` |
 
-For topics spanning domains, choose one primary home and link to the others.
+
+This list is not exhaustive. You may need to create a new topic subtree under `wiki`. You can propose this
+to the user. For topics spanning domains, choose one primary home and link to the others.
 
 ## Procedure
 
-1. Apply the acceptance gate and choose a filing location. If no reusable knowledge qualifies,
-   stop without a note or changelog.
-2. Read an existing canonical note before updating it. Integrate the result into
-   its prose rather than appending a transcript.
-3. Write the note first with `obsidian-knowledge write` and a quoted heredoc.
-   Omit `--replace` for creation; include it for an intentional full-file update.
+Write the note first with `obsidian-knowledge write` and a quoted heredoc.
+Omit `--replace` for creation; include it for an intentional full-file update.
 
-   ```bash
-   obsidian-knowledge write "wiki/topic/concept.md" <<'ENDNOTE'
-   # Descriptive title
+```bash
+obsidian-knowledge write "wiki/topic/concept.md" <<'ENDNOTE'
+# Descriptive title
 
-   Reusable knowledge with literal `identifiers` and [[wikilinks]].
-   ENDNOTE
-   ```
+Reusable knowledge with literal `identifiers` and [[wikilinks]].
+ENDNOTE
+```
 
-4. Continue only after `Wrote and verified:`. Update the folder's `index.md`
-   using the same read and replace workflow. For a new folder, also link its
-   index from the parent. Never link a note before its write verifies.
-5. Create or reuse the conditional changelog entry.
+Update the folder's `index.md`
+using the same read and replace workflow. For a new folder, also link its
+index from the parent.
 
 Use the `obsidian-knowledge` skill for access errors and note-editing conventions.
