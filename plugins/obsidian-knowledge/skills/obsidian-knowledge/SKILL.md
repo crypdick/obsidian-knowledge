@@ -14,8 +14,7 @@ The memory system replaces `MEMORY.md` and serves several goals:
    If you spend effort figuring out how something works, write or update a guide.
 2) storing research findings for topics the user is exploring.
 3) tracking historical changes in case we need to do archeology
-4) capture harness and tooling papercuts so future agents can avoid repeated friction.
-5) retrieve existing vault knowledge when requested or when avoiding duplicate capture.
+4) capture harness and tooling papercuts so that we can fix it someday
 
 Treat notes as fallible context and verify consequential claims against code,
 runtime evidence, or primary sources.
@@ -85,8 +84,7 @@ obsidian-knowledge read "wiki/path/to/note.md"
 
 Search when the user requests vault knowledge or when something merits saving
 and you need to find existing coverage. Do not search merely because an answer
-is nontrivial or a capture reminder fires. Read a known note directly; read
-search results before relying on them. Use exact-string tools for literal names
+is nontrivial or a capture reminder fires. Use exact-string tools for literal names
 or phrases.
 
 ### Filing location
@@ -101,15 +99,12 @@ or search only when the destination or applicable convention is unknown.
 | Log of an incident or process | Topic's `diary/YYYY-MM-DD-<slug>.md` |
 | Analysis, comparison, or decision rationale | Topic's `convos/YYYY-MM-DD-<slug>.md` |
 
-
 This list is not exhaustive. You may need to create a new topic subtree under `wiki`. You can propose this
 to the user. For topics spanning domains, choose one primary home and link to the others.
 
 ### Write and link notes
 
-Read these operational notes before issuing a write command.
-
-Write the note first with `obsidian-knowledge write` and a quoted heredoc.
+Write new note first with `obsidian-knowledge write` and a quoted heredoc.
 Omit `--replace` for creation; include it for an intentional full-file update.
 
 ```bash
@@ -120,26 +115,14 @@ Reusable knowledge with literal `identifiers` and [[wikilinks]].
 ENDNOTE
 ```
 
-For an update, read the existing note, integrate the change, and write the
-complete result with `--replace`. The command rejects blank input, path escapes,
-and accidental overwrites, and verifies its own writes; no separate readback
-is needed after success. Create the note before linking it from an index.
+Use `--replace` to overwrite note.
 
 Update the folder's `index.md`
 using the same read and replace workflow. For a new folder, also link its
 index from the parent.
 
-Leave existing `updated:` timestamps to the vault linter unless the user
-explicitly requests timestamp repair. Use `[[wikilinks]]` for related notes.
-
-### Agent memory
-
-Use the repo or host memory directory supplied by the session primer.
-Keep `MEMORY.md` as a small index linking to per-fact `.md` files: at most
-20 bullets or 6000 characters, summaries under 30 words, and per-fact notes
-under 200 words. Consolidate at the cap. Do not create a second generated memory/index.md.
-Keep `wiki/systems/knowledge-base/index.md` as a thin, bounded wikilink index
-with details in linked notes. Temporary handoffs belong in campaign records.
+Do not update `created:` and `updated:` timestamps, the vault linter handles that.
+Use `[[wikilinks]]` for related notes.
 
 ### Changelog entry
 
@@ -162,14 +145,16 @@ create a new one. Do not search other sessions' fragments for a match.
 
 ### Repair encountered instructions
 
-Fix clear, low-risk errors in guidance encountered during the task, such as
+Fix errors in guidance encountered during the task, such as
 moved paths or commands with verified replacements. Edit the canonical source,
-run the relevant check, and follow its normal edit and install workflow.
+run the relevant check, and follow its normal edit and install workflow. But if something
+is suspicious, and there is no explanation in the knowledge base, raise to the user.
 
-Preserve user preferences, policy, safeguards, and approval rules. Report
-ambiguous corrections instead of guessing. Do not start a broader audit or
-reopen a completed capture decision because a hook repeats. Repairs alone do
-not justify a vault note or changelog entry.
+Preserve user preferences, policy, safeguards, and approval rules. If in doubt whether a user
+directive is a momentary directive or general policy, ask them. Only capture general policies. 
+Report ambiguous corrections instead of guessing.
+Do not start a broader audit or reopen a completed capture decision because a hook repeats.
+Repairs alone do not justify changelog entry.
 
 ### Log workflow friction
 
