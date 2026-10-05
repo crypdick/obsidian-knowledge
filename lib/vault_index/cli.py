@@ -194,6 +194,8 @@ def resolve_vault(vault: Path | None, cwd: Path | None = None) -> Path:
     3. first configured vault
     4. cwd, preserving legacy behavior when no registry exists
     """
+    # NOTE: docs/CLI.md, First run, and skills/vault-organizer/lib/multi-vault.md
+    # document this shared selection order, including gardener commands.
     if vault is not None:
         return existing_vault(vault)
 

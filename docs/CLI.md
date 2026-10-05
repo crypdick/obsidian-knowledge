@@ -20,12 +20,11 @@ install the Claude plugin when `claude` is on `PATH`. Rerun setup after fixing
 an error; completed steps are not rolled back. Its default deadline is
 300 seconds. Increase it with `--timeout-seconds 900` for a large vault.
 
-Vault commands accept `--vault`. Without it, retrieval and file commands
-select the registered vault containing the working directory, then the
-first registered vault. With no registry, they use the working directory for
-backward compatibility. A malformed registry is an error, not a fallback.
-Gardener commands instead require the enclosing registered vault, a sole
-registered vault, or an explicit `--vault`; they refuse an ambiguous selection.
+Vault commands, including `garden`, accept `--vault`. After setup, no environment
+variables or vault flags are needed: commands select the registered vault
+containing the working directory, then the first registered vault. With no
+registry, they use the working directory for backward compatibility. A malformed
+registry or missing selected vault is an error, not a fallback.
 
 ## Commands
 

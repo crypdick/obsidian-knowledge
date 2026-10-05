@@ -114,18 +114,28 @@ def test_vault_resolution_rejects_missing_and_file_roots(tmp_path: Path) -> None
     assert resolve_vault(tmp_path) == tmp_path
 
 
-def test_vault_resolution_uses_registry_and_rejects_ambiguity(tmp_path: Path, monkeypatch) -> None:
+def test_vault_resolution_uses_default_registry(tmp_path: Path, monkeypatch) -> None:
     first, second = tmp_path / "first", tmp_path / "second"
     first.mkdir()
     second.mkdir()
+    registry = tmp_path / ".config/obsidian-knowledge/vaults.yaml"
+    registry.parent.mkdir(parents=True)
+    registry.write_text(f"vaults:\n  - {first}\n")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", raising=False)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("gardener.io.load_vault_roots", lambda: [str(first)])
     assert resolve_vault() == first
-    monkeypatch.setattr("gardener.io.load_vault_roots", lambda: [str(first), str(second)])
-    with pytest.raises(ValueError, match="pass --vault"):
-        resolve_vault()
+    registry.write_text(f"vaults:\n  - {first}\n  - {second}\n")
+    assert resolve_vault() == first
     monkeypatch.chdir(second)
     assert resolve_vault() == second
+
+
+def test_vault_resolution_without_registry_uses_cwd(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert resolve_vault() == tmp_path
 
 
 def test_verified_writes_create_replace_and_refuse_changed_review(tmp_path: Path) -> None:

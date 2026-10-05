@@ -64,6 +64,29 @@ def test_clean_combined_audit_does_not_modify_notes(tmp_path: Path, capsys) -> N
     assert index.read_text() == "# Wiki\n\n- [[note]] — note\n"
 
 
+@pytest.mark.parametrize(
+    ("location", "override", "expected"),
+    [("outside", False, "First"), ("second/wiki", False, "Second"), ("second/wiki", True, "First")],
+)
+def test_garden_uses_registered_default_without_environment_overrides(
+    tmp_path: Path, monkeypatch, capsys, location: str, override: bool, expected: str
+) -> None:
+    first, second = tmp_path / "first", tmp_path / "second"
+    for vault, label in ((first, "First"), (second, "Second")):
+        (vault / "wiki").mkdir(parents=True)
+        (vault / "wiki/note.md").write_text(f"# Note\n> [!question]\n> {label} vault?\n")
+    registry = tmp_path / ".config/obsidian-knowledge/vaults.yaml"
+    registry.parent.mkdir(parents=True)
+    registry.write_text(f"vaults:\n  - {first}\n  - {second}\n")
+    (tmp_path / "outside").mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path / location)
+    args = ["questions", "--vault", str(first)] if override else ["questions"]
+    assert main(args) == 0
+    assert capsys.readouterr().out == f"wiki/note.md\t2\t{expected} vault?\n"
+
+
 def test_audit_managed_structure_and_vault_wide_content(tmp_path: Path, capsys) -> None:
     (tmp_path / ".claude").mkdir()
     (tmp_path / ".claude/obsidian-knowledge.yaml").write_text("ai_managed: [records, Utility]\n")

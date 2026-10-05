@@ -120,9 +120,11 @@ Remaining opportunities, ordered by recurring context cost:
    and trigger descriptions would reduce discovery context while preserving
    explicit requests, scheduled organizer runs, and the capture hook trigger.
 
-Existing boundaries work well: the organizer entrypoint is 3,971 characters and
-routes six repair-specific references only when their steps apply. Its installed
-commands carry executable detail outside the prompt. The doctor and index-sync
+Existing boundaries work well: the organizer entrypoint is 3,847 characters and
+routes seven task-specific references only when their steps apply. Alternate-vault
+selection lives in `skills/vault-organizer/lib/multi-vault.md`; routine examples
+use the default vault. Its installed commands carry executable detail outside
+the prompt. The doctor and index-sync
 nudge emit only when findings exist; secret findings have bounded samples. MCP
 tool descriptions and the manual scan command are short. The shared profile
 index is capped at 6,000 characters and contains links rather than full notes;

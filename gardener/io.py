@@ -9,9 +9,9 @@ from pathlib import Path
 import yaml
 from hookslib.patterns import parse_frontmatter
 from pydantic import BaseModel, ConfigDict, field_validator
-from vault_registry import load_vault_roots
 
 from gardener.models import DEFAULT_STUB_PATTERNS
+from lib.vault_index.cli import resolve_vault as resolve_cli_vault
 from lib.vault_index.vault_files import write_vault_file
 
 # NOTE: skills/vault-organizer/SKILL.md, Question report, documents this state path.
@@ -19,15 +19,9 @@ REPORT_PATH = "Utility/obsidian-knowledge/reports/open-questions.md"
 
 
 def resolve_vault(explicit: Path | None = None) -> Path:
-    """Use an explicit root, the enclosing configured vault, or the sole vault."""
+    """Use the CLI's default selection and validate the gardener's root."""
     if explicit is None:
-        roots = tuple(Path(root) for root in load_vault_roots())
-        cwd = Path.cwd().resolve()
-        explicit = next((root for root in roots if cwd.is_relative_to(root)), None)
-        if explicit is None:
-            if len(roots) != 1:
-                raise ValueError("pass --vault when no single configured vault applies")
-            explicit = roots[0]
+        explicit = resolve_cli_vault(None)
     root = explicit.expanduser().resolve(strict=True)
     if not root.is_dir():
         raise ValueError(f"not a vault directory: {root}")

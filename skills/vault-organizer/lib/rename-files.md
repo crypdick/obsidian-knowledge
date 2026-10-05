@@ -25,7 +25,7 @@ there.
 4. For a confident match, rename the file:
 
    ```bash
-   obsidian vault="$VAULT_NAME" rename path="old/name.ext" name="new-name.ext"
+   obsidian rename path="old/name.ext" name="new-name.ext"
    ```
 
 5. Check the new path and search for the old name

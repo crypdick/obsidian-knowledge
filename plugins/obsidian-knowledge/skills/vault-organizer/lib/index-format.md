@@ -93,7 +93,7 @@ prefix recovery and ambiguity rules.
 Always use the Obsidian CLI to move files; never use filesystem `mv`:
 
 ```bash
-obsidian vault="$VAULT_NAME" move path="old/path.md" to="new/folder/file.md" silent
+obsidian move path="old/path.md" to="new/folder/file.md" silent
 ```
 
 Check the destination and repair any stale links left by the move.

@@ -7,7 +7,7 @@ description: >-
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
   Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.5.0
+version: 1.5.1
 ---
 
 # Vault organizer
@@ -18,15 +18,16 @@ reference only when its step applies.
 
 ## Setup
 
-Use the installed `obsidian-knowledge garden` commands. They default to the
-configured vault containing cwd, or the sole registered vault. Pass `--vault
-ROOT` to override it. When multiple vaults are configured and cwd selects none,
-an explicit root is required. All note paths are vault-relative.
+Use the installed `obsidian-knowledge garden` commands. After setup, they use
+the configured default vault without environment variables or flags. All note
+paths are vault-relative.
+
+Before Obsidian operations, check `obsidian vault info=path` matches the vault
+being maintained. For another vault or mismatched CLI targets, read
+[multi-vault selection](lib/multi-vault.md).
 
 Read the vault's local instructions, `.claude/obsidian-knowledge.yaml`, and
-`Utility/obsidian-knowledge/needs-attention.md`. Set `VAULT_NAME` to its registered
-Obsidian name. Keep `vault="$VAULT_NAME"` before every Obsidian subcommand; after
-it, the CLI can silently ignore the option. Enable automatic internal-link
+`Utility/obsidian-knowledge/needs-attention.md`. Enable automatic internal-link
 updates in Obsidian.
 
 Exclude hidden files, protected sources, and Syncthing sync conflicts from
@@ -58,7 +59,7 @@ Use Obsidian move and rename commands so internal links update.
 ## Links
 
 ```bash
-obsidian vault="$VAULT_NAME" unresolved verbose format=json | obsidian-knowledge garden links
+obsidian unresolved verbose format=json | obsidian-knowledge garden links
 ```
 
 Inspect the report. Add `--apply` for unique recoveries; triage remaining links
@@ -66,7 +67,7 @@ using [broken-link guidance](lib/broken-links.md). Preserve aliases, headings,
 block references, and primary text. Leave intentional concept stubs intact.
 
 ```bash
-obsidian vault="$VAULT_NAME" orphans
+obsidian orphans
 ```
 
 Add managed notes to their parent indexes where appropriate. Respect established

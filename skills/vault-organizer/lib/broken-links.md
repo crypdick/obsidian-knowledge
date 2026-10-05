@@ -36,14 +36,14 @@ delegates to the verified writer; aliases, heading and block suffixes survive.
 
 Review the diff for intended link changes, then check fresh unresolved-link
 results. If CLI results disagree with file contents, reload Obsidian with
-`obsidian vault="$VAULT_NAME" command id="app:reload"` and retry.
+`obsidian command id="app:reload"` and retry.
 
 ## Orphans
 
-Run `obsidian vault="$VAULT_NAME" orphans`. Add managed-zone orphans to their
+Run `obsidian orphans`. Add managed-zone orphans to their
 parent index if missing. Ignore orphans outside managed zones and sync conflicts.
 
 ## Dead ends
 
-`obsidian vault="$VAULT_NAME" deadends` is informational. Leaf notes can
+`obsidian deadends` is informational. Leaf notes can
 legitimately have no outgoing links; do not flag them.

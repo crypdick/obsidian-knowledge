@@ -260,7 +260,7 @@ def test_scanners_default_to_configured_vault(
     assert not (tmp_path / "wiki").exists()
 
 
-def test_defaults_choose_containing_vault_and_refuse_ambiguous_registry(
+def test_defaults_choose_first_registered_vault_then_containing_vault(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     first, second = tmp_path / "first", tmp_path / "second"
@@ -270,29 +270,28 @@ def test_defaults_choose_containing_vault_and_refuse_ambiguous_registry(
     registry.write_text(f"vaults:\n  - {first}\n  - {second}\n")
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     command = [sys.executable, "-m", "lib.vault_index.cli", "garden", "index", "wiki/index.md", "--apply"]
-    plan = '{"title":"Second","entries":[]}'
-    ambiguous = subprocess.run(
+    default = subprocess.run(
         command,
         cwd=tmp_path,
-        input=plan,
+        input='{"title":"First","entries":[]}',
         text=True,
         capture_output=True,
         env={**os.environ, "PYTHONPATH": str(ROOT)},
     )
-    assert ambiguous.returncode != 0
-    assert not (first / "wiki/index.md").exists()
+    assert default.returncode == 0, default.stderr
+    assert (first / "wiki/index.md").read_text() == "# First\n\n"
     assert not (second / "wiki/index.md").exists()
     selected = subprocess.run(
         command,
         cwd=second / "wiki",
-        input=plan,
+        input='{"title":"Second","entries":[]}',
         text=True,
         capture_output=True,
         env={**os.environ, "PYTHONPATH": str(ROOT)},
     )
     assert selected.returncode == 0, selected.stderr
     assert (second / "wiki/index.md").read_text() == "# Second\n\n"
-    assert not (first / "wiki/index.md").exists()
+    assert (first / "wiki/index.md").read_text() == "# First\n\n"
 
 
 def test_report_apply_uses_default_destination(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
