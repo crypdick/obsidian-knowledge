@@ -17,12 +17,11 @@ For a stray duplicate `---` after the frontmatter, use the gardener command.
 Replace `NOTE_PATH` with the note's filesystem path:
 
 ```bash
-# Dry run (reports what would change)
-obsidian-knowledge garden frontmatter NOTE_PATH
-
 # Apply the fix
 obsidian-knowledge garden frontmatter --apply NOTE_PATH
 ```
+
+Omit `--apply` to preview.
 
 The script reports these output codes:
 
@@ -32,10 +31,10 @@ The script reports these output codes:
 
 For `NEEDS_MERGE` cases:
 
-1. Read the note and confirm two YAML blocks.
+1. Read the note's frontmatter blocks.
 2. Merge the keys into one block. For timestamps, prefer the newer automatically
    injected values. For other properties, preserve user-set values.
-3. Write and verify the note with one frontmatter block.
+3. Write the note with one frontmatter block using `obsidian-knowledge write`.
 
 Example before:
 

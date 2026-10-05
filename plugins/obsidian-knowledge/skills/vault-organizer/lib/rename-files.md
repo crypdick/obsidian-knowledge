@@ -28,6 +28,5 @@ there.
    obsidian rename path="old/name.ext" name="new-name.ext"
    ```
 
-5. Check the new path and search for the old name
-   and repair stale links. For low-confidence cases, add the proposed name and
-   reasoning to `needs-attention.md` instead of renaming.
+For low-confidence cases, add the proposed name and reasoning to
+`needs-attention.md` instead of renaming. Repair stale links when encountered.

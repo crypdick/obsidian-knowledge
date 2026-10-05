@@ -115,8 +115,12 @@ Existing boundaries work well: the organizer entrypoint routes seven
 task-specific references only when their steps apply and keeps manual secret
 scanning inline. Alternate-vault selection lives in
 `skills/vault-organizer/lib/multi-vault.md`; routine examples
-use the default vault. Its installed commands carry executable detail outside
-the prompt. The doctor and index-sync
+use the configured default without preflight probes. Targeted repairs use only
+the relevant sections; commands load zone configuration and verify their own
+writes. Deterministic repairs can apply directly, with previews optional.
+Readbacks, repeat scans, and post-rename searches are not routine requirements;
+investigate failures or inconsistent results when observed. Its installed
+commands carry executable detail outside the prompt. The doctor and index-sync
 nudge emit only when findings exist; secret findings have bounded samples. MCP
 tool descriptions and the manual scan workflow are short. The shared profile
 index is capped at 6,000 characters and contains links rather than full notes;

@@ -1,20 +1,18 @@
 ---
 name: vault-organizer
 description: >-
-  This skill should be used when the user asks to "organize the vault",
-  "update indexes", "fix broken links", "rename ambiguous files", "fix
-  filenames", "garden the vault", "sync indexes", "clean up the vault",
-  "maintain the vault", or after making substantial structural edits
-  (creating, moving, renaming, or deleting files) in an Obsidian vault.
-  Also use for on-demand vault secret scans and scheduled routine maintenance.
-version: 1.5.2
+  Maintain Obsidian vault indexes, links, filenames, and note locations. Use for
+  vault cleanup, substantial structural edits, scheduled maintenance, and
+  on-demand vault secret scans.
+metadata:
+  version: "1.5.3"
 ---
 
 # Vault organizer
 
 Maintain indexes, links, filenames, and note locations. Preserve primary note
-content except for intended link and frontmatter repairs. Read each `lib/`
-reference only when its step applies.
+content except for intended link and frontmatter repairs. Use only the sections
+needed for the request; read `lib/` references when their guidance applies.
 
 For secret-scan-only requests, go directly to [Secret scans](#secret-scans).
 
@@ -24,13 +22,15 @@ Use the installed `obsidian-knowledge garden` commands. After setup, they use
 the configured default vault without environment variables or flags. All note
 paths are vault-relative.
 
-Before Obsidian operations, check `obsidian vault info=path` matches the vault
-being maintained. For another vault or mismatched CLI targets, read
+Trust the configured vault and successful command output. Investigate targeting
+or write problems when errors or results give reason. For another vault or an
+observed target mismatch, read
 [multi-vault selection](lib/multi-vault.md).
 
-Read the vault's local instructions, `.claude/obsidian-knowledge.yaml`, and
-`Utility/obsidian-knowledge/needs-attention.md`. Enable automatic internal-link
-updates in Obsidian.
+Follow the vault's local naming and layout instructions. Commands load
+`.claude/obsidian-knowledge.yaml` themselves. Read
+`Utility/obsidian-knowledge/needs-attention.md` for a general maintenance pass
+or when working on a listed issue.
 
 Exclude hidden files, protected sources, and Syncthing sync conflicts from
 maintenance. Handle conflicts separately. Repairs refuse existing published
@@ -43,7 +43,7 @@ write` for manual Markdown edits; its writer verifies the result.
 obsidian-knowledge garden audit
 ```
 
-Triage all findings:
+Triage findings within the requested scope:
 
 - `MISSING_INDEX`, `NOT_INDEXED`: create or complete indexes using
   [index conventions](lib/index-format.md). Read children to write useful
@@ -56,16 +56,17 @@ Triage all findings:
   `NEEDS_MERGE` requires [manual frontmatter repair](lib/stacked-frontmatter.md).
 
 Rename ambiguous files using [rename guidance](lib/rename-files.md).
-Use Obsidian move and rename commands so internal links update.
+Use Obsidian move and rename commands with automatic internal-link updates.
 
 ## Links
 
 ```bash
-obsidian unresolved verbose format=json | obsidian-knowledge garden links
+obsidian unresolved verbose format=json | obsidian-knowledge garden links --apply
 ```
 
-Inspect the report. Add `--apply` for unique recoveries; triage remaining links
-using [broken-link guidance](lib/broken-links.md). Preserve aliases, headings,
+The command repairs unique recoveries and reports remaining links. Omit
+`--apply` to preview. Triage remaining links using
+[broken-link guidance](lib/broken-links.md). Preserve aliases, headings,
 block references, and primary text. Leave intentional concept stubs intact.
 
 ```bash
@@ -111,9 +112,8 @@ which findings are real and authorizes remediation.
 
 ## Finish
 
-Re-run affected checks. Review changed links and fresh CLI results; reload
-Obsidian only if its cache disagrees with file contents. No checksum comparison
-is needed for an ordinary CLI move or rename.
+Report completed changes and unresolved items. Successful commands need no
+separate readback, checksum comparison, or repeat scan.
 
 Update unresolved items in `needs-attention.md` and record completed vault
 changes in one same-session changelog fragment. Follow [state-file conventions](lib/state-files.md);

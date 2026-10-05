@@ -10,7 +10,7 @@ Create `<folder>/index.md`:
 
 Create indexes for nonempty managed folders only. Handle `EMPTY_FOLDER` as
 triage. Respect local layouts that explicitly replace an index with another
-navigation file. Create and verify child indexes before linking them from a
+navigation file. Create child indexes before linking them from a
 parent; a link to a descendant note does not index the child folder.
 
 ## Entry format
@@ -96,4 +96,4 @@ Always use the Obsidian CLI to move files; never use filesystem `mv`:
 obsidian move path="old/path.md" to="new/folder/file.md" silent
 ```
 
-Check the destination and repair any stale links left by the move.
+Repair stale links when encountered.
