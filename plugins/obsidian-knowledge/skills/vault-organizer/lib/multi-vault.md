@@ -10,8 +10,8 @@ Routine vault commands, including `garden`, share this selection order:
 1. Explicit `--vault ROOT`.
 2. Registered vault containing the working directory.
 3. First vault in `~/.config/obsidian-knowledge/vaults.yaml`.
-4. Working directory when no vault is registered, for backward compatibility.
 
+Commands require an explicit or registered vault.
 The first registered vault is the default outside registered vaults. Reorder
 the registry to change that default. Malformed registries and missing selected
 vaults are errors; they do not select another vault silently.

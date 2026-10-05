@@ -99,8 +99,7 @@ installed CLI package, which does not bundle skills; use the skill path supplied
 by the host rather than resolving this reference beside the hook script.
 
 The capture reminder uses the `obsidian-knowledge` skill for reusable knowledge,
-user research, historical changes, and workflow papercuts. This skill includes
-the former `remember-conversations` guidance: goals and rules appear first,
+user research, historical changes, and workflow papercuts. Goals and rules appear first,
 with filing, changelog, and CLI procedures in its operational notes near the
 bottom. The primer and reminder defer capture policy to the skill.
 The reminder also requests repairs to verified stale instructions encountered

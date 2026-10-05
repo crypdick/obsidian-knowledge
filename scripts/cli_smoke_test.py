@@ -125,10 +125,10 @@ def exercise(executable: str, root: Path) -> None:
                     "obsidian-knowledge harness"
                     in json.loads(output)["hookSpecificOutput"]["additionalContext"]
                 )
-        for kind in ("capture-session", "update-changelog", "remind-convos", "nudge-index-sync"):
+        for kind in ("capture-session", "nudge-index-sync"):
             stop_payload = json.dumps({"session_id": f"{root.name}-{agent}-{kind}"})
             output = run("_hook", "stop", "--kind", kind, "--agent", agent, content=stop_payload)
-            if kind != "nudge-index-sync":
+            if kind == "capture-session":
                 assert json.loads(output)["decision"] == "block"
     run("_hook", "stop", "--kind", "invalid", content="{}", expected=2)
     exercise_garden(vault, run)

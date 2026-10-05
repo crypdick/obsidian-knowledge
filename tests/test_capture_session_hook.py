@@ -11,7 +11,6 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 CAPTURE_KIND = "capture-session"
-COMPATIBILITY_KINDS = ("update-changelog", "remind-convos")
 
 
 def _transcript(tmp_path: Path, messages: int) -> Path:
@@ -120,14 +119,12 @@ def test_new_user_message_allows_new_capture_decision(tmp_path, subprocess_vault
     assert _run(CAPTURE_KIND, payload, cwd=vault, env=env)["decision"] == "block"
 
 
-def test_cli_compatibility_aliases_share_one_capture_claim(tmp_path, subprocess_vault):
+def test_concurrent_capture_calls_share_one_claim(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
     payload = _payload(tmp_path)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        outputs = list(
-            executor.map(lambda kind: _run(kind, payload, cwd=vault, env=env), COMPATIBILITY_KINDS)
-        )
+        outputs = list(executor.map(lambda _: _run(CAPTURE_KIND, payload, cwd=vault, env=env), range(2)))
 
     assert sum(output.get("decision") == "block" for output in outputs) == 1
 
@@ -149,14 +146,12 @@ def test_missing_transcript_claims_once_per_session(tmp_path, subprocess_vault):
     assert second == {}
 
 
-def test_cli_compatibility_aliases_without_transcript_claim_atomically(tmp_path, subprocess_vault):
+def test_concurrent_capture_calls_without_transcript_claim_atomically(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
     payload = {"session_id": f"capture-no-transcript-race-{uuid.uuid4()}"}
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        outputs = list(
-            executor.map(lambda kind: _run(kind, payload, cwd=vault, env=env), COMPATIBILITY_KINDS)
-        )
+        outputs = list(executor.map(lambda _: _run(CAPTURE_KIND, payload, cwd=vault, env=env), range(2)))
 
     assert sum(output.get("decision") == "block" for output in outputs) == 1
 

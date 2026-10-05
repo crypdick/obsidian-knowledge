@@ -131,11 +131,13 @@ def test_vault_resolution_uses_default_registry(tmp_path: Path, monkeypatch) -> 
     assert resolve_vault() == second
 
 
-def test_vault_resolution_without_registry_uses_cwd(tmp_path: Path, monkeypatch) -> None:
+def test_vault_resolution_requires_explicit_or_registered_root(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", raising=False)
     monkeypatch.chdir(tmp_path)
-    assert resolve_vault() == tmp_path
+    with pytest.raises(ValueError):
+        resolve_vault()
+    assert resolve_vault(tmp_path) == tmp_path
 
 
 def test_verified_writes_create_replace_and_refuse_changed_review(tmp_path: Path) -> None:

@@ -22,9 +22,9 @@ an error; completed steps are not rolled back. Its default deadline is
 
 Vault commands, including `garden`, accept `--vault`. After setup, no environment
 variables or vault flags are needed: commands select the registered vault
-containing the working directory, then the first registered vault. With no
-registry, they use the working directory for backward compatibility. A malformed
-registry or missing selected vault is an error, not a fallback.
+containing the working directory, then the first registered vault. Commands
+require an explicit or registered vault. Malformed registries and missing
+selected vaults are errors.
 
 ## Commands
 

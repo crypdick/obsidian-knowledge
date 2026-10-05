@@ -229,9 +229,14 @@ def test_search_ttl_watchdog_reports_and_hard_exits(monkeypatch, capsys):
     assert "probe: hard timeout after 6s" in capsys.readouterr().err
 
 
-def test_resolve_vault_without_registry_uses_cwd(tmp_path, monkeypatch):
+@pytest.mark.parametrize("registry_content", [None, "vaults: []\n"])
+def test_resolve_vault_requires_explicit_or_registered_root(tmp_path, monkeypatch, registry_content):
+    if registry_content is not None:
+        (tmp_path / "missing.yaml").write_text(registry_content)
     monkeypatch.setenv(cli.VAULTS_CONFIG_ENV, str(tmp_path / "missing.yaml"))
-    assert cli.resolve_vault(None, tmp_path) == tmp_path.resolve()
+    with pytest.raises(ValueError):
+        cli.resolve_vault(None, tmp_path)
+    assert cli.resolve_vault(tmp_path) == tmp_path.resolve()
     assert cli.vaults_config_path() == tmp_path / "missing.yaml"
     monkeypatch.delenv(cli.VAULTS_CONFIG_ENV)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))

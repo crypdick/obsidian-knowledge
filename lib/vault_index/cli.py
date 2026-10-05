@@ -192,7 +192,6 @@ def resolve_vault(vault: Path | None, cwd: Path | None = None) -> Path:
     1. explicit --vault
     2. configured vault containing cwd
     3. first configured vault
-    4. cwd, preserving legacy behavior when no registry exists
     """
     # NOTE: docs/CLI.md, First run, and skills/vault-organizer/lib/multi-vault.md
     # document this shared selection order, including gardener commands.
@@ -201,15 +200,15 @@ def resolve_vault(vault: Path | None, cwd: Path | None = None) -> Path:
 
     cwd = (cwd or Path.cwd()).expanduser().resolve()
     configured = load_configured_vaults()
+    if not configured:
+        raise ValueError("no configured vault")
     for root in configured:
         try:
             cwd.relative_to(root)
         except ValueError:
             continue
         return existing_vault(root)
-    if configured:
-        return existing_vault(configured[0])
-    return cwd
+    return existing_vault(configured[0])
 
 
 def format_remember_candidates(hits: list[Hit]) -> str:
@@ -322,10 +321,6 @@ def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claud
         ("post-tool-use", "reflect-nudge"): "reflect-nudge.py",
         ("session-start", "recall-init"): "recall-init.py",
         ("stop", "capture-session"): "capture-session.py",
-        # Rolling-compatibility aliases for older cached hook manifests.
-        # Aliases share the consolidated capture-session cooldown marker.
-        ("stop", "update-changelog"): "capture-session.py",
-        ("stop", "remind-convos"): "capture-session.py",
         ("stop", "nudge-index-sync"): "nudge-index-sync.py",
     }
     effective_kind = kind
