@@ -110,10 +110,8 @@ def build_primer(
         "or exact error, and relevant trigger. Explain task names or local labels only if "
         "needed to understand or reproduce the problem; otherwise omit them. "
         "Routine debugging needs no entry; logging never replaces an in-scope fix.\n"
-        "- Access: papercut needs log-directory and lock-file write access; semantic search "
-        "needs network access to Ollama, including localhost. Use the host's approved permission "
-        "mechanism when needed. EPERM/EACCES does not mean Ollama is stopped. If access is "
-        "unavailable, report it once and continue; do not retry unchanged permissions or "
-        "recursively log a failed papercut."
+        # NOTE: docs/hooks.md "Memory and recall" documents this skill-relative routing.
+        "- Access errors: on permission or connection failures, read "
+        "`references/access-errors.md` in the obsidian-knowledge skill directory."
         f"{kb_block}"
     )

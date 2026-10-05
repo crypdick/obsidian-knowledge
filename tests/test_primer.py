@@ -34,6 +34,16 @@ def test_build_primer_instructs_agents_to_log_papercuts(tmp_path: Path):
     assert "/improve-harness" not in text
 
 
+def test_build_primer_defers_access_recovery_to_skill(tmp_path: Path):
+    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+
+    assert "obsidian-knowledge skill" in text
+    assert "references/access-errors.md" in text
+    assert "Ollama" not in text
+    assert "EPERM" not in text
+    assert "EACCES" not in text
+
+
 def test_build_primer_keeps_capture_and_memory_selective(tmp_path: Path):
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
 

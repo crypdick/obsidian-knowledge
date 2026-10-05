@@ -92,6 +92,12 @@ codex features disable memories
 Restart Codex afterward. This preserves existing native memory files. Plugin
 setup and lifecycle hooks do not change this preference.
 
+The primer routes permission and connection failures to
+`references/access-errors.md` in the loaded `obsidian-knowledge` skill directory.
+Recovery procedures load only when a failure occurs. Codex hooks run from the
+installed CLI package, which does not bundle skills; use the skill path supplied
+by the host rather than resolving this reference beside the hook script.
+
 The capture reminder invokes `remember-conversations` only for reusable
 knowledge that is not already available elsewhere. It also requests repairs to
 verified stale instructions encountered during the task. It does not request a
