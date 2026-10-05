@@ -6,8 +6,8 @@ description: >-
   filenames", "garden the vault", "sync indexes", "clean up the vault",
   "maintain the vault", or after making substantial structural edits
   (creating, moving, renaming, or deleting files) in an Obsidian vault.
-  Also triggered by scheduled cron invocations for routine vault maintenance.
-version: 1.5.1
+  Also use for on-demand vault secret scans and scheduled routine maintenance.
+version: 1.5.2
 ---
 
 # Vault organizer
@@ -15,6 +15,8 @@ version: 1.5.1
 Maintain indexes, links, filenames, and note locations. Preserve primary note
 content except for intended link and frontmatter repairs. Read each `lib/`
 reference only when its step applies.
+
+For secret-scan-only requests, go directly to [Secret scans](#secret-scans).
 
 ## Setup
 
@@ -84,6 +86,28 @@ prefix), and `YAML_ERR` from the audit. The question report defaults to
 `Utility/obsidian-knowledge/reports/open-questions.md`, preserving its header,
 frontmatter, and scope. Use `--report` to preview or `--timestamp` to override
 current local time. With no flags, the scanner emits TSV.
+
+## Secret scans
+
+For an on-demand secret scan, run from inside the registered target vault:
+
+```bash
+uv run --script "<plugin-root>/hooks/scan-vault-secrets.py" --manual
+```
+
+Resolve `<plugin-root>` from this skill's loaded path: two directories above
+`skills/vault-organizer/`. This works in Claude and Codex without assuming a
+host-specific environment variable. uv installs the scanner's dependencies.
+
+`--manual` bypasses the Stop-hook cooldown. Append `--full` when the user requests
+a full rescan; it preserves audit decisions for surviving findings. The first
+scan also covers all eligible files; subsequent scans are incremental.
+
+Report counts, paths, and next steps from the scanner's output. Redact secret
+values from known-leaked literal samples before displaying them. Exit status
+zero also occurs with findings; claim clean only when output says clean.
+Do not redact notes or change audit decisions automatically; the user decides
+which findings are real and authorizes remediation.
 
 ## Finish
 

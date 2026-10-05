@@ -434,8 +434,7 @@ def scan_known_leaked(
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Scan vault for leaked secrets (Stop hook by default; "
-        "--manual for slash-command invocation)."
+        description="Scan vault for leaked secrets (Stop hook by default; --manual for on-demand scans)."
     )
     parser.add_argument(
         "--manual",

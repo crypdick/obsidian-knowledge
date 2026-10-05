@@ -118,9 +118,12 @@ for memory location, read/write conventions, and session-start recall.
 ## Secret scanning
 
 The Stop hook scans for unaudited secrets. The first scan covers the vault;
-subsequent scans are incremental. Run `/scan-secrets` for an on-demand scan, or
-`/scan-secrets full` to rescan all eligible files while preserving audit decisions.
-The scanner requires uv, which installs its dependencies automatically.
+subsequent scans are incremental. Ask `vault-organizer` to scan the vault for
+secrets, or request a full rescan of all eligible files while preserving audit
+decisions. Both Claude and Codex use the skill's
+[manual scan workflow](https://github.com/crypdick/obsidian-knowledge/blob/main/skills/vault-organizer/SKILL.md#secret-scans).
+It replaces the standalone `/scan-secrets` command. The scanner requires uv,
+which installs its dependencies automatically.
 
 Document your secrets-management convention in the vault so the agent can
 follow it when findings need attention. Review findings before redacting files

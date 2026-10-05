@@ -4,7 +4,7 @@
 Claude Code reads plugin sources at repo root; Codex installs from
 ``plugins/obsidian-knowledge/`` (see
 ``.agents/plugins/marketplace.json``). That subtree is a copy of the root's
-``commands/``, ``hooks/`` and ``skills/`` trees and drifts silently when the
+``hooks/`` and ``skills/`` trees and drifts silently when the
 root is edited but the copy is not. This script makes the copy a pure function
 of the root so drift can't survive review.
 
@@ -30,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CODEX_ROOT = REPO_ROOT / "plugins" / "obsidian-knowledge"
 
 # Root subtrees mirrored verbatim into the Codex plugin.
-SYNC_DIRS = ("commands", "hooks", "skills")
+SYNC_DIRS = ("hooks", "skills")
 
 # Root-relative path -> Codex-relative path for the few files whose names differ.
 RENAMES = {
