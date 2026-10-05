@@ -16,9 +16,8 @@ class TestBuildPrimer:
         assert "harness" in primer.lower()
         assert "memory" in primer.lower()
         assert "obsidian-knowledge search" in primer
-        assert "remember-conversations" in primer
-        assert "durable, novel delta" in primer
-        assert "filing nothing as success" in primer
+        assert "obsidian-knowledge skill" in primer
+        assert "remember-conversations" not in primer
         assert "at most 20 bullets or 6000 characters" in primer
         assert "obsidian-knowledge papercut" in primer
         assert "/improve-harness" not in primer

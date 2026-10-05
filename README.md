@@ -71,8 +71,7 @@ Or ask your agent to use a skill:
 
 | Skill | Example request | Result |
 | --- | --- | --- |
-| `obsidian-knowledge` | "Find my notes on this project." | Search, read, and write vault notes. |
-| `remember-conversations` | "Remember this decision." | Update a relevant note with reusable knowledge. |
+| `obsidian-knowledge` | "Find my notes on this project." or "Remember this decision." | Search and maintain vault notes, preserve conversation outcomes, and record papercuts. |
 | `vault-organizer` | "Organize my vault and fix broken links." | Maintain indexes, filenames, and links; report ambiguous cases. |
 
 Vault organization requires the Obsidian CLI. In Obsidian, enable

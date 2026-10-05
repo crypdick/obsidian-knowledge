@@ -85,10 +85,9 @@ def build_primer(
         '`obsidian-knowledge search "<query>"`. '
         f"Use `rg <pattern> {wiki}/` only for exact-string lookups. "
         "Use the wiki instead of Claude or Codex built-in memory stores.\n"
-        "- Capture: use remember-conversations only for a durable, novel delta that changes "
-        "future action or prevents repeated work and is not recoverable from code, tracked docs, "
-        "Git, issues, logs, runtime, or existing notes. Search first, prefer one canonical note, "
-        "and treat filing nothing as success. Never store PIDs, job IDs, transient status, "
+        "- Capture: follow the obsidian-knowledge skill's goals and rules for reusable knowledge, "
+        "user research, historical changes, and workflow papercuts. Its operational notes cover "
+        "filing and changelogs. Never store PIDs, job IDs, transient status, "
         "temporary worktrees, commit/test transcripts, or per-cycle handoffs. Every saved note "
         "must be hermetic: explain local labels such as 'category 15' with their system and "
         "meaning so the note works without the conversation.\n"

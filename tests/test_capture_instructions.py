@@ -16,7 +16,7 @@ def _read(path: str) -> str:
 
 
 def test_capture_uses_verified_filesystem_writes_without_cli_placeholders() -> None:
-    skill = _read("skills/remember-conversations/SKILL.md")
+    skill = _read("skills/obsidian-knowledge/SKILL.md")
 
     assert "obsidian-knowledge write" in skill
     assert "Wrote and verified" in skill
@@ -39,7 +39,7 @@ def test_general_skill_uses_configured_verified_vault_io() -> None:
 def test_changelog_capture_never_requires_a_shared_index() -> None:
     capture_surfaces = (
         "hooks/hookslib/capture.py",
-        "skills/remember-conversations/SKILL.md",
+        "skills/obsidian-knowledge/SKILL.md",
         "skills/vault-organizer/SKILL.md",
         "skills/vault-organizer/lib/state-files.md",
     )
@@ -87,20 +87,25 @@ def test_session_start_requires_explicit_guard_installation(manifest: str) -> No
     assert all("install-rules" not in command and "--install-guards" not in command for command in commands)
 
 
-def test_capture_policy_reverses_old_overcapture_defaults() -> None:
+def test_capture_routes_to_merged_skill_without_overriding_user_policy() -> None:
     reason = build_reason("/vault")
-    skill = _read("skills/remember-conversations/SKILL.md")
+    skill = _read("skills/obsidian-knowledge/SKILL.md")
     primer = _read("lib/vault_index/primer.py")
 
+    assert "obsidian-knowledge skill" in reason
+    assert "remember-conversations" not in reason
+    assert "remember-conversations" not in primer
+    assert not (ROOT / "skills/remember-conversations/SKILL.md").exists()
     assert "Default: file nothing" in reason
-    assert "If you cannot state it, do not file" in reason
+    assert "at most one durable wiki note" not in reason
+    assert "one-sentence durable, novel delta" not in reason
     assert "Default output for any Q&A" not in skill
-    assert "Every durable note must be self-contained" in skill
+    assert "Notes must be self-contained" in skill
     assert "In doubt for educational Q&A" not in skill
     assert "Always preserve user's questions" not in skill
     assert "Single session can produce multiple types" not in skill
     assert "### Always" not in skill
-    assert "filing nothing as success" in primer
+    assert "Don't create notes if they aren't necessary" in skill
     assert "at most 20 bullets or 6000 characters" in primer
     assert "second generated memory/index.md" in primer
 

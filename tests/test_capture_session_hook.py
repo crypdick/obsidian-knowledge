@@ -81,7 +81,7 @@ def test_capture_hook_does_not_guess_between_multiple_vaults(tmp_path):
     assert _run(CAPTURE_KIND, _payload(tmp_path), cwd=outside, env={"HOME": str(home)}) == {}
 
 
-def test_capture_hook_emits_selective_gate_inside_vault(tmp_path, subprocess_vault):
+def test_capture_hook_routes_to_merged_skill_inside_vault(tmp_path, subprocess_vault):
     vault, env = subprocess_vault
 
     output = _run(CAPTURE_KIND, _payload(tmp_path), cwd=vault, env=env)
@@ -89,11 +89,10 @@ def test_capture_hook_emits_selective_gate_inside_vault(tmp_path, subprocess_vau
     assert output["decision"] == "block"
     reason = output["reason"]
     assert "Default: file nothing" in reason
-    assert "durable, novel delta" in reason
+    assert "obsidian-knowledge skill" in reason
+    assert "remember-conversations" not in reason
     assert "Search the vault first" in reason
-    assert "at most one durable wiki note" in reason
-    assert "transient status/PIDs/job IDs/worktrees" in reason
-    assert "do not log code, git, or host changes" in reason
+    assert "at most one durable wiki note" not in reason
     assert "The capture key is" in reason
     assert "-session-" in reason
 

@@ -48,21 +48,13 @@ def build_reason(vault_root: str, session_key: str | None = None) -> str:
             "same-session fragment before creating one."
         )
     return (
-        "Before stopping, make one capture decision. Default: file nothing. "
-        "Search the vault first and state the one-sentence durable, novel delta missing from "
-        "the canonical note. If you cannot state it, do not file. It must change future decisions "
-        "and not be cheaply recoverable from code, git, issues, logs, or existing notes. "
-        "Vault claims may be AI-generated or stale; verify facts and preserve sources and "
-        "uncertainty. Repeated notes are not independent evidence. "
-        "For qualifying material, follow remember-conversations: update the canonical note or "
-        "create at most one durable wiki note unless the user requested more or two topics are "
-        "independently reusable. Skip routine progress, transient status/PIDs/job IDs/worktrees, "
-        "and generic answers. Only after a durable vault change, create or reuse one terse "
-        f"same-session fragment in {changelog_dir}/; do not log code, git, or host changes alone "
-        f"and do not edit a shared changelog index.{changelog_reuse} "
-        "Repair verified stale instructions encountered in this task under the obsidian-knowledge "
-        "skill's instruction-repair rules: edit and verify the canonical source, preserve user "
-        "policy and safeguards, and start no new audit. If neither action qualifies, stop silently."
+        "Before stopping, review this session under the obsidian-knowledge skill's goals and rules: "
+        "reusable knowledge, user research, historical changes, and workflow papercuts. "
+        "Default: file nothing when no note is necessary. Search the vault first to avoid "
+        "duplicating existing knowledge. Follow the skill's operational notes for filing, "
+        "changelogs, papercuts, and repairs to encountered instructions. "
+        f"For changelog entries, use {changelog_dir}/ and do not edit a shared changelog index."
+        f"{changelog_reuse} If no action qualifies, stop silently."
     )
 
 

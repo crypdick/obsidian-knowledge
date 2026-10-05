@@ -98,10 +98,14 @@ Recovery procedures load only when a failure occurs. Codex hooks run from the
 installed CLI package, which does not bundle skills; use the skill path supplied
 by the host rather than resolving this reference beside the hook script.
 
-The capture reminder invokes `remember-conversations` only for reusable
-knowledge that is not already available elsewhere. It also requests repairs to
-verified stale instructions encountered during the task. It does not request a
-broader audit. Filing nothing is a valid outcome.
+The capture reminder uses the `obsidian-knowledge` skill for reusable knowledge,
+user research, historical changes, and workflow papercuts. This skill includes
+the former `remember-conversations` guidance: goals and rules appear first,
+with filing, changelog, and CLI procedures in its operational notes near the
+bottom. The primer and reminder defer capture policy to the skill.
+The reminder also requests repairs to verified stale instructions encountered
+during the task. It does not request a broader audit. Filing nothing is a valid
+outcome.
 
 Do not edit a user's `CLAUDE.md` unless they explicitly request it. If they want
 sessions without the plugin to find their memory, they can add:

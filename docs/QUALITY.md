@@ -72,7 +72,7 @@ CLI help and defaults with the docs. Update coverage measurements from
 
 ## Progressive disclosure audit
 
-Audited on 2026-10-05: all three skill entrypoints, organizer references,
+Audited on 2026-10-05: skill entrypoints, organizer references,
 Claude and Codex hook registrations and emitted prompts, the injected profile
 index, the MCP tool descriptions, and the generated Codex distribution.
 Counts below measure characters, not model tokens.
@@ -83,42 +83,33 @@ Both the vault skill and session primer route there only for permission or
 connection failures. The skill shrank from 3,830 to 3,168 characters; the primer's
 access paragraph shrank from 367 to 132. Recovery instructions remain intact.
 
+Conversation capture now lives in `obsidian-knowledge` alongside vault access
+and papercut logging. The merged skill preserves the rewritten capture guidance,
+with goals and rules first and operational notes near the bottom. The primer
+and capture reminder defer capture policy to this skill instead of injecting
+an independent acceptance gate or note-count limit. Same-session changelog keys
+and the no-shared-index rule remain in the reminder.
+
 Remaining opportunities, ordered by recurring context cost:
 
 1. **Session primer: defer write-only rules.**
    [`primer.py`](https://github.com/crypdick/obsidian-knowledge/blob/main/lib/vault_index/primer.py)
    injects capture examples, memory-file size limits, and papercut formatting
    during startup, resume, and compaction when its debounce permits. Keep vault
-   paths, recall instructions, reliability, native-memory exclusion, and a short
-   capture gate here. Move file-layout and maintenance details to a reference
+   paths, recall instructions, reliability, native-memory exclusion, and capture
+   routing here. Move file-layout and maintenance details to a reference
    read only before memory writes; move friction details to a reference read
    only when logging a problem. Provide those routes before removing rules.
-2. **Capture reminder: gate before loading filing procedures.**
-   [`capture.py`](https://github.com/crypdick/obsidian-knowledge/blob/main/hooks/hookslib/capture.py)
-   repeats the skill's acceptance rules, note-count policy, changelog procedure,
-   and instruction-repair policy. It emits once per human-message generation,
-   even for work outside the vault when exactly one vault is configured.
-   Keep the decision gate and session key in the prompt; let qualifying captures
-   load the filing rules from the skill. Preserve default-no-capture behavior
-   and same-session changelog reuse when reducing the prompt.
-3. **Capture skill: separate decision from filing.**
-   [`remember-conversations`](https://github.com/crypdick/obsidian-knowledge/blob/main/skills/remember-conversations/SKILL.md)
-   loads 5,074 characters, including filename reuse, note structure, location
-   mapping, and a write example before the acceptance gate succeeds. Keep the
-   gate and minimal verification constraints in the entrypoint. Read filing
-   details only for accepted material. Do not require the full vault skill
-   merely to access its troubleshooting reference.
-4. **Vault skill and reflection: share conditional friction guidance.**
+2. **Vault skill and reflection: share conditional friction guidance.**
    [`obsidian-knowledge`](https://github.com/crypdick/obsidian-knowledge/blob/main/skills/obsidian-knowledge/SKILL.md)
    includes instruction repair and detailed papercut guidance on ordinary note
    reads. Similar prose appears in the primer and every 100th shell call's
    [`reflection reminder`](https://github.com/crypdick/obsidian-knowledge/blob/main/hooks/reflect-nudge.py).
    Link conditional references from those surfaces and retain the distinction
    between task defects requiring fixes and unrelated friction worth logging.
-5. **Discovery metadata: shorten repeated trigger lists.** Organizer and capture
-   descriptions contain 421 and 371 characters respectively. Concise capability
-   and trigger descriptions would reduce discovery context while preserving
-   explicit requests, scheduled organizer runs, and the capture hook trigger.
+3. **Discovery metadata: shorten repeated trigger lists.** Keep capability and
+   trigger descriptions concise while preserving explicit requests, scheduled
+   organizer runs, and the capture hook trigger.
 
 Existing boundaries work well: the organizer entrypoint is 3,847 characters and
 routes seven task-specific references only when their steps apply. Alternate-vault

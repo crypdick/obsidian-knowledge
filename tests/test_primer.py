@@ -44,11 +44,11 @@ def test_build_primer_defers_access_recovery_to_skill(tmp_path: Path):
     assert "EACCES" not in text
 
 
-def test_build_primer_keeps_capture_and_memory_selective(tmp_path: Path):
+def test_build_primer_routes_capture_to_skill_and_preserves_memory_limits(tmp_path: Path):
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
 
-    assert "durable, novel delta" in text
-    assert "filing nothing as success" in text
+    assert "obsidian-knowledge skill" in text
+    assert "remember-conversations" not in text
     assert "Never store PIDs, job IDs" in text
     assert "Every saved note must be hermetic" in text
     assert "category 15" in text
