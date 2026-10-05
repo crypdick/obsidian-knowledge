@@ -1,6 +1,8 @@
-# Run: uv run prek run --all-files; install: uv run prek install
+# Full gate: uv run prek run --all-files --stage manual
+# Commits run file checks; install: uv run prek install
 # Ruff owns complexity, print/logging, debugger, and future-import checks.
 minimum_prek_version = "0.5.2"
+default_stages = ["pre-commit", "manual"]
 exclude = "^plugins/obsidian-knowledge/"
 
 [[repos]]
@@ -88,6 +90,7 @@ require_serial = true
 
 [[repos.hooks]]
 id = "vulture"
+stages = ["manual"]
 name = "vulture (dead code)"
 entry = "uv run vulture"
 language = "system"
@@ -96,6 +99,7 @@ always_run = true
 
 [[repos.hooks]]
 id = "mypy"
+stages = ["manual"]
 name = "mypy (strict)"
 entry = "uv run mypy lib hooks gardener"
 language = "system"
@@ -125,6 +129,7 @@ types = ["python"]
 
 [[repos.hooks]]
 id = "deptry"
+stages = ["manual"]
 name = "deptry"
 entry = "uv run deptry ."
 language = "system"
@@ -133,6 +138,7 @@ always_run = true
 
 [[repos.hooks]]
 id = "check-sdist"
+stages = ["manual"]
 name = "check-sdist"
 entry = "uv run check-sdist --inject-junk --installer uv"
 language = "system"
@@ -141,6 +147,7 @@ always_run = true
 
 [[repos.hooks]]
 id = "architecture"
+stages = ["manual"]
 name = "architecture"
 entry = "uv run python scripts/prek_hooks/check_architecture.py"
 language = "system"
@@ -149,6 +156,7 @@ always_run = true
 
 [[repos.hooks]]
 id = "codex-plugin-sync"
+stages = ["manual"]
 name = "Codex plugin in sync"
 entry = "uv run python scripts/sync_codex_plugin.py --check"
 language = "system"
@@ -157,6 +165,7 @@ always_run = true
 
 [[repos.hooks]]
 id = "pytest"
+stages = ["manual"]
 name = "pytest (+ coverage gate)"
 entry = "uv run pytest --cov --cov-report=term-missing --cov-report=json:coverage.json"
 language = "system"

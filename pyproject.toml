@@ -73,8 +73,7 @@ docs = [
 [tool.new-feature]
 target_branch = "main"
 setup = ["uv sync --group dev"]
-pre_merge = ["uv run prek run --all-files --show-diff-on-failure"]
-post_merge = ["uv run prek run --all-files --show-diff-on-failure"]
+pre_merge = ["uv run prek run --all-files --stage manual --show-diff-on-failure"]
 teardown = []
 safe_to_delete = ["coverage.json"]
 

@@ -23,10 +23,8 @@ REMINDER = (
     "needed to complete the user's request as part of the active task. Investigate unclear "
     "causes before calling them unrelated. For unrelated harness or tooling friction, use "
     '`obsidian-knowledge papercut "what happened"` and continue the task. '
-    "Keep entries brief and self-contained: name the tool or operation, concrete symptom "
-    "or exact error, and relevant trigger. Explain task names or local labels only if "
-    "needed to understand or reproduce the problem; otherwise omit them. Routine debugging "
-    "does not need a papercut entry; logging never replaces an in-scope fix."
+    "Follow the obsidian-knowledge skill's entry format. Routine debugging needs no entry; "
+    "logging never replaces an in-scope fix."
 )
 
 

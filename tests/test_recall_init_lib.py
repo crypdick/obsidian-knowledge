@@ -18,7 +18,8 @@ class TestBuildPrimer:
         assert "obsidian-knowledge search" in primer
         assert "obsidian-knowledge skill" in primer
         assert "remember-conversations" not in primer
-        assert "at most 20 bullets or 6000 characters" in primer
+        assert "Before writing" in primer
+        assert "at most 20 bullets or 6000 characters" not in primer
         assert "obsidian-knowledge papercut" in primer
         assert "/improve-harness" not in primer
         assert "frustration" not in primer.lower()

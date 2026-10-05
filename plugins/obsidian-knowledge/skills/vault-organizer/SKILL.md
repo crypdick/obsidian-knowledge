@@ -4,8 +4,6 @@ description: >-
   Maintain Obsidian vault indexes, links, filenames, and note locations. Use for
   vault cleanup, substantial structural edits, scheduled maintenance, and
   on-demand vault secret scans.
-metadata:
-  version: "1.5.3"
 ---
 
 # Vault organizer
@@ -115,6 +113,7 @@ which findings are real and authorizes remediation.
 Report completed changes and unresolved items. Successful commands need no
 separate readback, checksum comparison, or repeat scan.
 
-Update unresolved items in `needs-attention.md` and record completed vault
-changes in one same-session changelog fragment. Follow [state-file conventions](lib/state-files.md);
-do not edit a shared changelog index. Skip logging when no vault changes occurred.
+Update unresolved items in `needs-attention.md`. Record consequential structural
+or operational changes in one same-session changelog fragment using
+[state-file conventions](lib/state-files.md). Routine note, index, and link
+edits need no changelog. Do not edit a shared changelog index.

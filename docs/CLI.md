@@ -211,7 +211,9 @@ operations, or `obsidian-knowledge garden OPERATION --help` for their arguments.
 | `questions [--report] [--timestamp ISO_TIME] [--apply]` | Scan managed Markdown for question callouts. Default output is TSV; `--report` previews the standard Markdown report. `--apply` writes `Utility/obsidian-knowledge/reports/open-questions.md`. |
 | `frontmatter PATH... [--apply]` | Preview removal of stray stacked frontmatter markers. Real second YAML blocks require a manual merge and return nonzero. Paths must be vault-relative Markdown files. |
 
-Repairs default to previews. Add `--apply` after reviewing the output.
+Repairs default to previews. Use `--apply` for deterministic repairs; preview
+when review would help. Ambiguous link targets and real frontmatter merges
+require judgment.
 Maintenance excludes hidden files, dependency directories, protected sources,
 Syncthing conflicts, and symlinks. Writes require a managed path, respect
 configured read-only paths, reject changed baselines, and use the verified

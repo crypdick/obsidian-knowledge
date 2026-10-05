@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# NOTE: keep in sync with README.md § "reflect-nudge (PostToolUse on Bash)".
+# NOTE: docs/hooks.md § "Workflow friction" documents the reminder cadence.
 DEFAULT_THRESHOLD = 100
 
 

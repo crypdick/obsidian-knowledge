@@ -17,6 +17,3 @@ preference enforced in future work, encode it in the appropriate tool:
 
 If a hook or rule already covers the preference, investigate why it missed the
 issue. Check the pattern, event type, and edge cases, then propose a fix.
-
-Create a hook for any earlier coding preference in this conversation that this
-hook missed.

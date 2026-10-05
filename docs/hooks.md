@@ -99,9 +99,16 @@ installed CLI package, which does not bundle skills; use the skill path supplied
 by the host rather than resolving this reference beside the hook script.
 
 The capture reminder uses the `obsidian-knowledge` skill for reusable knowledge,
-user research, historical changes, and workflow papercuts. Goals and rules appear first,
-with filing, changelog, and CLI procedures in its operational notes near the
-bottom. The primer and reminder defer capture policy to the skill.
+user research, historical changes, and workflow papercuts. Decide whether
+something merits saving before searching for existing coverage. With no
+candidate, stop without vault searches or reads. Explicit requests to retrieve
+vault knowledge still use search, or a direct read for a known note.
+
+The primer and reminder defer capture policy to the skill. Read its operational
+notes before issuing a write command; they cover filing, memory layout, and
+changelogs. Known destinations need no index or convention discovery. Changelogs
+record consequential structural or operational changes, not ordinary note,
+index, or link edits.
 The reminder also requests repairs to verified stale instructions encountered
 during the task. It does not request a broader audit. Filing nothing is a valid
 outcome.

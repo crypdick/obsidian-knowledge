@@ -19,8 +19,8 @@ def test_capture_uses_verified_filesystem_writes_without_cli_placeholders() -> N
     skill = _read("skills/obsidian-knowledge/SKILL.md")
 
     assert "obsidian-knowledge write" in skill
-    assert "Wrote and verified" in skill
     assert "note first" in skill
+    assert "no separate readback" in skill
     assert "obsidian vault=" not in skill
     assert "create the empty file" not in skill
     assert "content=" not in skill
@@ -106,8 +106,8 @@ def test_capture_routes_to_merged_skill_without_overriding_user_policy() -> None
     assert "Single session can produce multiple types" not in skill
     assert "### Always" not in skill
     assert "Don't create notes if they aren't necessary" in skill
-    assert "at most 20 bullets or 6000 characters" in primer
-    assert "second generated memory/index.md" in primer
+    assert "at most 20 bullets or 6000 characters" in " ".join(skill.split())
+    assert "second generated memory/index.md" in skill
 
 
 def test_capture_session_key_is_absent_without_session_identity() -> None:
@@ -115,9 +115,10 @@ def test_capture_session_key_is_absent_without_session_identity() -> None:
     assert capture_session_key("") is None
 
 
-def test_capture_reason_without_session_key_explains_fallback_reuse() -> None:
+def test_capture_reason_without_session_key_limits_changelog_work_to_warranted_entries() -> None:
     reason = build_reason("/vault")
-    assert "Search current-day fragments" in reason
+    assert "If a changelog entry is warranted" in reason
+    assert "Search current-day fragments" not in reason
     assert "capture key" not in reason
 
 

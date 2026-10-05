@@ -15,7 +15,7 @@ The memory system replaces `MEMORY.md` and serves several goals:
 2) storing research findings for topics the user is exploring.
 3) tracking historical changes in case we need to do archeology
 4) capture harness and tooling papercuts so future agents can avoid repeated friction.
-5) retrieve existing vault knowledge before answering nontrivial questions.
+5) retrieve existing vault knowledge when requested or when avoiding duplicate capture.
 
 Treat notes as fallible context and verify consequential claims against code,
 runtime evidence, or primary sources.
@@ -83,13 +83,16 @@ obsidian-knowledge search "concept or phrase"
 obsidian-knowledge read "wiki/path/to/note.md"
 ```
 
-Search before answering nontrivial questions. Use exact-string tools only for
-literal names or phrases. Read relevant results before relying on them.
+Search when the user requests vault knowledge or when something merits saving
+and you need to find existing coverage. Do not search merely because an answer
+is nontrivial or a capture reminder fires. Read a known note directly; read
+search results before relying on them. Use exact-string tools for literal names
+or phrases.
 
 ### Filing location
 
-Read the vault's `CLAUDE.md` and top-level wiki index, then use search to find
-the most specific topic subtree. Follow vault-specific naming conventions.
+Use a known destination directly. Consult local naming conventions, indexes,
+or search only when the destination or applicable convention is unknown.
 
 | Content | Location and filename |
 | --- | --- |
@@ -104,6 +107,8 @@ to the user. For topics spanning domains, choose one primary home and link to th
 
 ### Write and link notes
 
+Read these operational notes before issuing a write command.
+
 Write the note first with `obsidian-knowledge write` and a quoted heredoc.
 Omit `--replace` for creation; include it for an intentional full-file update.
 
@@ -117,8 +122,8 @@ ENDNOTE
 
 For an update, read the existing note, integrate the change, and write the
 complete result with `--replace`. The command rejects blank input, path escapes,
-and accidental overwrites. Treat only `Wrote and verified:` as success.
-Write and verify the note before linking it from an index.
+and accidental overwrites, and verifies its own writes; no separate readback
+is needed after success. Create the note before linking it from an index.
 
 Update the folder's `index.md`
 using the same read and replace workflow. For a new folder, also link its
@@ -127,7 +132,19 @@ index from the parent.
 Leave existing `updated:` timestamps to the vault linter unless the user
 explicitly requests timestamp repair. Use `[[wikilinks]]` for related notes.
 
+### Agent memory
+
+Use the repo or host memory directory supplied by the session primer.
+Keep `MEMORY.md` as a small index linking to per-fact `.md` files: at most
+20 bullets or 6000 characters, summaries under 30 words, and per-fact notes
+under 200 words. Consolidate at the cap. Do not create a second generated memory/index.md.
+Keep `wiki/systems/knowledge-base/index.md` as a thin, bounded wikilink index
+with details in linked notes. Temporary handoffs belong in campaign records.
+
 ### Changelog entry
+
+Log consequential structural or operational changes that could explain future
+inconsistent state. Ordinary note, index, and link edits need no changelog.
 
 Create or reuse one same-session file:
 `obsidian-knowledge write Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`.
@@ -140,8 +157,8 @@ need to understand potentially relevant major breaking changes that happened in 
 
 Pass this path relative to the configured vault root. Do not create or update
 `changelog/index.md`.
-Without a capture key, check current-day fragments for the canonical note's
-wikilink before creating another file.
+Without a capture key, reuse a fragment already created in this session or
+create a new one. Do not search other sessions' fragments for a match.
 
 ### Repair encountered instructions
 

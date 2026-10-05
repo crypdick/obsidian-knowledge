@@ -43,18 +43,15 @@ def build_reason(vault_root: str, session_key: str | None = None) -> str:
             f"fragment filename with `-session-{session_key}.md`."
         )
     else:
-        changelog_reuse = (
-            " Search current-day fragments for the canonical note wikilink and reuse a matching "
-            "same-session fragment before creating one."
-        )
+        changelog_reuse = " Reuse a fragment already created in this session; otherwise create a new one."
     return (
         "Before stopping, review this session under the obsidian-knowledge skill's goals and rules: "
         "reusable knowledge, user research, historical changes, and workflow papercuts. "
-        "Default: file nothing when no note is necessary. Search the vault first to avoid "
-        "duplicating existing knowledge. Follow the skill's operational notes for filing, "
+        "Default: file nothing when no note is necessary. If something merits saving, search the vault "
+        "for existing coverage. Before writing, follow the skill's operational notes for filing, "
         "changelogs, papercuts, and repairs to encountered instructions. "
-        f"For changelog entries, use {changelog_dir}/ and do not edit a shared changelog index."
-        f"{changelog_reuse} If no action qualifies, stop silently."
+        f"If a changelog entry is warranted, use {changelog_dir}/ and do not edit a shared changelog index."
+        f"{changelog_reuse} If no action qualifies, stop silently without vault searches or reads."
     )
 
 

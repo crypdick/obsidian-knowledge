@@ -21,7 +21,7 @@ jobs:
       # mypy --strict, custom taste hooks, Codex-sync check, pytest + coverage
       # ratchet) so CI matches the local prek exactly.
       - name: Prek (lint, types, complexity, tests, coverage)
-        run: uv run prek run --all-files --show-diff-on-failure
+        run: uv run prek run --all-files --stage manual --show-diff-on-failure
 
   tool-install:
     runs-on: ubuntu-latest

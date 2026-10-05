@@ -10,7 +10,7 @@ The repository enforces these checks and settings:
 
 | Gate | Setting |
 |------|---------|
-| Hooks | Native prek; `uv run prek install`, `uv run prek run --all-files` |
+| Hooks | Native prek; file checks at commit, full gate at pre-merge and in CI: `uv run prek run --all-files --stage manual` |
 | Ruff | Core lint plus curated async, logging, security, suppression, docstring, and correctness checks; stable formatter |
 | Complexity | Ruff `C901`, ceiling 15; scripts and tests retain their existing exemptions |
 | Types | mypy strict on `lib`, `hooks`, and `gardener`; existing untyped-definition/call exceptions remain |
@@ -42,7 +42,7 @@ functions pass the Ruff complexity ceiling. Tests run without an embedding servi
 | Gardener commands | 100% | A | Installed CLI behavior, conservative recovery, scan exclusions, and protected-write regressions |
 | Overall | 100% | A | Every measured statement and branch covered; tests exercise public behavior |
 
-Use `uv run pytest --no-cov` for targeted tests and `uv run prek run pytest`
+Use `uv run pytest --no-cov` for targeted tests and `uv run prek run pytest --stage manual`
 for coverage. The latter writes missing lines and branches to `coverage.json`,
 which Git ignores. Keep the floor at 100%; do not lower it to pass a failing
 check.
@@ -70,64 +70,26 @@ Review architecture after package-boundary changes and periodically compare
 CLI help and defaults with the docs. Update coverage measurements from
 `coverage.json`; keep type-checking limitations explicit.
 
-## Progressive disclosure audit
+## Agent context
 
-Audited on 2026-10-05: skill entrypoints, organizer references,
-Claude and Codex hook registrations and emitted prompts, the injected profile
-index, the MCP tool descriptions, and the generated Codex distribution.
-Counts below measure characters, not model tokens.
+The session primer supplies vault and memory paths, reliability guidance, and
+native-memory exclusions. Write-only layout, size limits, filing, and changelog
+procedures live in the `obsidian-knowledge` skill's operational notes, read
+before issuing a write command. Papercut entry format is also canonical there.
 
-Access-error recovery now lives in
-[`references/access-errors.md`](https://github.com/crypdick/obsidian-knowledge/blob/main/skills/obsidian-knowledge/references/access-errors.md).
-Both the vault skill and session primer route there only for permission or
-connection failures. The skill shrank from 3,830 to 3,168 characters; the primer's
-access paragraph shrank from 367 to 132. Recovery instructions remain intact.
+Capture first decides whether anything merits saving. Only then does it search
+for existing coverage. With no candidate, it stops without vault searches or
+reads. Explicit vault retrieval requests still use search or a direct read.
+Known filing destinations need no discovery reads. Changelogs record
+consequential structural or operational changes rather than routine edits.
 
-Conversation capture now lives in `obsidian-knowledge` alongside vault access
-and papercut logging. The merged skill preserves the rewritten capture guidance,
-with goals and rules first and operational notes near the bottom. The primer
-and capture reminder defer capture policy to this skill instead of injecting
-an independent acceptance gate or note-count limit. Same-session changelog keys
-and the no-shared-index rule remain in the reminder.
+The organizer routes task-specific references only when relevant and uses the
+configured default without preflight probes. Commands load zone configuration
+and verify their own writes. Deterministic repairs can apply directly; previews
+are optional. Investigate failures or inconsistent results when observed.
+Alternate-vault selection lives in `skills/vault-organizer/lib/multi-vault.md`.
 
-Remaining opportunities, ordered by recurring context cost:
-
-1. **Session primer: defer write-only rules.**
-   [`primer.py`](https://github.com/crypdick/obsidian-knowledge/blob/main/lib/vault_index/primer.py)
-   injects capture examples, memory-file size limits, and papercut formatting
-   during startup, resume, and compaction when its debounce permits. Keep vault
-   paths, recall instructions, reliability, native-memory exclusion, and capture
-   routing here. Move file-layout and maintenance details to a reference
-   read only before memory writes; move friction details to a reference read
-   only when logging a problem. Provide those routes before removing rules.
-2. **Vault skill and reflection: share conditional friction guidance.**
-   [`obsidian-knowledge`](https://github.com/crypdick/obsidian-knowledge/blob/main/skills/obsidian-knowledge/SKILL.md)
-   includes instruction repair and detailed papercut guidance on ordinary note
-   reads. Similar prose appears in the primer and every 100th shell call's
-   [`reflection reminder`](https://github.com/crypdick/obsidian-knowledge/blob/main/hooks/reflect-nudge.py).
-   Link conditional references from those surfaces and retain the distinction
-   between task defects requiring fixes and unrelated friction worth logging.
-3. **Discovery metadata: shorten repeated trigger lists.** Keep capability and
-   trigger descriptions concise while preserving explicit requests, scheduled
-   organizer runs, and the capture hook trigger.
-
-Existing boundaries work well: the organizer entrypoint routes seven
-task-specific references only when their steps apply and keeps manual secret
-scanning inline. Alternate-vault selection lives in
-`skills/vault-organizer/lib/multi-vault.md`; routine examples
-use the configured default without preflight probes. Targeted repairs use only
-the relevant sections; commands load zone configuration and verify their own
-writes. Deterministic repairs can apply directly, with previews optional.
-Readbacks, repeat scans, and post-rename searches are not routine requirements;
-investigate failures or inconsistent results when observed. Its installed
-commands carry executable detail outside the prompt. The doctor and index-sync
-nudge emit only when findings exist; secret findings have bounded samples. MCP
-tool descriptions and the manual scan workflow are short. The shared profile
-index is capped at 6,000 characters and contains links rather than full notes;
-its actual contents are vault-owned. Audit that index separately before changing
-which cross-session preferences load at startup.
-
-Keep essential safeguards and routing in entrypoints. A shorter file that
-silently loses a constraint or requires loading every reference is not an
-improvement. Use the existing sync script to package references for Codex;
-CLI hook paths are not skill paths. See [memory and recall](hooks.md#memory-and-recall).
+The shared profile index is capped at 6,000 characters and links to full notes.
+Its contents are vault-owned. Doctor and index-sync reminders emit only when
+findings exist; secret findings have bounded samples. The reflection reminder
+routes papercut formatting to the skill rather than repeating it.

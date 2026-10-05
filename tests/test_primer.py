@@ -44,16 +44,17 @@ def test_build_primer_defers_access_recovery_to_skill(tmp_path: Path):
     assert "EACCES" not in text
 
 
-def test_build_primer_routes_capture_to_skill_and_preserves_memory_limits(tmp_path: Path):
+def test_build_primer_routes_write_guidance_before_writing(tmp_path: Path):
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
 
     assert "obsidian-knowledge skill" in text
     assert "remember-conversations" not in text
-    assert "Never store PIDs, job IDs" in text
-    assert "Every saved note must be hermetic" in text
-    assert "category 15" in text
-    assert "at most 20 bullets or 6000 characters" in text
-    assert "Do not create a second generated memory/index.md" in text
+    assert "Before writing" in text
+    assert "operational notes" in text
+    assert "category 15" not in text
+    assert "at most 20 bullets or 6000 characters" not in text
+    assert "before non-trivial answers" not in text
+    assert "~/.codex/memories/" in text
 
 
 def test_build_primer_injects_knowledge_base_index_with_cap(tmp_path: Path):

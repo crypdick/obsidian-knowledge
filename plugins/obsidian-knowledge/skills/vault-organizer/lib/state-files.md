@@ -7,7 +7,9 @@ Use the configured vault root, not its `wiki/` subdirectory. `Utility/` and
 
 ## `changelog/`
 
-Create one file for the session. Reuse it for further actions in that session;
+Log consequential structural or operational changes that could help explain
+future inconsistent state. Routine note, index, and link edits need no fragment.
+When logging is warranted, create one file for the session and reuse it;
 never append to another session's file.
 
 Name the file `YYYY-MM-DD-HHMMSS-<slug>.md`. Use a descriptive slug, such as
@@ -21,13 +23,11 @@ zone is excluded from structural index enforcement. Find session records by
 filename or search; a shared index risks concurrent writes.
 
 ```text
-YYYY-MM-DD HH:MM — Created folder/index.md (N entries)
-YYYY-MM-DD HH:MM — Moved old/path.md → new/path.md
-YYYY-MM-DD HH:MM — Fixed N stale links during move/rename sanity check
+YYYY-MM-DD HH:MM — Migrated wiki/old-system/ → wiki/new-system/
 YYYY-MM-DD HH:MM — diary: vault reorg pass → [[wiki/systems/knowledge-base/diary/2026-05-12-reorg]]
 ```
 
-If you took no actions, do not create a file.
+If no consequential change occurred, do not create a file.
 
 ## `needs-attention.md`
 

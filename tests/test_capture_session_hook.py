@@ -90,7 +90,7 @@ def test_capture_hook_routes_to_merged_skill_inside_vault(tmp_path, subprocess_v
     assert "Default: file nothing" in reason
     assert "obsidian-knowledge skill" in reason
     assert "remember-conversations" not in reason
-    assert "Search the vault first" in reason
+    assert "If something merits saving, search the vault" in reason
     assert "at most one durable wiki note" not in reason
     assert "The capture key is" in reason
     assert "-session-" in reason

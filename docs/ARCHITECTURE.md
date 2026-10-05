@@ -79,7 +79,10 @@ checkout.
 
 Install the Git hook with `uv run prek install` from the control checkout.
 Git worktrees share hooks, so installing from a temporary worktree leaves an
-interpreter path that disappears at teardown. Repository configuration marks
+interpreter path that disappears at teardown. Commits run file checks;
+`new-feature merge` runs the full manual-stage gate once before integration.
+There is no post-merge full gate. Release CI owns version updates, so ordinary
+commits do not bump package, plugin, or skill versions. Repository configuration marks
 generated `coverage.json` as disposable, so differing coverage reports do not
 block worktree transfer or teardown.
 

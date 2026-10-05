@@ -36,4 +36,6 @@ Then restart Codex and use `/plugins` or `/hooks` for install, enablement, and h
 
 See `CONVENTIONS.md` for design principles, `docs/ARCHITECTURE.md` for import
 boundaries, and `docs/QUALITY.md` for measured quality and maintenance guidance.
-Run `uv run prek run --all-files` before integration.
+`new-feature merge` runs `uv run prek run --all-files --stage manual` before
+integration. Do not repeat the full gate at commit or after merge. Release CI
+owns package and plugin versions; ordinary commits need no manual version bumps.
