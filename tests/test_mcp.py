@@ -16,7 +16,16 @@ def test_tools_and_verified_write(tmp_path):
     async def exercise():
         server = create_server(tmp_path)
         tools = await server.list_tools()
-        assert {tool.name for tool in tools} == {"vault_search", "vault_read", "vault_write", "download_file"}
+        assert {tool.name for tool in tools} == {
+            "vault_search",
+            "vault_read",
+            "vault_write",
+            "download_file",
+            "vault_patch",
+            "vault_list",
+            "vault_search_status",
+            "vault_search_update",
+        }
         result = await server.call_tool("vault_write", {"path": "wiki/note.md", "content": "# Orchid\n"})
         assert (tmp_path / "wiki/note.md").read_text() == "# Orchid\n"
         result = await server.call_tool("vault_read", {"path": "wiki/note.md"})
@@ -116,6 +125,10 @@ def test_http_protocol_and_auth(tmp_path):
             "vault_write",
             "vault_search",
             "download_file",
+            "vault_patch",
+            "vault_list",
+            "vault_search_status",
+            "vault_search_update",
         }
         response = client.post(
             "/mcp",
@@ -176,8 +189,11 @@ def test_invalid_port(monkeypatch):
     assert error.value.code == 2
 
 
+@pytest.mark.parametrize(
+    "operation,arguments", [("vault_search", {"query": "orchid"}), ("vault_search_update", {})]
+)
 @pytest.mark.parametrize("outcome", ["timeout", "cancel", "failure"])
-def test_search_failure_and_process_cleanup(tmp_path, monkeypatch, outcome):
+def test_search_failure_and_process_cleanup(tmp_path, monkeypatch, outcome, operation, arguments):
     class Process:
         returncode = None
         killed = False
@@ -209,10 +225,10 @@ def test_search_failure_and_process_cleanup(tmp_path, monkeypatch, outcome):
         server = create_server(tmp_path)
         if outcome == "cancel":
             with pytest.raises(asyncio.CancelledError):
-                await server.call_tool("vault_search", {"query": "orchid"})
+                await server.call_tool(operation, arguments)
         else:
             with pytest.raises(ToolError):
-                await server.call_tool("vault_search", {"query": "orchid"})
+                await server.call_tool(operation, arguments)
         assert process.killed == (outcome != "failure")
         assert process.waited == (outcome != "failure")
 
@@ -237,7 +253,7 @@ def test_sdk_streamable_http_client(tmp_path):
                         initialized = await client.initialize()
                         assert initialized.serverInfo.name == "obsidian-knowledge"
                         tools = await client.list_tools()
-                        assert len(tools.tools) == 4
+                        assert len(tools.tools) == 8
                         written = await client.call_tool(
                             "vault_write", {"path": "sdk.md", "content": "SDK text"}
                         )

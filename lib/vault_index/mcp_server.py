@@ -11,6 +11,9 @@ import mimetypes
 import os
 import secrets
 import sys
+import threading
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
@@ -25,8 +28,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from lib.vault_index.cli import positive_int, resolve_vault, search_ttl_seconds
+from lib.vault_index.mcp_index import IndexStatus, IndexUpdate, parse_index_update, read_index_status
 from lib.vault_index.models import SearchReport
-from lib.vault_index.vault_files import read_vault_file, write_vault_file
+from lib.vault_index.vault_files import patch_vault_file, read_vault_file, write_vault_file
+from lib.vault_index.vault_listing import ListingReport, list_vault_files
 
 # NOTE: docs/MCP.md documents this raw-byte ceiling and client handoff limits.
 MAX_DOWNLOAD_BYTES = 6 * 1024 * 1024
@@ -53,6 +58,22 @@ class BearerAuth(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+async def run_index_command(command: list[str], operation: str) -> tuple[bytes, bytes]:
+    """Run one CLI operation with a deadline and reap its process on cancellation."""
+    process = await asyncio.create_subprocess_exec(
+        *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=search_ttl_seconds() + 10)
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    if process.returncode:
+        raise ValueError(stderr.decode(errors="replace").strip() or f"vault {operation} failed")
+    return stdout, stderr
+
+
 def create_server(
     vault: Path, *, host: str = "127.0.0.1", port: int = 8000, allowed_hosts: list[str] | None = None
 ) -> FastMCP:
@@ -76,6 +97,13 @@ def create_server(
     # Serialize index access to avoid competing rebuilds from concurrent requests.
     search_lock = asyncio.Lock()
 
+    file_lock = threading.Lock()
+
+    def mutate(operation: Callable[[], Path]) -> Path:
+        # Keep the lock in the worker: cancellation does not stop a to_thread write.
+        with file_lock:
+            return operation()
+
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_search(
         query: Annotated[str, Field(min_length=1)],
@@ -98,19 +126,7 @@ def create_server(
             command.append("--all")
         command.extend(["--", query])
         async with search_lock:
-            process = await asyncio.create_subprocess_exec(
-                *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(), timeout=search_ttl_seconds() + 10
-                )
-            finally:
-                if process.returncode is None:
-                    process.kill()
-                    await process.wait()
-        if process.returncode:
-            raise ValueError(stderr.decode(errors="replace").strip() or "vault search failed")
+            stdout, _ = await run_index_command(command, "search")
         return SearchReport.model_validate(json.loads(stdout))
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
@@ -123,9 +139,67 @@ def create_server(
     async def vault_write(path: str, content: str, replace: bool = False) -> dict[str, str]:
         """Write UTF-8 text atomically and verify bytes. Existing files require replace=true."""
         target = await asyncio.to_thread(
-            write_vault_file, vault, Path(path), content.encode("utf-8"), replace=replace
+            mutate, partial(write_vault_file, vault, Path(path), content.encode("utf-8"), replace=replace)
         )
         return {"path": target.relative_to(vault).as_posix(), "status": "wrote and verified"}
+
+    @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
+    async def vault_patch(
+        path: str,
+        old_str: Annotated[str, Field(min_length=1)],
+        new_str: str,
+        expected_sha256: Annotated[str | None, Field(pattern=r"^[0-9a-f]{64}$")] = None,
+    ) -> dict[str, str]:
+        """Replace exactly one text match, preserving other bytes; optionally require the original SHA-256."""
+        target = await asyncio.to_thread(
+            mutate,
+            partial(patch_vault_file, vault, Path(path), old_str, new_str, expected_sha256=expected_sha256),
+        )
+        return {"path": target.relative_to(vault).as_posix(), "status": "patched and verified"}
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    async def vault_list(
+        path: str = "",
+        recursive: bool = False,
+        depth: Annotated[int, Field(ge=1, le=10)] = 3,
+        pattern: str | None = None,
+        limit: Annotated[int, Field(ge=1, le=500)] = 100,
+        offset: Annotated[int, Field(ge=0)] = 0,
+    ) -> ListingReport:
+        """List visible vault entries in sorted depth-first order; offset pages through matching entries."""
+        return await asyncio.to_thread(
+            list_vault_files,
+            vault,
+            Path(path),
+            recursive=recursive,
+            depth=depth,
+            pattern=pattern,
+            limit=limit,
+            offset=offset,
+        )
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    async def vault_search_status() -> IndexStatus:
+        """Inspect persisted index readiness without rebuilding or probing the embedding service."""
+        async with search_lock:
+            return await asyncio.to_thread(read_index_status, vault)
+
+    @server.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=False))
+    async def vault_search_update() -> IndexUpdate:
+        """Incrementally refresh the search index; report busy when another process holds the index lock."""
+        command = [
+            sys.executable,
+            "-m",
+            "lib.vault_index.cli",
+            "reindex",
+            "--vault",
+            str(vault),
+            "--timeout-seconds",
+            str(search_ttl_seconds()),
+        ]
+        async with search_lock:
+            stdout, stderr = await run_index_command(command, "index update")
+        return parse_index_update(stdout, stderr)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
     async def download_file(path: str) -> Annotated[CallToolResult, DownloadMetadata]:

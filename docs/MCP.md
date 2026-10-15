@@ -1,6 +1,6 @@
 # MCP server
 
-Expose vault search, read, write, and binary download operations over Streamable HTTP:
+Expose vault search, editing, discovery, index maintenance, and binary downloads over Streamable HTTP:
 
 ```bash
 obsidian-knowledge-mcp --vault /absolute/path/to/vault
@@ -44,23 +44,57 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   verifies final bytes, and returns the vault-relative path and success status.
   Blank content and existing files are rejected unless `replace=True` permits
   overwriting. Parent directories are created as needed.
+- `vault_patch(path, old_str, new_str, expected_sha256=None)` replaces exactly
+  one occurrence of `old_str` in a UTF-8 file, including frontmatter. Empty,
+  missing, and ambiguous matches (including overlaps) are rejected. Untouched
+  bytes, line endings, and file permissions are preserved. An optional lowercase
+  SHA-256 of the original file rejects stale edits. The original bytes are
+  checked again immediately before replacement; blank output is rejected.
+- `vault_list(path="", recursive=False, depth=3, pattern=None, limit=100,
+  offset=0)` returns `entries` and `next_offset`. Entries contain vault-relative
+  `path`, `name`, `is_directory`, and `size_bytes` (null for directories).
+  Nonrecursive listings return immediate children; recursive depth counts those
+  children as level one and must be between 1 and 10. Pages contain at most
+  `limit` matching entries (1–500). Pass `next_offset` as the next request's
+  `offset`; null means the last page. Ordering is sorted depth-first. Vault
+  changes between calls can shift pages. Optional case-sensitive `fnmatch`
+  patterns match paths relative to the requested directory; `*` also matches
+  `/`. Filtering does not prune directories. Hidden paths, `node_modules`,
+  `_sources`, sync-conflict paths, and symlinks are excluded; directly requesting
+  an excluded directory is rejected. Files of all formats can be listed.
+- `vault_search_status()` returns `index_exists`, `indexed_files`,
+  `vector_index_ready`, and `degraded_reason`. Readiness checks persisted vector
+  schema and embedding settings only. Endpoint availability and file freshness
+  remain unknown. Missing or unreadable indexes report a reason without creating
+  or repairing the index.
+- `vault_search_update()` runs incremental indexing using the existing CLI and
+  fixed vault. Returns `status="updated"` with `indexed`, `skipped`, and `deleted`
+  counts, or `status="busy"` with null counts when another process holds the
+  index lock. Refresh after writes or patches when searches need current content.
 
 Paths are relative to the server's fixed vault. Absolute paths and symlink or
 parent-directory escapes are rejected. These tools share the CLI's file
 safeguards; agent lifecycle hooks and zone policies do not run on MCP calls.
 No delete or move tools are exposed.
 
-Search uses the existing CLI in a subprocess, preserving its configuration,
-cache, filtering, and semantic-ranking fallback. Concurrent searches serialize.
-Each active search has the CLI deadline plus a ten-second cleanup allowance;
-cancellation or timeout kills and reaps its subprocess. The server remains
-available for file operations during searches. Queue waiting is outside this
-active-search deadline.
+Writes and patches serialize within one server, including when a client cancels
+while its write thread is still running. Patch baseline checks detect edits
+before replacement but cannot guarantee atomic comparison and replacement
+against external editors or sync processes.
 
-Search uses the current index. After changing notes, run the existing
-`obsidian-knowledge reindex --vault /absolute/path/to/vault` workflow to refresh
-it. MCP writes do not automatically reindex. See [CLI reference](CLI.md) for
-indexing, embeddings, and search timeout configuration.
+Search and refresh use the existing CLI in subprocesses, preserving its
+configuration, cache, filtering, and semantic-ranking fallback. Searches,
+refreshes, and status calls serialize. Each active subprocess uses the configured
+search deadline (`OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`) plus a ten-second
+cleanup allowance; refresh also passes that deadline to the CLI. Cancellation
+or timeout kills and reaps the subprocess. File operations remain available
+during indexing. Queue waiting is outside the active-operation deadline.
+
+Search uses the current index. Writes and patches do not automatically reindex.
+Use `vault_search_update()` or the existing
+`obsidian-knowledge reindex --vault /absolute/path/to/vault` workflow after
+changing notes. See [CLI reference](CLI.md) for indexing, embeddings, and search
+timeout configuration.
 
 ## Binary file delivery
 

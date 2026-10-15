@@ -23,8 +23,11 @@ weights, and `indexer.py` wraps memweave's keyword and dense retrieval.
 `ollama/` models, an offline provider for keyword-only indexing, and the default
 LiteLLM provider for other model identifiers. Ollama and keyword-only paths never
 import LiteLLM.
-`vault_files.py` handles confined, verified writes. `mcp_server.py` exposes these
-file operations and bounded CLI search subprocesses over Streamable HTTP. Importing `lib` enables
+`vault_files.py` handles confined, verified writes and text patches.
+`vault_listing.py` provides bounded directory discovery. `mcp_index.py` reads
+persisted index status without rebuilding and parses CLI refresh results.
+`mcp_server.py` exposes these operations and bounded CLI search and refresh
+subprocesses over Streamable HTTP. Importing `lib` enables
 beartype runtime checks.
 
 `vector_search.py` registers a memweave hybrid strategy using sqlite-vec's native
