@@ -35,6 +35,10 @@ checker = ["obsidian-knowledge-check", "memory-routing"]
 overridable = false
 
 [[rules]]
+id = "decision-records"
+checker = ["obsidian-knowledge-check", "decision-records"]
+
+[[rules]]
 id = "wikilinks"
 checker = ["obsidian-knowledge-check", "wikilinks"]
 overridable = false

@@ -58,6 +58,7 @@ MESSAGES = {
     "generic-filenames": "New vault filename would collide with generic wikilink names. Prefix its basename with context; index.md is exempt. No override.",
     "illegal-filenames": "New vault filename contains characters forbidden by the vault sync policy. Rename the file. No override.",
     "memory-routing": "Do not write operational facts to agent auto-memory. Search the Obsidian wiki; file only durable, novel facts not recoverable from code, git, docs, or runtime. Use the repo or host memory scope in the vault. No override.",
+    "decision-records": "Do not write decision records to docs/decisions/. Record durable decisions with obsidian-knowledge in the Obsidian wiki. Ask the human for consent to override.",
     "wikilinks": "Remove .md extensions from wikilinks: use [[foo]], not [[foo.md]]. No override.",
     "dated-filenames": "New notes in dated folders need a YYYY-MM-DD filename prefix; index.md is exempt. No override.",
     "frontmatter": "Vault note has malformed YAML frontmatter. Fix it before writing. No override.",
@@ -97,10 +98,17 @@ def agent_memory(path: str) -> bool:
     )
 
 
+def decision_record(path: str) -> bool:
+    parts = Path(path).parts
+    return any(parts[i : i + 2] == ("docs", "decisions") for i in range(len(parts) - 1))
+
+
 def file_blocks(name: str, change: Change, roots: list[str]) -> bool:
     path = Path(change.path)
     if name == "memory-routing":
         return agent_memory(change.path)
+    if name == "decision-records":
+        return decision_record(change.path)
     root = find_containing_vault(change.path, roots)
     if root is None:
         return False
@@ -155,6 +163,8 @@ def should_block(name: str, event: Event) -> bool:
         targets = write_targets(event.command, event.cwd)
         if name == "memory-routing":
             return any(agent_memory(path) for path in targets)
+        if name == "decision-records":
+            return any(decision_record(path) for path in targets)
         if name == "protected-dirs":
             return any("_sources" in Path(path).parts for path in targets) or enters_protected_directory(
                 event.command
