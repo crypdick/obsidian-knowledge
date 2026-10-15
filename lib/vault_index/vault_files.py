@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 import tempfile
@@ -51,8 +52,9 @@ def write_vault_file(
     content: bytes,
     *,
     replace: bool = False,
+    expected_content: bytes | None = None,
 ) -> Path:
-    """Atomically write, fsync, and verify exact bytes at a confined vault path."""
+    """Atomically write, fsync, and verify bytes, checking an optional baseline."""
     if not content.strip():
         raise ValueError("refusing to write empty vault content")
 
@@ -78,6 +80,9 @@ def write_vault_file(
         if temp.read_bytes() != content:
             raise OSError(f"temporary write verification failed: {relative_path}")
 
+        # NOTE: detects edits before replacement, without an external-process atomic CAS.
+        if expected_content is not None and target.read_bytes() != expected_content:
+            raise ValueError(f"vault file changed since it was read: {relative_path}")
         if replace:
             os.replace(temp, target)
         else:
@@ -97,3 +102,26 @@ def write_vault_file(
         if fd >= 0:
             os.close(fd)
         temp.unlink(missing_ok=True)
+
+
+def patch_vault_file(
+    vault_root: Path,
+    relative_path: Path,
+    old_str: str,
+    new_str: str,
+    *,
+    expected_sha256: str | None = None,
+) -> Path:
+    """Replace exactly one UTF-8 text match, preserving all other bytes."""
+    if not old_str:
+        raise ValueError("old_str must not be empty")
+    baseline = read_vault_file(vault_root, relative_path)
+    if expected_sha256 is not None and hashlib.sha256(baseline).hexdigest() != expected_sha256:
+        raise ValueError(f"vault file SHA-256 does not match expected_sha256: {relative_path}")
+
+    text = baseline.decode("utf-8")
+    start = text.find(old_str)
+    if start < 0 or text.find(old_str, start + 1) >= 0:
+        raise ValueError("old_str must occur exactly once in the vault file")
+    content = (text[:start] + new_str + text[start + len(old_str) :]).encode("utf-8")
+    return write_vault_file(vault_root, relative_path, content, replace=True, expected_content=baseline)
