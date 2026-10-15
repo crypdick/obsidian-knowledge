@@ -219,6 +219,42 @@ def test_memory_routing(tmp_path, basename, blocked):
     assert (json.loads(run_check(tmp_path, "memory-routing", event).stdout) is not None) is blocked
 
 
+@pytest.mark.parametrize(
+    "path,blocked",
+    [
+        ("docs/decisions/0001-use-postgres.md", True),
+        ("service/docs/decisions/0002-cache.md", True),
+        ("docs/guide.md", False),
+        ("docs/decisions.md", False),
+        ("decisions/0003-note.md", False),
+    ],
+)
+def test_decision_records_block_adr_directory(tmp_path, path, blocked):
+    event = file_event(tmp_path, path)
+    assert (json.loads(run_check(tmp_path, "decision-records", event).stdout) is not None) is blocked
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "printf 'use postgres' > docs/decisions/0001-use-postgres.md",
+        "printf 'use postgres' | tee docs/decisions/0001-use-postgres.md",
+    ],
+)
+def test_shell_decision_records_block_adr_directory(tmp_path, command):
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": command, "changes": []}
+    assert json.loads(run_check(tmp_path, "decision-records", event).stdout) is not None
+
+
+def test_decision_records_are_overridable_by_default():
+    import tomllib
+
+    rules = tomllib.loads((ROOT / "hooks/i-insist.toml").read_text())["rules"]
+    (rule,) = [r for r in rules if r["id"] == "decision-records"]
+    assert rule["checker"] == ["obsidian-knowledge-check", "decision-records"]
+    assert rule.get("overridable", True) is True
+
+
 @pytest.mark.parametrize("operation", ["write", "edit", "delete"])
 @pytest.mark.parametrize("path", [".codex/memories/MEMORY.md", ".codex/memories/rollout_summaries/fact.md"])
 def test_codex_memory_routing(tmp_path, path, operation):
