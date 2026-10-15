@@ -14,8 +14,9 @@ Three passes:
 
 Prints a one-line digest if any count is > 0 OR Ollama is degraded, else silent.
 
-Read-only — never writes to needs-attention.md. Vault-organizer is
-the sole writer; run it to persist findings.
+Read-only — never writes to needs-attention.md. Vault-organizer owns
+it, except the `## Secret scan findings` section kept by
+scan-vault-secrets.py.
 """
 
 import json

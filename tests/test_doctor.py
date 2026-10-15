@@ -224,6 +224,7 @@ def test_ollama_check_still_reports_degradation_when_cache_is_unwritable(
     doctor,
     monkeypatch,
 ):
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / "lib"))
     from vault_index import indexer
 
     monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_SKIP_OLLAMA_PROBE", raising=False)

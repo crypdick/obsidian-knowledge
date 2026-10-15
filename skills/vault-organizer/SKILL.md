@@ -113,7 +113,8 @@ which findings are real and authorizes remediation.
 Report completed changes and unresolved items. Successful commands need no
 separate readback, checksum comparison, or repeat scan.
 
-Update unresolved items in `needs-attention.md`. Record consequential structural
+Update unresolved items in `needs-attention.md`. Leave its
+`## Secret scan findings` section to the secret-scan hook. Record consequential structural
 or operational changes in one same-session changelog fragment using
 [state-file conventions](lib/state-files.md). Routine note, index, and link
 edits need no changelog. Do not edit a shared changelog index.

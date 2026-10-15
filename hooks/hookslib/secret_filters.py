@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import re
 from dataclasses import dataclass
 from email import policy
@@ -23,6 +24,9 @@ PLACEHOLDER = re.compile(
     r"(?:sk|comfyui)[_-](?:\.{3}|x{6,})|"
     r"generate-a-strong-secret-here)"
 )
+DIGEST_HEX = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64}|[0-9a-fA-F]{128})")
+DIGEST_KEY = r"(?:\w+_)?(?:sha(?:1|256|512)?|commit)"
+ID_KEY = re.compile(r"(?:\w+_)?ids?")
 QUOTED_FIELD = re.compile(r"""["']?(?P<key>[\w:]+)["']?\s*[:=]\s*["'](?P<value>[^"']*)["']""")
 
 
@@ -43,13 +47,49 @@ class Candidate:
 def is_metadata(candidate: Candidate) -> bool:
     if candidate.kind not in ENTROPY_TYPES:
         return False
-    if candidate.has_field(r"(?:\w+_)?sha(?:1|256|512)"):
-        return bool(re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64}|[0-9a-fA-F]{128})", candidate.value))
+    if candidate.has_field(DIGEST_KEY):
+        return bool(DIGEST_HEX.fullmatch(candidate.value))
     if candidate.filename.endswith(".json") and candidate.has_field("list_id"):
         return True
     if candidate.has_field("repo_id|local_dir"):
         return bool(re.fullmatch(r"[\w.-]+/[\w.-]+", candidate.value))
+    if DIGEST_HEX.fullmatch(candidate.value):
+        if candidate.has_field(ID_KEY.pattern):
+            return True
+        if candidate.filename.endswith(".json"):
+            return is_json_id_list_item(candidate)
     return is_xmp_metadata(candidate)
+
+
+@lru_cache(maxsize=8)
+def json_id_values(filename: str, _mtime_ns: int) -> tuple[frozenset[str], frozenset[str]]:
+    """Split JSON strings into (items of `*_id`/`*_ids` lists, every other string)."""
+    ids: set[str] = set()
+    other: set[str] = set()
+
+    def walk(node: object, in_id_list: bool) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                walk(value, isinstance(value, list) and bool(ID_KEY.fullmatch(str(key))))
+        elif isinstance(node, list):
+            for item in node:
+                walk(item, in_id_list and isinstance(item, str))
+        elif isinstance(node, str):
+            (ids if in_id_list else other).add(node)
+
+    walk(json.loads(Path(filename).read_text()), False)
+    return frozenset(ids), frozenset(other)
+
+
+def is_json_id_list_item(candidate: Candidate) -> bool:
+    # Bare list items carry no key on their own line; consult the parsed file.
+    # Fail closed when the value also appears anywhere outside an ID list.
+    try:
+        path = Path(candidate.filename)
+        ids, other = json_id_values(candidate.filename, path.stat().st_mtime_ns)
+    except (OSError, UnicodeError, ValueError):
+        return False
+    return candidate.value in ids and candidate.value not in other
 
 
 def is_xmp_metadata(candidate: Candidate) -> bool:

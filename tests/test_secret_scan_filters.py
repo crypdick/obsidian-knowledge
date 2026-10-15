@@ -25,6 +25,7 @@ from hookslib.secret_filters import (
 
 ROOT = Path(__file__).parent.parent
 DIGEST = hashlib.sha256(b"synthetic metadata fixture").hexdigest()
+COMMIT = hashlib.sha256(b"synthetic commit fixture").hexdigest()[:40]
 OPAQUE = base64.b64encode(hashlib.sha256(b"synthetic credential fixture").digest()).decode()
 
 
@@ -60,6 +61,12 @@ def scanner():
         ),
         ("note.md", "https://<username>:<token>@github.com/<owner>/<repo>.git"),
         ("manifest.json", f'{{"source_skill_md_sha256": "{DIGEST}"}}'),
+        ("state.json", f'{{"sha": "{COMMIT}"}}'),
+        ("state.json", f'{{"last_commit": "{COMMIT}"}}'),
+        ("state.json", f'{{"head_sha": "{COMMIT}"}}'),
+        ("state.json", f'{{"finding_id": "{DIGEST}"}}'),
+        ("state.json", f'{{\n  "attempted_finding_ids": [\n    "{DIGEST}"\n  ]\n}}'),
+        ("state.json", f'{{"count": 3, "done": null,\n  "finding_ids": [\n    "{DIGEST}"\n  ]}}'),
         ("export.json", f'{{"list_id": "{OPAQUE}"}}'),
         ("note.md", 'repo_id = "example-org/Synthetic-Model-482B-Quantized-GGUF"'),
         ("image.xmp", f'darktable:blendop_params="{OPAQUE}"'),
@@ -112,6 +119,13 @@ def test_noncredentials_are_filtered(tmp_path, scanner, filename, text):
         ),
         ("export.json", f'{{"list_id": "{OPAQUE}", "password": "synthetic-weak-password"}}'),
         ("manifest.json", f'{{"sha256": "{DIGEST}", "token": "{OPAQUE}"}}'),
+        ("state.json", f'{{"token": "{DIGEST}"}}'),
+        ("state.json", f'{{"api_keys": [\n    "{DIGEST}"\n  ]}}'),
+        # Same value outside an ID list still alerts.
+        ("state.json", f'{{"finding_ids": [\n    "{DIGEST}"\n  ],\n  "secret": "{DIGEST}"}}'),
+        ("note.md", f"commit: {OPAQUE}"),
+        # Unparseable JSON fails closed.
+        ("state.json", f'{{"finding_ids": [\n    "{DIGEST}",\n'),
         (
             "note.md",
             f'api_key="your-api-key"; token="{OPAQUE}"',  # pragma: allowlist secret

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import importlib.util
 import json
 import os
@@ -56,7 +58,8 @@ class TestScanKnownLeaked:
     """`scan_known_leaked(vault_root, rel_paths, literals)` greps each
     vault-relative path under `vault_root` for every literal and
     returns `(total_matches, files_with_matches, sample)`. Sample
-    entries look like `<rel_path>:<lineno> :: <literal>`.
+    entries look like `<rel_path>:<lineno> :: known-leaked literal #<n>`
+    so the reminder never repeats the leaked value into agent context.
     """
 
     def test_no_paths_or_no_literals(self, tmp_path, hook_module):
@@ -71,7 +74,7 @@ class TestScanKnownLeaked:
         assert files == 1
         assert len(sample) == 1
         assert "a.md:2" in sample[0]
-        assert ":: alpha" in sample[0]
+        assert "alpha" not in sample[0]
 
     def test_counts_all_occurrences_across_files(self, tmp_path, hook_module):
         (tmp_path / "a.md").write_text("alpha\nalpha\n")
@@ -93,8 +96,7 @@ class TestScanKnownLeaked:
         assert total == 2
         assert files == 1
         # Sample contains entries for each literal that matched.
-        assert any(":: alpha" in s for s in sample)
-        assert any(":: beta" in s for s in sample)
+        assert sorted(sample) == ["a.md:1 :: known-leaked literal #1", "a.md:1 :: known-leaked literal #2"]
 
     def test_unreadable_file_skipped_not_raised(self, tmp_path, hook_module):
         (tmp_path / "a.md").write_text("alpha\n")
@@ -118,7 +120,7 @@ class TestScanKnownLeaked:
         (sub / "a.md").write_text("alpha\n")
         rel = "sub/a.md"
         _, _, sample = hook_module.scan_known_leaked(str(tmp_path), [rel], ["alpha"])
-        assert sample == [f"{rel}:1 :: alpha"]
+        assert sample == [f"{rel}:1 :: known-leaked literal #1"]
 
 
 def test_scan_policy_requires_readable_current_version(tmp_path, hook_module):
@@ -241,6 +243,10 @@ def _stub_main_scan(hook_module, monkeypatch, tmp_path, *, count=0, leaked=0):
     monkeypatch.setattr(hook_module, "scan_policy_is_current", lambda path: False)
     monkeypatch.setattr(hook_module, "run_scan", lambda *args: None)
     monkeypatch.setattr(hook_module, "count_unaudited", lambda path: (count, ["note.md:1 (Synthetic)"]))
+    monkeypatch.setattr(
+        hook_module, "record_alerts", lambda path, limit: (count, ["note.md:1 (Synthetic)"], [])
+    )
+    monkeypatch.setattr(hook_module, "sync_needs_attention", lambda root, paths: None)
     monkeypatch.setattr(hook_module, "load_known_leaked", lambda root: ["leaked"] if leaked else [])
     monkeypatch.setattr(
         hook_module,
@@ -307,3 +313,123 @@ def test_incremental_scan_uses_baseline_mtime(tmp_path, hook_module, monkeypatch
     assert calls[1] == baseline.stat().st_mtime
     assert scanned == [["changed.md"]]
     assert "Scanned 1 file(s) out of 1" in capsys.readouterr().out
+
+
+WEAK = 'password = "synthetic-weak-password"\n'  # pragma: allowlist secret
+
+
+def _vault(hook_module, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: True)
+    monkeypatch.setattr(hook_module, "find_containing_vault", lambda cwd, roots: str(tmp_path))
+    monkeypatch.setattr(hook_module, "load_vault_roots", lambda: [str(tmp_path)])
+    monkeypatch.setattr(hook_module, "read_input", dict)
+    monkeypatch.setattr(hook_module, "in_cooldown", lambda payload, marker_basename: False)
+    emitted: list[str] = []
+    monkeypatch.setattr(hook_module, "emit_block", emitted.append)
+    return emitted
+
+
+def _stop(hook_module):
+    try:
+        hook_module.main([])
+    except SystemExit as stopped:
+        assert stopped.code == 0
+
+
+def _needs_attention(tmp_path):
+    path = tmp_path / "Utility" / "obsidian-knowledge" / "needs-attention.md"
+    return path.read_text() if path.exists() else ""
+
+
+def test_alerts_once_per_finding_and_tracks_pointer_in_needs_attention(tmp_path, hook_module, monkeypatch):
+    emitted = _vault(hook_module, monkeypatch, tmp_path)
+    (tmp_path / "note.md").write_text(WEAK)
+    _stop(hook_module)
+    assert len(emitted) == 1
+    assert "note.md:1" in emitted[0]
+    assert "synthetic-weak-password" not in emitted[0]
+    assert "- [ ] `note.md`" in _needs_attention(tmp_path)
+
+    _stop(hook_module)
+    assert len(emitted) == 1
+
+    (tmp_path / "second.md").write_text(WEAK)
+    _stop(hook_module)
+    assert len(emitted) == 2
+    assert "second.md:1" in emitted[1]
+    assert "note.md:1" not in emitted[1]
+    tracked = _needs_attention(tmp_path)
+    assert tracked.count("`note.md`") == 1
+    assert "- [ ] `second.md`" in tracked
+
+    baseline = tmp_path / ".secrets.baseline"
+    payload = json.loads(baseline.read_text())
+    payload["results"]["note.md"][0]["is_secret"] = False
+    baseline.write_text(json.dumps(payload))
+    _stop(hook_module)
+    assert len(emitted) == 2
+    tracked = _needs_attention(tmp_path)
+    assert "`note.md`" not in tracked
+    assert "- [ ] `second.md`" in tracked
+
+
+def test_needs_attention_pointer_preserves_other_sections(tmp_path, hook_module, monkeypatch):
+    _vault(hook_module, monkeypatch, tmp_path)
+    page = tmp_path / "Utility" / "obsidian-knowledge" / "needs-attention.md"
+    page.parent.mkdir(parents=True)
+    page.write_text("# Needs Attention\n\n## Other\n\n- [ ] keep me\n")
+    (tmp_path / "note.md").write_text(WEAK)
+    _stop(hook_module)
+    text = page.read_text()
+    assert text.startswith("# Needs Attention\n\n## Other\n\n- [ ] keep me\n")
+    assert "- [ ] `note.md`" in text
+
+
+def test_manual_mode_lists_previously_alerted_findings(tmp_path, hook_module, monkeypatch, capsys):
+    emitted = _vault(hook_module, monkeypatch, tmp_path)
+    (tmp_path / "note.md").write_text(WEAK)
+    _stop(hook_module)
+    assert len(emitted) == 1
+    with pytest.raises(SystemExit):
+        hook_module.main(["--manual"])
+    assert "note.md:1" in capsys.readouterr().out
+
+
+def test_same_value_in_same_file_is_stored_once(tmp_path, hook_module):
+    digest = hashlib.sha256(b"synthetic duplicate fixture").hexdigest()
+    (tmp_path / "note.md").write_text(f'secret = "{digest}"\n')  # pragma: allowlist secret
+    baseline = tmp_path / ".secrets.baseline"
+    hook_module.run_scan(baseline, str(tmp_path), ["note.md"], ["note.md"])
+    assert len(json.loads(baseline.read_text())["results"]["note.md"]) == 1
+
+
+def test_baseline_lock_excludes_concurrent_scans(tmp_path, hook_module):
+    with hook_module.baseline_lock(str(tmp_path)) as lock_path, open(lock_path, "a") as other:
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with open(lock_path, "a") as other:
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def test_record_alerts_tolerates_unreadable_baseline_and_caps_sample(tmp_path, hook_module):
+    baseline = tmp_path / ".secrets.baseline"
+    assert hook_module.record_alerts(baseline, 1) == (0, [], [])
+    baseline.write_text("{not json")
+    assert hook_module.record_alerts(baseline, 1) == (0, [], [])
+    finding = {"type": "Secret Keyword", "line_number": 1, "is_secret": None}
+    baseline.write_text(
+        json.dumps(
+            {"results": {"a.md": [{**finding, "hashed_secret": "1"}, {**finding, "hashed_secret": "2"}]}}
+        )
+    )
+    count, sample, paths = hook_module.record_alerts(baseline, 1)
+    assert (count, len(sample), paths) == (2, 1, ["a.md"])
+
+
+def test_needs_attention_untouched_when_nothing_to_track(tmp_path, hook_module):
+    page = tmp_path / "Utility" / "obsidian-knowledge" / "needs-attention.md"
+    page.parent.mkdir(parents=True)
+    page.write_text("# Needs Attention\n")
+    hook_module.sync_needs_attention(str(tmp_path), [])
+    assert page.read_text() == "# Needs Attention\n"

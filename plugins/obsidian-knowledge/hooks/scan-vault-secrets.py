@@ -103,6 +103,7 @@ from typing import Any
 from pydantic import BaseModel
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from hookslib.secret_alerts import ALERTED_KEY, baseline_lock, record_alerts, sync_needs_attention
 from hookslib.stop_hook import emit_block, in_cooldown, read_input
 from hookslib.vault_config import is_in_vault, load_vault_roots
 from hookslib.vault_policy import find_containing_vault
@@ -139,7 +140,7 @@ EXCLUDE_EXTS = {
 KNOWN_LEAKED_FILENAME = ".secrets.known-leaked"
 BASELINE_FILENAME = ".secrets.baseline"
 # Increment when detector/filter semantics change so unchanged files are rechecked.
-SCAN_POLICY_VERSION = 1
+SCAN_POLICY_VERSION = 2
 
 
 class BaselineScanPolicy(BaseModel):
@@ -290,8 +291,21 @@ def run_scan(
 
         if old_sc is not None:
             result_sc.merge(old_sc)
+        _drop_same_value_duplicates(result_sc)
 
         _save_if_changed(result_sc, baseline_path, ds_baseline)
+
+
+def _drop_same_value_duplicates(result_sc) -> None:
+    """Keep one finding per (file, secret) when several detectors match one value.
+
+    Prefer a finding that already carries an audit decision, so one audit covers the value.
+    """
+    for filename, secrets in result_sc.data.items():
+        by_hash: dict[str, Any] = {}
+        for secret in sorted(secrets, key=lambda s: (s.is_secret is None, s.type)):
+            by_hash.setdefault(secret.secret_hash, secret)
+        result_sc.data[filename] = set(by_hash.values())
 
 
 def _save_if_changed(result_sc, baseline_path: Path, ds_baseline) -> None:
@@ -319,14 +333,17 @@ def _save_if_changed(result_sc, baseline_path: Path, ds_baseline) -> None:
         ds_baseline.save_to_file(result_sc, str(tmp_path))
         new_data = json.loads(tmp_path.read_text())
         new_data["vault_scan_policy"] = SCAN_POLICY_VERSION
-        tmp_path.write_text(json.dumps(new_data, indent=2) + "\n")
+        old_data: dict[str, Any] = {}
         if baseline_path.exists():
             try:
                 old_data = json.loads(baseline_path.read_text())
-                if _normalize(old_data) == _normalize(new_data):
-                    return
             except (OSError, json.JSONDecodeError):
-                pass
+                old_data = {}
+        if ALERTED_KEY in old_data:
+            new_data[ALERTED_KEY] = old_data[ALERTED_KEY]
+        if old_data and _normalize(old_data) == _normalize(new_data):
+            return
+        tmp_path.write_text(json.dumps(new_data, indent=2) + "\n")
         tmp_path.replace(baseline_path)
     finally:
         if tmp_path.exists():
@@ -354,6 +371,8 @@ def count_unaudited(baseline_path: Path) -> tuple[int, list[str]]:
 REMINDER_TEMPLATE = (
     "detect-secrets found {count} unaudited finding(s) in the vault:\n"
     "{sample}\n"
+    "Each file is tracked in Utility/obsidian-knowledge/needs-attention.md; the Stop hook "
+    "alerts once per finding.\n"
     "Remediate each per the vault's documented secrets-management convention "
     "(search the vault for it; if missing, ask the user). For real secrets: "
     "store via the vault's password-manager workflow, replace inline with a "
@@ -421,15 +440,28 @@ def scan_known_leaked(
         try:
             with open(absolute, encoding="utf-8", errors="replace") as f:
                 for lineno, line in enumerate(f, start=1):
-                    for literal in literals:
+                    for index, literal in enumerate(literals, start=1):
                         if literal in line:
                             total += 1
                             files_hit.add(rel)
+                            # Never echo the literal: this text lands in agent context.
                             if len(sample) < KNOWN_LEAKED_SAMPLE_LIMIT:
-                                sample.append(f"{rel}:{lineno} :: {literal}")
+                                sample.append(f"{rel}:{lineno} :: known-leaked literal #{index}")
         except OSError:
             continue
     return total, len(files_hit), sample
+
+
+def scan_and_track(
+    baseline_path: Path, vault_root: str, scan_paths: list[str], all_paths: list[str], *, manual: bool
+) -> tuple[int, list[str]]:
+    """Scan under the host lock; return all unaudited (manual) or newly alerted findings."""
+    with baseline_lock(vault_root):
+        run_scan(baseline_path, vault_root, scan_paths, all_paths)
+        unaudited = count_unaudited(baseline_path)
+        new_count, new_sample, unaudited_paths = record_alerts(baseline_path, UNAUDITED_SAMPLE_LIMIT)
+        sync_needs_attention(vault_root, unaudited_paths)
+    return unaudited if manual else (new_count, new_sample)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -485,8 +517,7 @@ def main(argv: list[str] | None = None) -> None:
         # Even with no rescans, we still call run_scan so deletions get
         # pruned from the baseline.
 
-    run_scan(baseline_path, vault_root, scan_paths, all_paths)
-    count, sample = count_unaudited(baseline_path)
+    count, sample = scan_and_track(baseline_path, vault_root, scan_paths, all_paths, manual=args.manual)
 
     # Known-leaked literals: walk every file in the vault, not just
     # mtime-changed ones, so a literal added to .secrets.known-leaked
