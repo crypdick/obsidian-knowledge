@@ -66,6 +66,7 @@ def scanner():
         ("state.json", f'{{"head_sha": "{COMMIT}"}}'),
         ("state.json", f'{{"finding_id": "{DIGEST}"}}'),
         ("state.json", f'{{\n  "attempted_finding_ids": [\n    "{DIGEST}"\n  ]\n}}'),
+        ("state.json", f'{{"count": 3, "done": null,\n  "finding_ids": [\n    "{DIGEST}"\n  ]}}'),
         ("export.json", f'{{"list_id": "{OPAQUE}"}}'),
         ("note.md", 'repo_id = "example-org/Synthetic-Model-482B-Quantized-GGUF"'),
         ("image.xmp", f'darktable:blendop_params="{OPAQUE}"'),
@@ -123,6 +124,8 @@ def test_noncredentials_are_filtered(tmp_path, scanner, filename, text):
         # Same value outside an ID list still alerts.
         ("state.json", f'{{"finding_ids": [\n    "{DIGEST}"\n  ],\n  "secret": "{DIGEST}"}}'),
         ("note.md", f"commit: {OPAQUE}"),
+        # Unparseable JSON fails closed.
+        ("state.json", f'{{"finding_ids": [\n    "{DIGEST}",\n'),
         (
             "note.md",
             f'api_key="your-api-key"; token="{OPAQUE}"',  # pragma: allowlist secret

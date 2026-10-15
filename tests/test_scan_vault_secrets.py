@@ -410,3 +410,26 @@ def test_baseline_lock_excludes_concurrent_scans(tmp_path, hook_module):
             fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
     with open(lock_path, "a") as other:
         fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def test_record_alerts_tolerates_unreadable_baseline_and_caps_sample(tmp_path, hook_module):
+    baseline = tmp_path / ".secrets.baseline"
+    assert hook_module.record_alerts(baseline, 1) == (0, [], [])
+    baseline.write_text("{not json")
+    assert hook_module.record_alerts(baseline, 1) == (0, [], [])
+    finding = {"type": "Secret Keyword", "line_number": 1, "is_secret": None}
+    baseline.write_text(
+        json.dumps(
+            {"results": {"a.md": [{**finding, "hashed_secret": "1"}, {**finding, "hashed_secret": "2"}]}}
+        )
+    )
+    count, sample, paths = hook_module.record_alerts(baseline, 1)
+    assert (count, len(sample), paths) == (2, 1, ["a.md"])
+
+
+def test_needs_attention_untouched_when_nothing_to_track(tmp_path, hook_module):
+    page = tmp_path / "Utility" / "obsidian-knowledge" / "needs-attention.md"
+    page.parent.mkdir(parents=True)
+    page.write_text("# Needs Attention\n")
+    hook_module.sync_needs_attention(str(tmp_path), [])
+    assert page.read_text() == "# Needs Attention\n"
