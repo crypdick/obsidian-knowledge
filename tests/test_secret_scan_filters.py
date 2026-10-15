@@ -186,7 +186,7 @@ def test_policy_change_rescans_unchanged_files_and_preserves_audits(tmp_path, sc
         PotentialSecret("Secret Keyword", "note.md", "your-api-key", line_number=2).json()
     )
     if not full:
-        payload.pop("vault_scan_policy")
+        payload.pop("vault_filter_revision")
     baseline.write_text(json.dumps(payload))
     assert scanner.scan_policy_is_current(baseline) is full
     monkeypatch.chdir(tmp_path)

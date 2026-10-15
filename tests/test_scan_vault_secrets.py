@@ -128,10 +128,22 @@ def test_scan_policy_requires_readable_current_version(tmp_path, hook_module):
     assert not hook_module.scan_policy_is_current(baseline)
     baseline.write_text("not json")
     assert not hook_module.scan_policy_is_current(baseline)
-    baseline.write_text('{"vault_scan_policy": 0}')
+    baseline.write_text('{"vault_filter_revision": 0}')
     assert not hook_module.scan_policy_is_current(baseline)
-    baseline.write_text(f'{{"vault_scan_policy": {hook_module.SCAN_POLICY_VERSION}}}')
+    # Revision 1 hooks wrote only the legacy key; that baseline needs a rescan.
+    baseline.write_text('{"vault_scan_policy": 1}')
+    assert not hook_module.scan_policy_is_current(baseline)
+    baseline.write_text(f'{{"vault_filter_revision": {hook_module.SCAN_POLICY_VERSION}}}')
     assert hook_module.scan_policy_is_current(baseline)
+
+
+def test_saved_baseline_stays_current_for_legacy_hooks(tmp_path, hook_module):
+    # Hooks from before revision 2 full-rescan unless vault_scan_policy == 1.
+    # Rewriting that value would make old and new sessions undo each other.
+    (tmp_path / "note.md").write_text("plain\n")
+    baseline = tmp_path / ".secrets.baseline"
+    hook_module.run_scan(baseline, str(tmp_path), ["note.md"], ["note.md"])
+    assert json.loads(baseline.read_text())["vault_scan_policy"] == 1
 
 
 def test_find_files_filters_noise_and_honors_mtime(tmp_path, hook_module, monkeypatch):
@@ -290,7 +302,7 @@ def test_hook_mode_emits_only_when_findings_exist(tmp_path, hook_module, monkeyp
 
 def test_incremental_scan_uses_baseline_mtime(tmp_path, hook_module, monkeypatch, capsys):
     baseline = tmp_path / hook_module.BASELINE_FILENAME
-    baseline.write_text(f'{{"vault_scan_policy": {hook_module.SCAN_POLICY_VERSION}}}')
+    baseline.write_text(f'{{"vault_filter_revision": {hook_module.SCAN_POLICY_VERSION}}}')
     monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: True)
     monkeypatch.setattr(hook_module, "find_containing_vault", lambda cwd, roots: str(tmp_path))
     monkeypatch.setattr(hook_module, "load_vault_roots", lambda: [str(tmp_path)])
