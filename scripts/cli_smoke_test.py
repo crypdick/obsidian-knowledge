@@ -91,11 +91,9 @@ def exercise(executable: str, root: Path) -> None:
     run("write", "wiki/orchid.md", "--vault", str(vault), "--replace", content=note)
     run("write", "wiki/blank.md", "--vault", str(vault), content=" \n", expected=2)
     run("read", "../outside.md", "--vault", str(vault), expected=2)
-    assert "Setup complete." in run("setup", "--vault", str(vault), "--skip-claude-plugin")
+    assert "Setup complete." in run("setup", "--vault", str(vault), "--skip-claude-plugin", "--skip-guards")
     assert not (root / "home" / ".i-insist" / "obsidian-knowledge.toml").exists()
-    assert "already registered" in run(
-        "setup", "--vault", str(vault), "--skip-claude-plugin", "--install-guards"
-    )
+    assert "already registered" in run("setup", "--vault", str(vault), "--skip-claude-plugin")
     exercise_guards(vault, env)
     assert run("read", "wiki/orchid.md") == note
 

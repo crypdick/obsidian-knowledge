@@ -90,9 +90,9 @@ def test_offline_updates_are_embedded_when_ollama_returns(vault, tmp_path, monke
         asyncio.run(idx._store.close())
 
 
-@pytest.mark.parametrize("install_guards", [False, True])
+@pytest.mark.parametrize("skip_guards", [False, True])
 def test_setup_without_ollama_finishes_and_explains_search_mode(
-    vault, tmp_path, monkeypatch, capsys, embed, install_guards
+    vault, tmp_path, monkeypatch, capsys, embed, skip_guards
 ):
     registry = tmp_path / "config" / "vaults.yaml"
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
@@ -104,11 +104,8 @@ def test_setup_without_ollama_finishes_and_explains_search_mode(
         return base / ".i-insist/obsidian-knowledge.toml"
 
     monkeypatch.setattr("lib.vault_index.guard_install.install_rules", record_install)
-    if install_guards:
-        setup(vault, install_guards=True)
-    else:
-        setup(vault)
-    assert installed == ([Path.home()] if install_guards else [])
+    setup(vault, skip_guards=skip_guards)
+    assert installed == ([] if skip_guards else [Path.home()])
     output = capsys.readouterr().out
     assert "Search mode: keyword-only" in output
     assert "Setup complete." in output

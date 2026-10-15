@@ -20,10 +20,10 @@ obsidian-knowledge setup --vault /absolute/path/to/vault
 obsidian-knowledge doctor --query "a phrase from one of your notes"
 ```
 
-Setup registers and indexes the vault. Add `--install-guards` to install or
-upgrade i-insist and register global harness hooks and vault guard rules.
-Guard installation requires i-insist 0.4.0 or later; setup upgrades older
-versions when requested. See [guard setup](docs/hooks.md).
+Setup registers and indexes the vault, and installs or upgrades i-insist,
+registers its global harness hooks, and writes the vault guard rules. Guards
+require i-insist 0.4.0 or later; setup upgrades older versions. Add
+`--skip-guards` to leave guards untouched. See [guard setup](docs/hooks.md).
 Setup also installs the Claude Code plugin when `claude` is on `PATH`.
 Add `--skip-claude-plugin` for CLI-only or Codex use. Setup is safe to rerun.
 For a large first index, add `--timeout-seconds 900`.

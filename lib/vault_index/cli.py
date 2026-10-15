@@ -383,7 +383,7 @@ def init_vault_index(yaml_path: Path) -> None:
     print(f"Wrote vault_index template to {yaml_path}")
 
 
-def setup(vault: Path, *, skip_claude_plugin: bool = False, install_guards: bool = False) -> None:
+def setup(vault: Path, *, skip_claude_plugin: bool = False, skip_guards: bool = False) -> None:
     """First-time setup: register vault, install claude plugin, initial reindex."""
     import shutil
 
@@ -400,8 +400,8 @@ def setup(vault: Path, *, skip_claude_plugin: bool = False, install_guards: bool
     else:
         print(f"vaults.yaml: {vault_str} already registered")
 
-    # NOTE: docs/hooks.md documents opt-in global guard installation.
-    if install_guards:
+    # NOTE: docs/hooks.md documents default guard installation and its opt-out.
+    if not skip_guards:
         from lib.vault_index.guard_install import install_rules
 
         print(f"i-insist rules: {install_rules(Path.home())}")
@@ -542,7 +542,9 @@ def main() -> int:
     p_setup.add_argument("--vault", type=Path, required=True, help="Vault root path")
     p_setup.add_argument("--skip-claude-plugin", action="store_true", help="Skip Claude plugin installation")
     p_setup.add_argument(
-        "--install-guards", action="store_true", help="Install i-insist, global hooks, and vault guard rules"
+        "--skip-guards",
+        action="store_true",
+        help="Do not install i-insist, global hooks, or vault guard rules",
     )
     p_setup.add_argument(
         "--timeout-seconds", type=int, default=300, help="Whole-command deadline (default: 300)"
@@ -649,7 +651,7 @@ def main() -> int:
             setup(
                 args.vault,
                 skip_claude_plugin=args.skip_claude_plugin,
-                install_guards=args.install_guards,
+                skip_guards=args.skip_guards,
             )
     elif args.cmd == "install-rules":
         from lib.vault_index.guard_install import install_rules

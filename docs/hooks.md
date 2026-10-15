@@ -17,17 +17,17 @@ The tool-call guard applies these rules:
 | Claude and Codex native memory stores | Block modifications and redirect knowledge to the wiki. |
 
 Codex and Claude use [i-insist](https://github.com/crypdick/i-insist) to execute
-provider-owned rules. Guard installation is opt-in: use
-`obsidian-knowledge setup --vault /absolute/path/to/vault --install-guards`,
-or run this standalone command:
+provider-owned rules. `obsidian-knowledge setup --vault /absolute/path/to/vault`
+installs them; add `--skip-guards` to leave guards untouched. To reinstall
+without re-running setup, run:
 
 ```bash
 obsidian-knowledge install-rules --global
 ```
 
 Codex and Claude session startup, resume, and compaction do not install rules or register
-global hooks. Default setup leaves existing guard installations unchanged;
-it neither installs nor removes protection.
+global hooks; only `setup` and `install-rules` do. `setup --skip-guards` leaves existing
+guard installations unchanged; it neither installs nor removes protection.
 
 The installer installs or upgrades the runner from PyPI with uv, then runs `i-insist ensure`. This registers
 hooks for available harnesses and rejects explicit disable settings. Existing
