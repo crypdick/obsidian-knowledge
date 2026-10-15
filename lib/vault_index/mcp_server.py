@@ -12,7 +12,6 @@ import os
 import secrets
 import sys
 import threading
-from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from typing import Annotated
@@ -29,6 +28,7 @@ from starlette.responses import JSONResponse, Response
 
 from lib.vault_index.cli import positive_int, resolve_vault, search_ttl_seconds
 from lib.vault_index.mcp_index import IndexStatus, IndexUpdate, parse_index_update, read_index_status
+from lib.vault_index.mcp_native import register_native_tools, run_vault_mutation
 from lib.vault_index.models import SearchReport
 from lib.vault_index.vault_files import patch_vault_file, read_vault_file, write_vault_file
 from lib.vault_index.vault_listing import ListingReport, list_vault_files
@@ -99,11 +99,6 @@ def create_server(
 
     file_lock = threading.Lock()
 
-    def mutate(operation: Callable[[], Path]) -> Path:
-        # Keep the lock in the worker: cancellation does not stop a to_thread write.
-        with file_lock:
-            return operation()
-
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_search(
         query: Annotated[str, Field(min_length=1)],
@@ -139,7 +134,9 @@ def create_server(
     async def vault_write(path: str, content: str, replace: bool = False) -> dict[str, str]:
         """Write UTF-8 text atomically and verify bytes. Existing files require replace=true."""
         target = await asyncio.to_thread(
-            mutate, partial(write_vault_file, vault, Path(path), content.encode("utf-8"), replace=replace)
+            run_vault_mutation,
+            file_lock,
+            partial(write_vault_file, vault, Path(path), content.encode("utf-8"), replace=replace),
         )
         return {"path": target.relative_to(vault).as_posix(), "status": "wrote and verified"}
 
@@ -152,7 +149,8 @@ def create_server(
     ) -> dict[str, str]:
         """Replace exactly one text match, preserving other bytes; optionally require the original SHA-256."""
         target = await asyncio.to_thread(
-            mutate,
+            run_vault_mutation,
+            file_lock,
             partial(patch_vault_file, vault, Path(path), old_str, new_str, expected_sha256=expected_sha256),
         )
         return {"path": target.relative_to(vault).as_posix(), "status": "patched and verified"}
@@ -227,6 +225,7 @@ def create_server(
             ],
         )
 
+    register_native_tools(server, vault, file_lock)
     return server
 
 

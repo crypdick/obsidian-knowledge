@@ -25,6 +25,13 @@ def test_tools_and_verified_write(tmp_path):
             "vault_list",
             "vault_search_status",
             "vault_search_update",
+            "vault_append",
+            "vault_frontmatter",
+            "vault_recent",
+            "vault_grep",
+            "vault_info",
+            "vault_delete",
+            "vault_move",
         }
         result = await server.call_tool("vault_write", {"path": "wiki/note.md", "content": "# Orchid\n"})
         assert (tmp_path / "wiki/note.md").read_text() == "# Orchid\n"
@@ -129,6 +136,13 @@ def test_http_protocol_and_auth(tmp_path):
             "vault_list",
             "vault_search_status",
             "vault_search_update",
+            "vault_append",
+            "vault_frontmatter",
+            "vault_recent",
+            "vault_grep",
+            "vault_info",
+            "vault_delete",
+            "vault_move",
         }
         response = client.post(
             "/mcp",
@@ -253,7 +267,7 @@ def test_sdk_streamable_http_client(tmp_path):
                         initialized = await client.initialize()
                         assert initialized.serverInfo.name == "obsidian-knowledge"
                         tools = await client.list_tools()
-                        assert len(tools.tools) == 8
+                        assert len(tools.tools) == 15
                         written = await client.call_tool(
                             "vault_write", {"path": "sdk.md", "content": "SDK text"}
                         )

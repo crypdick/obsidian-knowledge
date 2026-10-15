@@ -75,7 +75,7 @@ sending a token across a network. Tunnel provisioning is separate from this serv
 Paths are relative to the server's fixed vault. Absolute paths and symlink or
 parent-directory escapes are rejected. These tools share the CLI's file
 safeguards; agent lifecycle hooks and zone policies do not run on MCP calls.
-No delete or move tools are exposed.
+The additional app tools below use the official Obsidian CLI.
 
 Writes and patches serialize within one server, including when a client cancels
 while its write thread is still running. Patch baseline checks detect edits
@@ -95,6 +95,69 @@ Use `vault_search_update()` or the existing
 `obsidian-knowledge reindex --vault /absolute/path/to/vault` workflow after
 changing notes. See [CLI reference](CLI.md) for indexing, embeddings, and search
 timeout configuration.
+
+## App-backed tools
+
+These seven tools delegate to the official Obsidian CLI connected to a running
+app. They are always discoverable; calls fail with an actionable error if the
+CLI or app is unavailable. The original tools above remain usable without the app.
+
+- `vault_append(path, content, inline=False)` uses native append. Obsidian adds
+  its normal leading newline unless `inline=True`. Native CLI escape handling
+  applies to content; this operation does not promise verbatim byte appends.
+- `vault_frontmatter(path, updates=None)` reads native properties. A nonempty
+  `updates` object merges fields through Obsidian's `processFrontMatter` API.
+  Native YAML formatting and property types apply; this is not a byte-preserving
+  edit. No timestamps or agent attribution are added by the adapter.
+- `vault_recent(n=10, path_filter="")` returns up to 500 visible Markdown notes
+  by app modification time, newest first, with paths breaking ties. Reports
+  include note paths, modification times, sizes, and whether more notes exist.
+- `vault_grep(query, path_filter="", max_results=20)` searches live app content
+  for literal text and returns bounded matching lines, without our search index.
+  `max_results` must be between 1 and 500. The report indicates possible
+  truncation, including native search's file limit.
+- `vault_info()` returns native information about the fixed vault.
+- `vault_delete(path)` uses Obsidian's trash behavior. The adapter exposes no
+  permanent-delete option.
+- `vault_move(from_path, to_path, dry_run=False)` delegates moving and link
+  updates to Obsidian. Link updates follow the app's automatic-update setting.
+  An existing destination is rejected. `dry_run=True` checks the source through
+  native file info and reports the destination without moving; it does not
+  simulate link rewrites.
+
+App tool paths reject hidden paths, `_sources`, dependency directories,
+sync conflicts, and symlinks. Folder filters use the same confinement rules.
+App tools do not run agent hooks or apply managed-zone or published-note policy;
+native automatic link updates follow Obsidian's behavior.
+
+### Native CLI configuration
+
+Set `OBSIDIAN_KNOWLEDGE_OBSIDIAN_CLI` to the official CLI executable (default:
+`obsidian`) and `OBSIDIAN_KNOWLEDGE_OBSIDIAN_VAULT` to its vault name (default:
+the filesystem vault directory's name). Clients cannot change either value.
+Avoid a desktop launcher that discards stdout; use the supported CLI binary.
+
+The adapter checks the native vault path with `samefile` against the configured
+filesystem root before calls. With separate containers, the native app path
+must also be visible in the MCP container and point to that same directory.
+Dcloud mounts a read-only alias at the app's path, preserving `/vault` and its
+existing index cache identity. Its deployment runbook owns exact mounts and the
+launcher refresh procedure.
+
+The subprocess inherits the configured app runtime environment. On Linux,
+`XDG_RUNTIME_DIR` and UID must let it reach the running app's CLI socket. Keep
+that socket private to the trusted MCP container: a read-only socket mount does
+not restrict commands a process with socket access could request. MCP handlers
+expose fixed operations rather than an arbitrary command or JavaScript tool.
+
+Each CLI invocation uses the configured search deadline (at least one second)
+and caps stdout and stderr at 6 MiB each. Timeout, cancellation, and oversized
+output kill and reap its subprocess. Native mutations share the existing
+thread-held write lock; cancelling an MCP request can leave its worker running
+until the native CLI wait finishes. Killing that client cannot cancel work
+already dispatched to the app: verify note state before retrying a failed
+mutation. Native operations retain the app's semantics, including its formatting and link handling, rather than the verified
+filesystem writer's guarantees.
 
 ## Binary file delivery
 
