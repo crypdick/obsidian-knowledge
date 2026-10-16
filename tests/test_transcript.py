@@ -159,3 +159,17 @@ def test_codex_user_records_exclude_injected_context_and_duplicate_events(tmp_pa
     records.extend([None, [], {"type": "response_item", "payload": None}])
     path.write_text("\n".join(json.dumps(record) for record in records))
     assert count_user_messages(str(path)) == 2
+
+
+def test_count_user_messages_excludes_agent_delivered_claude_messages(tmp_path):
+    path = tmp_path / "claude.jsonl"
+    messages = [
+        "Please help",
+        'Another Claude session sent a message:\n<teammate-message teammate_id="w">idle</teammate-message>',
+        "<task-notification>\n<task-id>b1</task-id>\n</task-notification>",
+        "Thanks, keep this decision",
+    ]
+    path.write_text(
+        "\n".join(json.dumps({"type": "user", "message": {"content": text}}) for text in messages)
+    )
+    assert count_user_messages(str(path)) == 2

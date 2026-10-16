@@ -81,6 +81,10 @@ _INJECTED_PREFIXES = (
     "<codex_internal_context",
     "# AGENTS.md instructions for ",
     "<environment_context>",
+    # Claude Code delivers teammate and background-task results as user turns.
+    "Another Claude session sent a message:",
+    "<teammate-message",
+    "<task-notification>",
 )
 
 
