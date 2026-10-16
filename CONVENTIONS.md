@@ -2,6 +2,15 @@
 
 Use these principles in code review. Enforce mechanical rules through
 `pyproject.toml`, `prek.toml`, and `scripts/prek_hooks/`.
+For design reviews or convention changes, use the shared `coding-conventions`
+skill and load only the relevant reference. This document owns vault-specific
+choices.
+
+## Name modules by their purpose
+
+Keep shared functions in specifically named owner modules rather than broad
+`utils.py`, `helpers.py`, or `common.py` modules. If only one module uses a
+function, keep it there unless a separate concept warrants its own owner.
 
 ## Semantic types for domain concepts
 
@@ -47,6 +56,8 @@ CLI and hook stdout/stderr are protocol boundaries; keep lint suppressions
 narrow and explain them. Verify annotation and path changes against public
 behavior tests.
 
-Encode durable coding preferences in tooling when a reliable check exists.
-Keep judgment-based guidance here. Hosts with hookify can also use
-`.claude/hookify.taste-enforcer.md`; the checked-in tools run independently.
+Retain coding preferences when the user intends them to apply to future work.
+Keep judgment-based guidance here. Prefer an existing tool setting or repair an
+existing prek check when reliable detection is possible. Reproduce a missed
+violation before changing its check. A one-task instruction does not establish
+permanent policy.
