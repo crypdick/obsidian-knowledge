@@ -83,6 +83,14 @@ def test_search_real_cli(tmp_path, monkeypatch):
         timeout=20,
     )
 
+    spawn = asyncio.create_subprocess_exec
+
+    async def bounded_search(*command, **kwargs):
+        assert "--no-rebuild" in command
+        return await spawn(*command, **kwargs)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", bounded_search)
+
     async def exercise():
         server = create_server(tmp_path)
         for arguments in [{"query": "greenhouse"}, {"query": "greenhouse", "top_k": 1, "all_paths": True}]:
