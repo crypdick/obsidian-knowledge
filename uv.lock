@@ -1744,7 +1744,7 @@ wheels = [
 
 [[package]]
 name = "obsidian-knowledge"
-version = "3.30.3"
+version = "3.30.4"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
