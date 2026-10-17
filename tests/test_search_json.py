@@ -42,6 +42,41 @@ def test_keyword_report_contains_hits_and_empty_results(keyword_index):
     assert empty.hits == []
 
 
+@pytest.mark.parametrize("json_output", [False, True])
+def test_no_rebuild_search_serves_keywords_from_stale_vector_index(
+    keyword_index, monkeypatch, capsys, json_output
+):
+    keyword_index._vector_enabled = True
+    keyword_index._needs_rebuild = True
+
+    def unexpected_rebuild(*args, **kwargs):
+        pytest.fail("bounded search must not rebuild the index")
+
+    monkeypatch.setattr(keyword_index, "_auto_rebuild", unexpected_rebuild)
+    monkeypatch.setattr(indexer, "Indexer", lambda **kwargs: keyword_index)
+    arguments = [
+        "obsidian-knowledge",
+        "search",
+        "greenhouse",
+        "--no-rebuild",
+        "--vault",
+        str(keyword_index.vault_root),
+    ]
+    if json_output:
+        arguments.append("--json")
+    monkeypatch.setattr(sys, "argv", arguments)
+    assert cli.main() == 0
+    output = capsys.readouterr()
+    if json_output:
+        report = json.loads(output.out)
+        assert report["mode"] == "keyword"
+        assert report["degraded_reason"] == "vector index requires reindex"
+        assert report["hits"][0]["path"] == "wiki/orchid.md"
+    else:
+        assert "wiki/orchid.md" in output.out
+    assert keyword_index._needs_rebuild is True
+
+
 @pytest.mark.parametrize(
     ("message", "reason"),
     [

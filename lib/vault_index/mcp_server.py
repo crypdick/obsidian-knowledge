@@ -114,6 +114,8 @@ def create_server(
             "--vault",
             str(vault),
             "--json",
+            # NOTE: docs/MCP.md's search contract keeps rebuilds outside query deadlines.
+            "--no-rebuild",
         ]
         if top_k is not None:
             command.extend(["--top-k", str(top_k)])

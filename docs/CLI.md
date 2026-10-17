@@ -164,6 +164,11 @@ SQLite data while indexing continues. If lock waiting exhausts the deadline,
 the command reports a timeout and exits with code 124. Database contention that
 persists after SQLite's own wait reports a busy error with code 2; it does not
 appear as an empty result set.
+Use `search --no-rebuild` to serve existing keyword results when vectors need
+reindexing. MCP searches always use this option so an embedder change cannot
+start a full rebuild inside the query deadline. Run `reindex` separately to
+restore vector retrieval. JSON output reports `vector index requires reindex`
+or `vector index unavailable` as the degraded reason.
 `reindex` has no deadline unless you pass `--timeout-seconds`. Always pass it
 for scheduled jobs. Zero or negative deadline values disable the deadline.
 A hard watchdog allows five extra seconds to terminate stuck native calls.

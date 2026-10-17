@@ -34,6 +34,9 @@ sending a token across a network. Tunnel provisioning is separate from this serv
 - `vault_search(query, top_k=None, all_paths=False)` returns a structured search
   report with `mode`, `degraded_reason`, and scored `hits`. `top_k` must be
   positive. `all_paths` bypasses the digest filter, retaining index exclusions.
+  Queries never rebuild vectors. If the embedder has changed or vector tables
+  are unavailable, search returns keyword hits with a degraded reason. Use
+  `vault_search_update` to refresh the index separately.
 - `vault_read(path)` returns UTF-8 file content.
 - `download_file(path)` delivers original bytes as an embedded MCP binary
   resource, with filename, MIME type, byte count, and SHA-256 in structured

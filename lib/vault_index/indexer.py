@@ -601,7 +601,9 @@ class Indexer:
         # Auto-rebuild when the embedder fingerprint changed since the last
         # successful index. Chat prefetch calls can opt out so stale caches do
         # not spend the turn-start budget rebuilding before the model responds.
-        if self._needs_rebuild and allow_rebuild:
+        if self._needs_rebuild and not allow_rebuild:
+            return keyword_report("vector index requires reindex")
+        if self._needs_rebuild:
             self._auto_rebuild(reason="embedder changed")
 
         if not self._vector_enabled:
