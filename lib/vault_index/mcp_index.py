@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from lib.vault_index.cli import default_cache_dir_for_vault
+from lib.vault_index.index_state import rebuild_pending
 from lib.vault_index.indexer import (
     DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_TOKENS,
@@ -70,7 +71,9 @@ def read_index_status(vault: Path) -> IndexStatus:
         fingerprint = None
     model = os.environ.get("MEMWEAVE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
     current = f"{model}@{DEFAULT_CHUNK_TOKENS}/{DEFAULT_CHUNK_OVERLAP}"
-    if indexed_files == 0:
+    if rebuild_pending(database):
+        reason = "vector index rebuild incomplete; update required"
+    elif indexed_files == 0:
         reason = "index empty"
     elif fingerprint is None:
         reason = "embedding fingerprint unavailable"

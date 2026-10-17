@@ -34,9 +34,12 @@ sending a token across a network. Tunnel provisioning is separate from this serv
 - `vault_search(query, top_k=None, all_paths=False)` returns a structured search
   report with `mode`, `degraded_reason`, and scored `hits`. `top_k` must be
   positive. `all_paths` bypasses the digest filter, retaining index exclusions.
-  Queries never rebuild vectors. If the embedder has changed or vector tables
-  are unavailable, search returns keyword hits with a degraded reason. Use
-  `vault_search_update` to refresh the index separately.
+  Queries do not wait for vector rebuilds. If the embedder has changed, a
+  rebuild was interrupted, or vector tables are unavailable, search returns
+  keyword hits and requests one background repair. While it runs the reason
+  is `vector index rebuilding`. Repeated queries share the same worker;
+  failures or lock contention can be retried by a search after 60 seconds.
+  `vault_search_update` remains available for an explicit refresh.
 - `vault_read(path)` returns UTF-8 file content.
 - `download_file(path)` delivers original bytes as an embedded MCP binary
   resource, with filename, MIME type, byte count, and SHA-256 in structured
@@ -92,6 +95,14 @@ search deadline (`OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`) plus a ten-second
 cleanup allowance; refresh also passes that deadline to the CLI. Cancellation
 or timeout kills and reaps the subprocess. File operations remain available
 during indexing. Queue waiting is outside the active-operation deadline.
+
+Automatic repair has its own 1800-second CLI deadline plus a ten-second cleanup
+allowance. A cancelled search does not cancel the repair; server shutdown does.
+With memweave's resumable rebuild support, later attempts retain completed files
+and vectors instead of starting over. Ollama batches that exceed the configured
+request timeout are split into smaller batches, preserving order and avoiding
+repeated attempts at the same oversized batch. These behaviors do not require
+deployment-specific wrappers, longer deadlines, or increased CPU limits.
 
 Search uses the current index. Writes and patches do not automatically reindex.
 Use `vault_search_update()` or the existing

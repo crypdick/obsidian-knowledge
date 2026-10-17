@@ -63,6 +63,7 @@ import platformdirs
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE, make_embedding_provider
 from lib.vault_index.filters import path_passes
+from lib.vault_index.index_state import rebuild_pending, vector_table_exists
 from lib.vault_index.models import Hit, IndexBusyError, SearchReport
 from lib.vault_index.vector_search import IndexedHybridSearch
 
@@ -289,6 +290,8 @@ class Indexer:
         db = self.cache_dir / "index.sqlite"
         if not db.exists():
             return False
+        if rebuild_pending(db):
+            return True
         stored = self._read_stored_fingerprint()
         if stored is None:
             # Pre-fingerprint cache. Do not assume it is FTS-only: some live
@@ -302,14 +305,7 @@ class Indexer:
     @staticmethod
     def _vector_table_exists(db_path: Path) -> bool:
         """Return True when the cache already contains memweave's vector table."""
-        try:
-            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
-                row = conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunks_vec'"
-                ).fetchone()
-        except sqlite3.Error:
-            return False
-        return row is not None
+        return vector_table_exists(db_path)
 
     @staticmethod
     def _embedding_settings() -> tuple[str, str, str | None]:

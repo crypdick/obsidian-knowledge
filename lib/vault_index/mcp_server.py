@@ -12,6 +12,7 @@ import os
 import secrets
 import sys
 import threading
+from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
 from typing import Annotated
@@ -29,6 +30,7 @@ from starlette.responses import JSONResponse, Response
 from lib.vault_index.cli import positive_int, resolve_vault, search_ttl_seconds
 from lib.vault_index.mcp_index import IndexStatus, IndexUpdate, parse_index_update, read_index_status
 from lib.vault_index.mcp_native import register_native_tools, run_vault_mutation
+from lib.vault_index.mcp_recovery import RECOVERY_TIMEOUT_SECONDS, IndexRecovery
 from lib.vault_index.models import SearchReport
 from lib.vault_index.vault_files import patch_vault_file, read_vault_file, write_vault_file
 from lib.vault_index.vault_listing import ListingReport, list_vault_files
@@ -58,13 +60,18 @@ class BearerAuth(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-async def run_index_command(command: list[str], operation: str) -> tuple[bytes, bytes]:
+async def run_index_command(
+    command: list[str], operation: str, *, deadline_seconds: int | float | None = None
+) -> tuple[bytes, bytes]:
     """Run one CLI operation with a deadline and reap its process on cancellation."""
     process = await asyncio.create_subprocess_exec(
         *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
     try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=search_ttl_seconds() + 10)
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=deadline_seconds if deadline_seconds is not None else search_ttl_seconds() + 10,
+        )
     finally:
         if process.returncode is None:
             process.kill()
@@ -74,13 +81,39 @@ async def run_index_command(command: list[str], operation: str) -> tuple[bytes, 
     return stdout, stderr
 
 
+async def rebuild_index(vault: Path) -> None:
+    """Run recovery with its own deadline instead of the query deadline."""
+    await run_index_command(
+        [
+            sys.executable,
+            "-m",
+            "lib.vault_index.cli",
+            "reindex",
+            "--vault",
+            str(vault),
+            "--timeout-seconds",
+            str(RECOVERY_TIMEOUT_SECONDS),
+        ],
+        "background index repair",
+        deadline_seconds=RECOVERY_TIMEOUT_SECONDS + 10,
+    )
+
+
 def create_server(
-    vault: Path, *, host: str = "127.0.0.1", port: int = 8000, allowed_hosts: list[str] | None = None
+    vault: Path,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    allowed_hosts: list[str] | None = None,
+    recovery: IndexRecovery | None = None,
 ) -> FastMCP:
     """Create a server bound to one existing vault; clients cannot select roots."""
     vault = vault.expanduser().resolve(strict=True)
     if not vault.is_dir():
         raise ValueError("vault must be a directory")
+
+    recovery = recovery or IndexRecovery(partial(rebuild_index, vault))
+
     # NOTE: docs/MCP.md documents transport defaults and tool contracts.
     server = FastMCP(
         "obsidian-knowledge",
@@ -124,7 +157,8 @@ def create_server(
         command.extend(["--", query])
         async with search_lock:
             stdout, _ = await run_index_command(command, "search")
-        return SearchReport.model_validate(json.loads(stdout))
+        report = SearchReport.model_validate(json.loads(stdout))
+        return recovery.repair_if_needed(report)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_read(path: str) -> str:
@@ -231,6 +265,28 @@ def create_server(
     return server
 
 
+def create_http_app(
+    vault: Path, *, host: str = "127.0.0.1", port: int = 8000, allowed_hosts: list[str] | None = None
+):
+    """Own recovery at HTTP service lifetime, not stateless MCP request lifetime."""
+    vault = vault.expanduser().resolve(strict=True)
+    recovery = IndexRecovery(partial(rebuild_index, vault))
+    server = create_server(vault, host=host, port=port, allowed_hosts=allowed_hosts, recovery=recovery)
+    app = server.streamable_http_app()
+    original_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(application):
+        async with original_lifespan(application) as state:
+            try:
+                yield state
+            finally:
+                await recovery.close()
+
+    app.router.lifespan_context = lifespan
+    return app
+
+
 def main() -> None:
     """Run the private HTTP listener."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -246,10 +302,9 @@ def main() -> None:
     args = parser.parse_args()
     if args.port > 65535:
         parser.error("port must be between 1 and 65535")
-    server = create_server(
+    app = create_http_app(
         resolve_vault(args.vault), host=args.host, port=args.port, allowed_hosts=args.allowed_host
     )
-    app = server.streamable_http_app()
     token = os.environ.get("OBSIDIAN_KNOWLEDGE_MCP_TOKEN")
     if token:
         app.add_middleware(BearerAuth, token=token)
