@@ -9,11 +9,11 @@ import sys
 
 import httpx
 import pytest
-from memweave import EmbeddingConfig
-from memweave.embedding.provider import LiteLLMEmbeddingProvider
-from memweave.exceptions import EmbeddingError
 
 from lib.vault_index.embeddings import OllamaEmbeddingProvider, make_embedding_provider
+from obsidian_knowledge_vendor.memweave import EmbeddingConfig
+from obsidian_knowledge_vendor.memweave.embedding.provider import LiteLLMEmbeddingProvider
+from obsidian_knowledge_vendor.memweave.exceptions import EmbeddingError
 
 
 @pytest.fixture

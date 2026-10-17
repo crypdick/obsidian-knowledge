@@ -1368,20 +1368,6 @@ wheels = [
 ]
 
 [[package]]
-name = "memweave"
-version = "0.2.1"
-source = { git = "https://github.com/crypdick/memweave.git?rev=93d729a658b95fc6d78166eb2d007941c9c8e0d3#93d729a658b95fc6d78166eb2d007941c9c8e0d3" }
-dependencies = [
-    { name = "aiofiles" },
-    { name = "aiosqlite" },
-    { name = "click" },
-    { name = "litellm" },
-    { name = "numpy" },
-    { name = "sqlite-vec" },
-    { name = "watchfiles" },
-]
-
-[[package]]
 name = "mergedeep"
 version = "1.3.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1743,18 +1729,22 @@ name = "obsidian-knowledge"
 version = "3.30.5"
 source = { editable = "." }
 dependencies = [
+    { name = "aiofiles" },
     { name = "aiosqlite" },
     { name = "beartype" },
     { name = "botocore" },
+    { name = "click" },
     { name = "httpx", extra = ["socks"] },
     { name = "litellm" },
     { name = "mcp" },
-    { name = "memweave" },
+    { name = "numpy" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "sqlite-vec" },
     { name = "starlette" },
     { name = "uvicorn" },
+    { name = "watchfiles" },
 ]
 
 [package.dev-dependencies]
@@ -1785,18 +1775,22 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiofiles", specifier = ">=23.0.0" },
     { name = "aiosqlite", specifier = ">=0.20,<1" },
     { name = "beartype", specifier = ">=0.22.9" },
     { name = "botocore", specifier = ">=1.43.10" },
+    { name = "click", specifier = ">=8.0" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
     { name = "litellm", specifier = ">=1.100.0,<2" },
     { name = "mcp", specifier = ">=1.26,<2" },
-    { name = "memweave", git = "https://github.com/crypdick/memweave.git?rev=93d729a658b95fc6d78166eb2d007941c9c8e0d3" },
+    { name = "numpy", specifier = ">=1.24.0" },
     { name = "platformdirs", specifier = ">=4.9.6" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "sqlite-vec", specifier = ">=0.1.0" },
     { name = "starlette", specifier = ">=0.47" },
     { name = "uvicorn", specifier = ">=0.35" },
+    { name = "watchfiles", specifier = ">=0.20.0" },
 ]
 
 [package.metadata.requires-dev]

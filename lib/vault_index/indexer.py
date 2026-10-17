@@ -57,7 +57,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import memweave
 import platformdirs
 
 from lib.vault_index.config import VaultIndexConfig
@@ -66,6 +65,7 @@ from lib.vault_index.filters import path_passes
 from lib.vault_index.index_state import rebuild_pending, vector_table_exists
 from lib.vault_index.models import Hit, IndexBusyError, SearchReport
 from lib.vault_index.vector_search import IndexedHybridSearch
+from obsidian_knowledge_vendor import memweave
 
 # Local embeddings do not need a public model-pricing download. LiteLLM reads
 # this at its first lazy import; preserve an explicit operator override.

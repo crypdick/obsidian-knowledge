@@ -3,7 +3,7 @@
 # Ruff owns complexity, print/logging, debugger, and future-import checks.
 minimum_prek_version = "0.5.2"
 default_stages = ["pre-commit", "manual"]
-exclude = "^plugins/obsidian-knowledge/"
+exclude = "^(plugins/obsidian-knowledge/|obsidian_knowledge_vendor/)"
 
 [[repos]]
 repo = "builtin"

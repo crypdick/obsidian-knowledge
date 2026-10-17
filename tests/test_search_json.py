@@ -7,11 +7,11 @@ import json
 import sys
 from types import SimpleNamespace
 
-import memweave
 import pytest
 
 from lib.vault_index import cli, indexer
 from lib.vault_index.config import VaultIndexConfig
+from obsidian_knowledge_vendor import memweave
 
 
 @pytest.fixture
