@@ -42,6 +42,7 @@ class OllamaEmbeddingProvider:
 
     def __init__(self, config: EmbeddingConfig):
         self.config = config
+        self._batch_size = config.batch_size
 
     async def embed_query(self, text: str) -> list[float]:
         if not text.strip():
@@ -55,12 +56,20 @@ class OllamaEmbeddingProvider:
         url = (self.config.api_base or DEFAULT_EMBEDDING_API_BASE).rstrip("/") + "/api/embed"
         embeddings = []
         async with httpx.AsyncClient(timeout=self.config.timeout, headers=headers) as client:
-            for start in range(0, len(texts), self.config.batch_size):
-                batch = texts[start : start + self.config.batch_size]
+            start = 0
+            while start < len(texts):
+                batch = texts[start : start + self._batch_size]
                 embeddings.extend(await self._embed_batch(client, url, batch))
+                start += len(batch)
         return embeddings
 
     async def _embed_batch(self, client: httpx.AsyncClient, url: str, batch: list[str]) -> list[list[float]]:
+        if len(batch) > self._batch_size:
+            vectors = []
+            size = self._batch_size
+            for start in range(0, len(batch), size):
+                vectors.extend(await self._embed_batch(client, url, batch[start : start + size]))
+            return vectors
         attempt = 0
         while True:
             try:
@@ -72,10 +81,8 @@ class OllamaEmbeddingProvider:
                 if isinstance(exc, httpx.TimeoutException) and len(batch) > 1:
                     # Repeating a batch that exceeds the endpoint's throughput
                     # deadline wastes the same work. Adapt to slower backends.
-                    middle = len(batch) // 2
-                    left = await self._embed_batch(client, url, batch[:middle])
-                    right = await self._embed_batch(client, url, batch[middle:])
-                    return left + right
+                    self._batch_size = min(self._batch_size, max(1, len(batch) // 2))
+                    return await self._embed_batch(client, url, batch)
                 retryable = (
                     not isinstance(exc, httpx.HTTPStatusError)
                     or exc.response.status_code in RETRYABLE_STATUSES

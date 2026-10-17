@@ -74,8 +74,25 @@ def test_slow_endpoint_splits_timed_out_batches_preserving_order(http_client):
     http_client(respond)
     provider = OllamaEmbeddingProvider(EmbeddingConfig(model="ollama/bge-m3"))
     vectors = asyncio.run(provider.embed_batch(["1", "2", "3"]))
-    assert batches == [["1", "2", "3"], ["1"], ["2", "3"], ["2"], ["3"]]
+    assert batches == [["1", "2", "3"], ["1"], ["2"], ["3"]]
     assert [round(vector[0] / vector[1]) for vector in vectors] == [1, 2, 3]
+
+
+def test_timeout_batch_limit_is_remembered_for_later_calls(http_client):
+    sizes = []
+
+    def respond(request):
+        inputs = json.loads(request.content)["input"]
+        sizes.append(len(inputs))
+        if len(inputs) > 2:
+            raise httpx.ReadTimeout("slow backend", request=request)
+        return httpx.Response(200, json={"embeddings": [[1.0, 1.0] for _ in inputs]})
+
+    http_client(respond)
+    provider = OllamaEmbeddingProvider(EmbeddingConfig(model="ollama/bge-m3", batch_size=4))
+    assert len(asyncio.run(provider.embed_batch(["a", "b", "c", "d"]))) == 4
+    assert len(asyncio.run(provider.embed_batch(["e", "f", "g", "h"]))) == 4
+    assert sizes == [4, 2, 2, 2, 2]
 
 
 def test_query_uses_default_endpoint_and_empty_batch_needs_no_request(http_client):
