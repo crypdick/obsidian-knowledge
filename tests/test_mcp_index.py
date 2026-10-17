@@ -66,6 +66,17 @@ def test_index_status_uses_current_embedding_model(tmp_path, monkeypatch):
     assert read_index_status(tmp_path).vector_index_ready
 
 
+def test_pending_rebuild_is_not_ready_despite_matching_fingerprint(tmp_path):
+    cache = make_index(tmp_path, vector=True, fingerprint="ollama/bge-m3@320/64")
+    with closing(sqlite3.connect(cache / "index.sqlite")) as connection:
+        connection.execute("CREATE TABLE meta (key TEXT PRIMARY KEY,value TEXT)")
+        connection.execute("INSERT INTO meta VALUES ('memory_index_rebuild_v1','{}')")
+        connection.commit()
+    status = read_index_status(tmp_path)
+    assert not status.vector_index_ready
+    assert status.degraded_reason == "vector index rebuild incomplete; update required"
+
+
 def test_corrupt_index_reports_unknown_count_without_repair(tmp_path):
     cache = default_cache_dir_for_vault(tmp_path)
     cache.mkdir(parents=True)

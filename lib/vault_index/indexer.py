@@ -289,6 +289,13 @@ class Indexer:
         db = self.cache_dir / "index.sqlite"
         if not db.exists():
             return False
+        with contextlib.suppress(sqlite3.Error):
+            with contextlib.closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as connection:
+                pending = connection.execute(
+                    "SELECT value FROM meta WHERE key = 'memory_index_rebuild_v1'"
+                ).fetchone()
+            if pending is not None:
+                return True
         stored = self._read_stored_fingerprint()
         if stored is None:
             # Pre-fingerprint cache. Do not assume it is FTS-only: some live

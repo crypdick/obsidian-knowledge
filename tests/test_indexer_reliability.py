@@ -28,6 +28,23 @@ from lib.vault_index.models import Hit, IndexBusyError
 REAL_OLLAMA_PROBE = indexer._ollama_probe
 
 
+def test_interrupted_rebuild_does_not_serve_partial_vectors(tmp_path):
+    vault = tmp_path / "vault"
+    cache = tmp_path / "cache"
+    vault.mkdir()
+    cache.mkdir()
+    with sqlite3.connect(cache / "index.sqlite") as connection:
+        connection.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+        connection.execute("INSERT INTO meta VALUES ('memory_index_rebuild_v1', '{}')")
+        connection.execute("CREATE TABLE chunks_vec (id TEXT)")
+    (cache / "embedder-fingerprint.txt").write_text("ollama/bge-m3@320/64")
+    instance = indexer.Indexer(vault, cache, VaultIndexConfig(), skip_probe=True)
+    report = instance.search_report("orchid", allow_rebuild=False)
+    assert report.mode == "keyword"
+    assert report.degraded_reason == "vector index requires reindex"
+    close(instance)
+
+
 def close(instance: indexer.Indexer) -> None:
     asyncio.run(instance._store.close())
 

@@ -69,6 +69,13 @@ class OllamaEmbeddingProvider:
                 )
                 response.raise_for_status()
             except httpx.HTTPError as exc:
+                if isinstance(exc, httpx.TimeoutException) and len(batch) > 1:
+                    # Repeating a batch that exceeds the endpoint's throughput
+                    # deadline wastes the same work. Adapt to slower backends.
+                    middle = len(batch) // 2
+                    left = await self._embed_batch(client, url, batch[:middle])
+                    right = await self._embed_batch(client, url, batch[middle:])
+                    return left + right
                 retryable = (
                     not isinstance(exc, httpx.HTTPStatusError)
                     or exc.response.status_code in RETRYABLE_STATUSES
