@@ -6,11 +6,12 @@ import asyncio
 from typing import Annotated
 
 import httpx
-from memweave import EmbeddingConfig
-from memweave.embedding.provider import EmbeddingProvider, LiteLLMEmbeddingProvider
-from memweave.embedding.vectors import normalize_embedding
-from memweave.exceptions import EmbeddingError
 from pydantic import BaseModel, Field
+
+from obsidian_knowledge_vendor.memweave import EmbeddingConfig
+from obsidian_knowledge_vendor.memweave.embedding.provider import EmbeddingProvider, LiteLLMEmbeddingProvider
+from obsidian_knowledge_vendor.memweave.embedding.vectors import normalize_embedding
+from obsidian_knowledge_vendor.memweave.exceptions import EmbeddingError
 
 DEFAULT_EMBEDDING_API_BASE = "http://127.0.0.1:11434"
 RETRY_DELAYS = (0.5, 2.0)

@@ -14,7 +14,9 @@ import socket
 import subprocess
 import sys
 import tempfile
+from email.parser import BytesParser
 from pathlib import Path
+from zipfile import ZipFile
 
 
 def run(args: list[str], env: dict[str, str], cwd: Path) -> str:
@@ -30,6 +32,18 @@ def run(args: list[str], env: dict[str, str], cwd: Path) -> str:
 
 def main() -> None:
     wheel = Path(sys.argv[1]).resolve(strict=True)
+    with ZipFile(wheel) as archive:
+        metadata_path = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
+        metadata = BytesParser().parsebytes(archive.read(metadata_path))
+        if any(" @ " in requirement for requirement in metadata.get_all("Requires-Dist", [])):
+            raise RuntimeError("Published wheels must not contain direct URL dependencies")
+        for name in (
+            "obsidian_knowledge_vendor/memweave/store.py",
+            "obsidian_knowledge_vendor/memweave/LICENSE",
+            "obsidian_knowledge_vendor/memweave/VENDORED.md",
+        ):
+            if name not in archive.namelist():
+                raise RuntimeError(f"Built wheel is missing vendored library file: {name}")
     uv = shutil.which("uv")
     if uv is None:
         raise RuntimeError("uv must be on PATH")
@@ -54,6 +68,18 @@ def main() -> None:
         (root / "bin/uv").symlink_to(uv)
         python = root / "tools" / "obsidian-knowledge" / "bin" / "python"
         run([uv, "pip", "check", "--python", str(python)], env, root)
+        run(
+            [
+                str(python),
+                "-c",
+                (
+                    "import importlib.util; from obsidian_knowledge_vendor.memweave import MemWeave; "
+                    "assert importlib.util.find_spec('memweave') is None"
+                ),
+            ],
+            env,
+            root,
+        )
         run([str(python), "-c", "import sys; print(sys.version)"], env, root)
 
         vault = root / "vault"

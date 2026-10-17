@@ -6,10 +6,11 @@ import sqlite3
 import struct
 
 import aiosqlite
-from memweave import HybridConfig
-from memweave.search.hybrid import HybridSearch, merge_hybrid_results
-from memweave.search.keyword import KeywordSearch
-from memweave.search.strategy import RawSearchRow
+
+from obsidian_knowledge_vendor.memweave import HybridConfig
+from obsidian_knowledge_vendor.memweave.search.hybrid import HybridSearch, merge_hybrid_results
+from obsidian_knowledge_vendor.memweave.search.keyword import KeywordSearch
+from obsidian_knowledge_vendor.memweave.search.strategy import RawSearchRow
 
 
 class IndexedHybridSearch:

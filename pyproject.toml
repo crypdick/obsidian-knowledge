@@ -6,7 +6,12 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
-    "memweave @ git+https://github.com/crypdick/memweave.git@93d729a658b95fc6d78166eb2d007941c9c8e0d3",
+    # Runtime requirements of the bundled memweave package; see obsidian_knowledge_vendor/memweave/VENDORED.md.
+    "aiofiles>=23.0.0",
+    "numpy>=1.24.0",
+    "sqlite-vec>=0.1.0",
+    "watchfiles>=0.20.0",
+    "click>=8.0",
     # Older LiteLLM releases pinned tokenizers builds that fail on Python 3.14.
     "litellm>=1.100.0,<2",
     "platformdirs>=4.9.6",
@@ -28,11 +33,8 @@ obsidian-knowledge-check = "hooks.i_insist:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
 [tool.hatch.build.targets.wheel]
-packages = ["lib", "gardener"]
+packages = ["lib", "gardener", "obsidian_knowledge_vendor"]
 
 [tool.hatch.build.targets.sdist]
 # Keep platform/editor detritus out even when the source checkout is dirty.
@@ -93,7 +95,7 @@ line-length = 110
 # plugins/obsidian-knowledge is a generated copy of the root (see
 # scripts/sync_codex_plugin.py) -- lint the source of truth only. docs/ holds
 # documentation and frozen plans/specs; do not rewrite archived code blocks.
-extend-exclude = ["plugins/obsidian-knowledge", "docs/"]
+extend-exclude = ["plugins/obsidian-knowledge", "docs/", "obsidian_knowledge_vendor/"]
 
 [tool.ruff.lint]
 preview = true
@@ -150,8 +152,12 @@ disable_error_code = ["no-untyped-call", "no-untyped-def"]
 
 # memweave and botocore ship without stubs.
 [[tool.mypy.overrides]]
-module = ["memweave.*", "botocore.*"]
+module = ["botocore.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["obsidian_knowledge_vendor.*"]
+ignore_errors = true
 
 [tool.coverage.run]
 branch = true
@@ -187,7 +193,7 @@ exclude-newer = "3 days"
 
 [tool.deptry]
 extend_exclude = ["plugins/", "scripts/", "skills/", "spikes/"]
-known_first_party = ["lib", "vault_index", "hooks", "hookslib", "vault_registry", "gardener"]
+known_first_party = ["lib", "vault_index", "hooks", "hookslib", "vault_registry", "gardener", "obsidian_knowledge_vendor"]
 
 [tool.deptry.per_rule_ignores]
 # Explicit compatibility constraints for memweave's lazy embedding stack;

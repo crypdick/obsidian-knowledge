@@ -13,10 +13,10 @@ from pathlib import Path
 import aiosqlite
 import pytest
 import sqlite_vec
-from memweave.storage.schema import ensure_schema, ensure_vector_table
 
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.indexer import Indexer
+from obsidian_knowledge_vendor.memweave.storage.schema import ensure_schema, ensure_vector_table
 
 
 def seed_cache(cache: Path, vault: Path, count: int = 6000) -> None:
@@ -70,10 +70,9 @@ def test_populated_cache_search_preserves_semantics_within_budget(tmp_path):
 
 @pytest.mark.parametrize("source_filter", [None, "memory", "sessions", "absent"])
 def test_native_search_matches_exhaustive_scores_and_filters(tmp_path, source_filter):
-    from memweave import HybridConfig
-    from memweave.search.hybrid import HybridSearch
-
     from lib.vault_index.vector_search import IndexedHybridSearch
+    from obsidian_knowledge_vendor.memweave import HybridConfig
+    from obsidian_knowledge_vendor.memweave.search.hybrid import HybridSearch
 
     cache = tmp_path / "cache"
     seed_cache(cache, tmp_path, count=30)
@@ -120,10 +119,9 @@ def test_native_search_matches_exhaustive_scores_and_filters(tmp_path, source_fi
 
 @pytest.mark.parametrize("limit", [1, 1025])
 def test_missing_embedding_and_large_request_keep_existing_behavior(tmp_path, limit):
-    from memweave import HybridConfig
-    from memweave.search.hybrid import HybridSearch
-
     from lib.vault_index.vector_search import IndexedHybridSearch
+    from obsidian_knowledge_vendor.memweave import HybridConfig
+    from obsidian_knowledge_vendor.memweave.search.hybrid import HybridSearch
 
     cache = tmp_path / "cache"
     seed_cache(cache, tmp_path, count=2)
@@ -142,9 +140,8 @@ def test_missing_embedding_and_large_request_keep_existing_behavior(tmp_path, li
 
 
 def test_missing_vector_extension_keeps_keyword_search(tmp_path):
-    from memweave import HybridConfig
-
     from lib.vault_index.vector_search import IndexedHybridSearch
+    from obsidian_knowledge_vendor.memweave import HybridConfig
 
     async def retrieve():
         async with aiosqlite.connect(tmp_path / "index.sqlite") as connection:
@@ -159,9 +156,8 @@ def test_missing_vector_extension_keeps_keyword_search(tmp_path):
 
 
 def test_missing_embedding_does_not_hide_database_errors(tmp_path, monkeypatch):
-    from memweave import HybridConfig
-
     from lib.vault_index.vector_search import IndexedHybridSearch
+    from obsidian_knowledge_vendor.memweave import HybridConfig
 
     async def retrieve():
         async with aiosqlite.connect(tmp_path / "index.sqlite") as connection:

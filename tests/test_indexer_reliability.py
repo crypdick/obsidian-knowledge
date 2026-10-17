@@ -17,13 +17,13 @@ from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 
-import memweave
 import pytest
 
 from lib.vault_index import indexer
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.embeddings import KeywordOnlyEmbeddingProvider
 from lib.vault_index.models import Hit, IndexBusyError
+from obsidian_knowledge_vendor import memweave
 
 REAL_OLLAMA_PROBE = indexer._ollama_probe
 

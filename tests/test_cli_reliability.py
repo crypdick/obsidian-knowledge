@@ -90,7 +90,7 @@ def test_lightweight_cli_import_does_not_load_retrieval_stack():
         [
             sys.executable,
             "-c",
-            "import sys; import lib.vault_index.cli; assert 'memweave' not in sys.modules",
+            "import sys; import lib.vault_index.cli; assert 'obsidian_knowledge_vendor.memweave' not in sys.modules",
         ],
         capture_output=True,
         text=True,

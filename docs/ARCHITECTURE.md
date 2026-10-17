@@ -96,3 +96,14 @@ Tests use temporary caches and disable live Ollama probes. For manual indexing
 in concurrent worktrees, set `OBSIDIAN_VAULT_ROOT` and
 `OBSIDIAN_KNOWLEDGE_CACHE_ROOT` to a throwaway vault and cache. A real vault's
 index is shared across worktrees that target it.
+
+## Bundled indexing library
+
+The fixed memweave runtime is vendored under `obsidian_knowledge_vendor.memweave`
+and included in both wheels and source archives. Its source commit, license, and
+update instructions are in `obsidian_knowledge_vendor/memweave/VENDORED.md`.
+Application imports use this private namespace; installing the application does
+not install or overwrite the separately distributed `memweave` package. Runtime
+requirements are declared directly in the application metadata so registry
+installations do not need a Git checkout. Upstream code retains its own tests and
+style; application quality tools exclude the bundled source.
