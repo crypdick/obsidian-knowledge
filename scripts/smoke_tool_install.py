@@ -72,8 +72,10 @@ def main() -> None:
             [
                 str(python),
                 "-c",
-                "import importlib.util; from obsidian_knowledge_vendor.memweave import MemWeave; "
-                "assert importlib.util.find_spec('memweave') is None",
+                (
+                    "import importlib.util; from obsidian_knowledge_vendor.memweave import MemWeave; "
+                    "assert importlib.util.find_spec('memweave') is None"
+                ),
             ],
             env,
             root,
