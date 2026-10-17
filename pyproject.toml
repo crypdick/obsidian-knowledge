@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
-    "memweave @ git+https://github.com/crypdick/memweave.git@db40fb4d968e3a77d9be629c98deca0f1bf428d1",
+    "memweave @ git+https://github.com/crypdick/memweave.git@93d729a658b95fc6d78166eb2d007941c9c8e0d3",
     # Older LiteLLM releases pinned tokenizers builds that fail on Python 3.14.
     "litellm>=1.100.0,<2",
     "platformdirs>=4.9.6",
