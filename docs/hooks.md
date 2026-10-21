@@ -81,6 +81,10 @@ and individual fact files. A custom `CODEX_HOME` is respected. Vault memory
 indexes remain writable. Recognized shell writes, including redirects, `tee`,
 and `sed -i`, use the same rule; arbitrary script bodies remain opaque.
 
+The decision-records guard routes decisions to the vault by blocking writes
+under a `docs/decisions/` directory, unless that directory already has
+Git-tracked files. Repositories that keep ADRs there stay writable.
+
 Codex native memory runs separately from plugin recall and capture. To use this
 plugin as your memory source without competing native-memory instructions,
 disable Codex native memory explicitly:

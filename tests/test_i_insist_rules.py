@@ -246,6 +246,45 @@ def test_shell_decision_records_block_adr_directory(tmp_path, command):
     assert json.loads(run_check(tmp_path, "decision-records", event).stdout) is not None
 
 
+def track_decision_directory(repo, directory="docs/decisions"):
+    adr = repo / directory / "0001-existing.md"
+    adr.parent.mkdir(parents=True)
+    adr.write_text("existing\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", str(adr)], check=True)
+
+
+@pytest.mark.parametrize("path", ["docs/decisions/0002-cache.md", "docs/decisions/0001-existing.md"])
+def test_decision_records_allow_established_adr_directory(tmp_path, path):
+    track_decision_directory(tmp_path)
+    event = file_event(tmp_path, path)
+    assert json.loads(run_check(tmp_path, "decision-records", event).stdout) is None
+
+
+def test_shell_decision_records_allow_established_adr_directory(tmp_path):
+    track_decision_directory(tmp_path)
+    event = {
+        "kind": "shell",
+        "cwd": str(tmp_path),
+        "command": "printf x > docs/decisions/0002-cache.md",
+        "changes": [],
+    }
+    assert json.loads(run_check(tmp_path, "decision-records", event).stdout) is None
+
+
+def test_decision_records_block_untracked_adr_directory(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "docs/decisions").mkdir(parents=True)
+    event = file_event(tmp_path, "docs/decisions/0001-use-postgres.md")
+    assert json.loads(run_check(tmp_path, "decision-records", event).stdout) is not None
+
+
+def test_decision_records_block_new_adr_directory_beside_established_one(tmp_path):
+    track_decision_directory(tmp_path)
+    event = file_event(tmp_path, "service/docs/decisions/0001-cache.md")
+    assert json.loads(run_check(tmp_path, "decision-records", event).stdout) is not None
+
+
 def test_decision_records_are_overridable_by_default():
     import tomllib
 
