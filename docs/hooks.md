@@ -159,6 +159,6 @@ one value per line to `<vault>/.secrets.known-leaked` for exact matching.
 ## Workflow friction
 
 Agents must fix and verify defects introduced by or required for their task.
-For unrelated tooling friction, they can record a
-[papercut](CLI.md#papercut-logs) and continue. A reminder repeats this distinction
+For unrelated friction that agents can avoid or the user can fix, they can
+record a [papercut](CLI.md#papercut-logs) and continue. A reminder repeats this distinction
 every 100 shell calls.

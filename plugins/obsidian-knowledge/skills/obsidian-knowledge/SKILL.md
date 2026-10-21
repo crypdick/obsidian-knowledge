@@ -14,7 +14,7 @@ The memory system replaces `MEMORY.md` and serves several goals:
    If you spend effort figuring out how something works, write or update a guide.
 2) storing research findings for topics the user is exploring.
 3) tracking historical changes in case we need to do archeology
-4) capture harness and tooling papercuts so future agents can avoid repeated friction.
+4) capture avoidable or fixable tooling papercuts so future agents can avoid repeated friction.
 5) retrieve existing vault knowledge when requested or when avoiding duplicate capture.
 
 Treat notes as fallible context and verify consequential claims against code,
@@ -177,7 +177,9 @@ Fix and verify defects you introduce, failed checks of your changes, and bugs
 required to complete the request. Investigate unclear causes before calling
 them unrelated. If blocked, report the unfinished work and exact blocker.
 
-For unrelated harness or tooling friction, log it and continue the task:
+Log unrelated friction only when a future agent can avoid it with a known
+workaround, or the user can fix it in their tools, hooks, repos, config, or
+machine. Then continue the task:
 
 ```bash
 obsidian-knowledge papercut "obsidian-knowledge search stopped producing output after an automatic index rebuild; interrupted after 2 minutes"
@@ -186,6 +188,15 @@ obsidian-knowledge papercut "obsidian-knowledge search stopped producing output 
 Keep entries brief and self-contained: name the tool or operation, concrete
 symptom or exact error, and relevant trigger. Explain task names or local labels
 only if needed to understand or reproduce the problem; otherwise omit them.
+Include the workaround or fix when known.
+
+Do not log noise unless it recurs or its workaround is non-obvious:
+
+- One-off transient failures: rate limits, flaky network, a retry that worked.
+- Upstream third-party bugs with no local action or workaround.
+- Limits outside the user's control, such as harness URL policy or Claude Code
+  internals.
+- Expected concurrency, such as another session merging a branch.
 
 The command selects a repository log from Git `origin`, with a global fallback.
 Routine debugging needs no entry; logging does not replace an in-scope fix.

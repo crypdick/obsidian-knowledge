@@ -90,9 +90,11 @@ def build_primer(
         "operational notes for filing, memory layout, and changelogs.\n"
         f"- Agent memory for {scope_desc}: {memory_dir}/. {memory_start}"
         "Do not write under ~/.claude/projects/*/memory/ or ~/.codex/memories/.\n"
-        "- Friction: log unrelated harness or tooling problems with "
+        "- Friction: log only problems a future agent can avoid with a known workaround, or the "
+        "user can fix in their tools, hooks, repos, config, or machine, with "
         '`obsidian-knowledge papercut "what happened"`, then continue the task. '
-        "The skill covers entry format. Routine debugging needs no entry.\n"
+        "Skip one-off transient failures, upstream bugs with no workaround, and harness limits "
+        "outside the user's control unless recurring. The skill covers entry format.\n"
         # NOTE: docs/hooks.md "Memory and recall" documents this skill-relative routing.
         "- Access errors: on permission or connection failures, read "
         "`references/access-errors.md` in the obsidian-knowledge skill directory."

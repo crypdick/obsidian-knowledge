@@ -21,8 +21,9 @@ from hookslib import reflect_counter
 REMINDER = (
     "Fix and verify bugs you introduce, failed validation of your changes, and defects "
     "needed to complete the user's request as part of the active task. Investigate unclear "
-    "causes before calling them unrelated. For unrelated harness or tooling friction, use "
-    '`obsidian-knowledge papercut "what happened"` and continue the task. '
+    "causes before calling them unrelated. For unrelated friction a future agent can avoid or "
+    'the user can fix, use `obsidian-knowledge papercut "what happened"` and continue the task. '
+    "Skip one-off transient failures, upstream bugs with no workaround, and harness limits. "
     "Follow the obsidian-knowledge skill's entry format. Routine debugging needs no entry; "
     "logging never replaces an in-scope fix."
 )
