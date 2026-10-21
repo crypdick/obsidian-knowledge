@@ -32,7 +32,7 @@ class _PapercutScope:
 
 @dataclass(frozen=True)
 class PapercutRecord:
-    """The append-only papercut log updated by one command invocation."""
+    """The papercut log updated by one command invocation."""
 
     path: Path
 
@@ -179,10 +179,10 @@ def _format_log_header(scope: _PapercutScope) -> str:
         f"{repository_line}"
         "---\n\n"
         f"{title}\n\n"
-        "> Append-only log of unrelated friction that agents can avoid or the user can fix. "
-        "Bugs introduced during a task "
-        "and defects required to complete it must be fixed and verified within that task; "
-        "logging does not defer that work.\n"
+        "> Unresolved friction that agents can avoid or the user can fix. Agents append entries; "
+        "review removes resolved entries and noise. Bugs introduced during a task and defects "
+        "required to complete it must be fixed and verified within that task; logging does not "
+        "defer that work.\n"
     )
 
 
