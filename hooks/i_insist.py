@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Annotated, Literal
@@ -58,7 +59,7 @@ MESSAGES = {
     "generic-filenames": "New vault filename would collide with generic wikilink names. Prefix its basename with context; index.md is exempt. No override.",
     "illegal-filenames": "New vault filename contains characters forbidden by the vault sync policy. Rename the file. No override.",
     "memory-routing": "Do not write operational facts to agent auto-memory. Search the Obsidian wiki; file only durable, novel facts not recoverable from code, git, docs, or runtime. Use the repo or host memory scope in the vault. No override.",
-    "decision-records": "Do not write decision records to docs/decisions/. Record durable decisions with obsidian-knowledge in the Obsidian wiki. Ask the human for consent to override.",
+    "decision-records": "Do not create a docs/decisions/ directory; this repository has no tracked decision records there. Record durable decisions with obsidian-knowledge in the Obsidian wiki. Ask the human for consent to override.",
     "wikilinks": "Remove .md extensions from wikilinks: use [[foo]], not [[foo.md]]. No override.",
     "dated-filenames": "New notes in dated folders need a YYYY-MM-DD filename prefix; index.md is exempt. No override.",
     "frontmatter": "Vault note has malformed YAML frontmatter. Fix it before writing. No override.",
@@ -98,9 +99,26 @@ def agent_memory(path: str) -> bool:
     )
 
 
+def established(directory: Path) -> bool:
+    """A directory with Git-tracked files is the repository's own convention, not agent invention."""
+    if not directory.is_dir():
+        return False
+    result = subprocess.run(
+        ["git", "-C", str(directory), "ls-files", "--", "."],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
 def decision_record(path: str) -> bool:
     parts = Path(path).parts
-    return any(parts[i : i + 2] == ("docs", "decisions") for i in range(len(parts) - 1))
+    return any(
+        parts[i : i + 2] == ("docs", "decisions") and not established(Path(*parts[: i + 2]))
+        for i in range(len(parts) - 1)
+    )
 
 
 def file_blocks(name: str, change: Change, roots: list[str]) -> bool:

@@ -46,7 +46,8 @@ def build_reason(vault_root: str, session_key: str | None = None) -> str:
         changelog_reuse = " Reuse a fragment already created in this session; otherwise create a new one."
     return (
         "Before stopping, review this session under the obsidian-knowledge skill's goals and rules: "
-        "reusable knowledge, user research, historical changes, and workflow papercuts. "
+        "reusable knowledge, user research, historical changes, and avoidable or fixable workflow papercuts "
+        "(not transient, upstream, or out-of-control noise). "
         "Default: file nothing when no note is necessary. If something merits saving, search the vault "
         "for existing coverage. Before writing, follow the skill's operational notes for filing, "
         "changelogs, papercuts, and repairs to encountered instructions. "

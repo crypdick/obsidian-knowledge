@@ -81,6 +81,10 @@ and individual fact files. A custom `CODEX_HOME` is respected. Vault memory
 indexes remain writable. Recognized shell writes, including redirects, `tee`,
 and `sed -i`, use the same rule; arbitrary script bodies remain opaque.
 
+The decision-records guard routes decisions to the vault by blocking writes
+under a `docs/decisions/` directory, unless that directory already has
+Git-tracked files. Repositories that keep ADRs there stay writable.
+
 Codex native memory runs separately from plugin recall and capture. To use this
 plugin as your memory source without competing native-memory instructions,
 disable Codex native memory explicitly:
@@ -155,6 +159,6 @@ one value per line to `<vault>/.secrets.known-leaked` for exact matching.
 ## Workflow friction
 
 Agents must fix and verify defects introduced by or required for their task.
-For unrelated tooling friction, they can record a
-[papercut](CLI.md#papercut-logs) and continue. A reminder repeats this distinction
+For unrelated friction that agents can avoid or the user can fix, they can
+record a [papercut](CLI.md#papercut-logs) and continue. A reminder repeats this distinction
 every 100 shell calls.

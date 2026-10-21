@@ -39,7 +39,7 @@ Use these commands to configure, search, and maintain the vault:
 | `reindex [--force] [--timeout-seconds N]` | Index changed files and remove stale index entries. `--force` reprocesses unchanged files too. Does not delete vault notes. |
 | `search QUERY [--top-k N] [--all] [--json]` | Print ranked paths and snippets, or a JSON search report. `--all` bypasses the digest filter, not the indexing exclusions. |
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
-| `papercut DESCRIPTION` | Append workflow friction to the repository's vault log, or the global log if no repository is identified. |
+| `papercut DESCRIPTION` | Append avoidable or fixable workflow friction to the repository's vault log, or the global log if no repository is identified. |
 | `doctor [--query TEXT] [--top-k N] [--digest-only]` | Report index rows, semantic availability, and sample retrieval results. Repeat `--query` for multiple checks. |
 | `garden OPERATION [--vault PATH]` | Audit vault structure and conventions, recover links, edit reviewed indexes, report questions, or repair frontmatter. See [vault maintenance](#vault-maintenance). |
 | `_hook EVENT [--kind KIND] [--agent claude\|codex]` | Private JSON-on-stdin interface for host hook manifests. |
@@ -183,7 +183,8 @@ return 1. Error messages identify the failing path or operation.
 
 ## Papercut logs
 
-Record tooling problems that interrupt your workflow:
+Record friction that a future agent can avoid with a known workaround, or
+that you can fix in your tools, hooks, repositories, configuration, or machine:
 
 ```bash
 obsidian-knowledge papercut "obsidian-knowledge search stopped producing output after an automatic index rebuild; interrupted after 2 minutes"
@@ -192,6 +193,8 @@ obsidian-knowledge papercut "obsidian-knowledge search stopped producing output 
 Keep entries brief and self-contained: name the tool or operation, concrete
 symptom or exact error, and relevant trigger. Explain task names or local labels
 only if needed to understand or reproduce the problem; otherwise omit them.
+Skip one-off transient failures, upstream bugs with no workaround, and limits
+outside your control unless they recur or the workaround is non-obvious.
 
 With an identifiable Git `origin`, the command appends to
 `wiki/repos/<owner>/<repo>/PAPERCUTS.md`. Otherwise it uses

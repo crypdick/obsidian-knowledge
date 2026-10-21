@@ -620,7 +620,8 @@ def main() -> int:
 
     p_papercut = sub.add_parser(
         "papercut",
-        help="Record workflow friction in the vault; does not diagnose or change anything",
+        help="Record avoidable or fixable workflow friction, not transient or upstream noise; "
+        "does not diagnose or change anything",
     )
     p_papercut.add_argument("description", help="What caused friction; quote multi-word descriptions")
     p_papercut.add_argument("--vault", type=Path, default=None, help="Vault root")
