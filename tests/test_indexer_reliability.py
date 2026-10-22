@@ -49,6 +49,27 @@ def close(instance: indexer.Indexer) -> None:
     asyncio.run(instance._store.close())
 
 
+def test_indexer_regression_run_exits_after_assertions():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_indexer.py::test_init_auto_rebuilds_on_embedder_change",
+            "-o",
+            "addopts=",
+            "--no-cov",
+            "-q",
+        ],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "1 passed" in result.stdout
+
+
 @pytest.mark.parametrize(
     ("api_base", "payload", "expected"),
     [
