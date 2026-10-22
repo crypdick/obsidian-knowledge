@@ -61,6 +61,7 @@ def scanner():
         ),
         ("note.md", "https://<username>:<token>@github.com/<owner>/<repo>.git"),
         ("manifest.json", f'{{"source_skill_md_sha256": "{DIGEST}"}}'),
+        ("report.json", f'{{"sha256_utf8_read_content": "{DIGEST}"}}'),
         ("state.json", f'{{"sha": "{COMMIT}"}}'),
         ("state.json", f'{{"last_commit": "{COMMIT}"}}'),
         ("state.json", f'{{"head_sha": "{COMMIT}"}}'),
@@ -142,6 +143,30 @@ def test_noncredentials_are_filtered(tmp_path, scanner, filename, text):
 def test_credentials_still_alert(tmp_path, scanner, filename, text):
     path = tmp_path / filename
     path.write_text(text + "\n")
+    with transient_settings(scanner.DETECT_SECRETS_CFG):
+        collection = SecretsCollection()
+        collection.scan_file(str(path))
+    assert collection.data
+
+
+@pytest.mark.parametrize("token", [OPAQUE, DIGEST])
+@pytest.mark.parametrize("separator", [", ", ",\n"])
+def test_report_digest_does_not_hide_neighboring_credentials(tmp_path, scanner, token, separator):
+    path = tmp_path / "report.json"
+    path.write_text(f'{{"sha256_utf8_read_content": "{DIGEST}"{separator}"token": "{token}"}}\n')
+    with transient_settings(scanner.DETECT_SECRETS_CFG):
+        collection = SecretsCollection()
+        collection.scan_file(str(path))
+    expected = PotentialSecret("Secret Keyword", str(path), token).secret_hash
+    assert any(
+        finding.secret_hash == expected for findings in collection.data.values() for finding in findings
+    )
+
+
+@pytest.mark.parametrize("value", [DIGEST[:40], DIGEST * 2])
+def test_report_digest_field_requires_sha256_length(tmp_path, scanner, value):
+    path = tmp_path / "report.json"
+    path.write_text(f'{{"sha256_utf8_read_content": "{value}"}}\n')
     with transient_settings(scanner.DETECT_SECRETS_CFG):
         collection = SecretsCollection()
         collection.scan_file(str(path))

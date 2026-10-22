@@ -142,6 +142,9 @@ finding in that file is audited. A manual scan lists all unaudited findings.
 Known-leaked matches report the literal's position in `.secrets.known-leaked`,
 never the literal itself. Git commit SHAs under `sha` or `commit` keys and hex
 digests in JSON `*_id` or `*_ids` fields count as metadata, not secrets.
+The audit field `sha256_utf8_read_content` is metadata only when its value is
+exactly 64 hex characters. Other fields remain scanned, including a credential
+beside that checksum or the same value assigned to a credential field.
 
 Document your secrets-management convention in the vault so the agent can
 follow it when findings need attention. Review findings before redacting files

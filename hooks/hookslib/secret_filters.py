@@ -47,6 +47,12 @@ class Candidate:
 def is_metadata(candidate: Candidate) -> bool:
     if candidate.kind not in ENTROPY_TYPES:
         return False
+    # NOTE: docs/hooks.md's Secret scanning section defines this audit checksum field.
+    if candidate.has_field("sha256_utf8_read_content"):
+        return bool(re.fullmatch(r"[0-9a-fA-F]{64}", candidate.value)) and not any(
+            match["value"] == candidate.value and match["key"] != "sha256_utf8_read_content"
+            for match in QUOTED_FIELD.finditer(candidate.line)
+        )
     if candidate.has_field(DIGEST_KEY):
         return bool(DIGEST_HEX.fullmatch(candidate.value))
     if candidate.filename.endswith(".json") and candidate.has_field("list_id"):
