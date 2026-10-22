@@ -140,7 +140,7 @@ EXCLUDE_EXTS = {
 KNOWN_LEAKED_FILENAME = ".secrets.known-leaked"
 BASELINE_FILENAME = ".secrets.baseline"
 # Increment when detector/filter semantics change so unchanged files are rechecked.
-SCAN_POLICY_VERSION = 2
+SCAN_POLICY_VERSION = 3
 # Hooks before revision 2 full-rescan unless `vault_scan_policy` is exactly 1.
 # Keep writing 1 so mixed-version sessions don't undo each other's rescans.
 LEGACY_SCAN_POLICY = 1
