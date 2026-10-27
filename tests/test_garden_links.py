@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 from pathlib import Path
 
@@ -240,12 +241,12 @@ def test_managed_sources_refuse_readonly_notes(tmp_path: Path) -> None:
     folder = tmp_path / "wiki/locked"
     folder.mkdir(parents=True)
     (folder / "source.md").write_text("[[note]]\n")
-    config = tmp_path / ".claude/obsidian-knowledge.yaml"
-    config.parent.mkdir()
+    config = Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])
+    config.parent.mkdir(exist_ok=True)
     config.write_text("ai_readonly_folders: [wiki/locked]\n")
     assert (
         links.managed_sources(
-            UnresolvedItem("note", sources="wiki/locked/source.md"), OrganizerPolicy.load(tmp_path), tmp_path
+            UnresolvedItem("note", sources="wiki/locked/source.md"), OrganizerPolicy.load(), tmp_path
         )
         == ()
     )

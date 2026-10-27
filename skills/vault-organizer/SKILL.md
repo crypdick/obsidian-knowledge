@@ -26,7 +26,7 @@ observed target mismatch, read
 [multi-vault selection](lib/multi-vault.md).
 
 Follow the vault's local naming and layout instructions. Commands load
-`.claude/obsidian-knowledge.yaml` themselves. Read
+`~/.config/obsidian-knowledge/config.yaml` themselves. Read
 `Utility/obsidian-knowledge/needs-attention.md` for a general maintenance pass
 or when working on a listed issue.
 

@@ -8,6 +8,8 @@ import stat
 import tempfile
 from pathlib import Path
 
+from lib.vault_index.note_creation import initialize_note
+
 
 def resolve_vault_file(vault_root: Path, relative_path: Path) -> Path:
     """Resolve one vault-relative path without allowing namespace escape."""
@@ -54,18 +56,22 @@ def write_vault_file(
     replace: bool = False,
     expected_content: bytes | None = None,
 ) -> Path:
-    """Atomically write, fsync, and verify bytes, checking an optional baseline."""
+    """Initialize new-note metadata, then atomically write, fsync, and verify bytes."""
     if not content.strip():
         raise ValueError("refusing to write empty vault content")
 
     target = resolve_vault_file(vault_root, relative_path)
-    # NOTE: Utility is a vault-root zone; see docs/configuration.md, Vault configuration.
-    if target.relative_to(vault_root.expanduser().resolve()).parts[:2] == ("wiki", "Utility"):
+    vault = vault_root.expanduser().resolve()
+    # NOTE: Utility is a vault-root zone; see docs/configuration.md, Shared preferences and host locations.
+    if target.relative_to(vault).parts[:2] == ("wiki", "Utility"):
         raise ValueError("Utility paths must be vault-relative: use Utility/... instead of wiki/Utility/...")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target = resolve_vault_file(vault_root, relative_path)
     if target.exists() and not replace:
         raise FileExistsError(f"vault file already exists; pass --replace to overwrite: {relative_path}")
+
+    if not target.exists():
+        content = initialize_note(vault, target.relative_to(vault), content)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target = resolve_vault_file(vault_root, relative_path)
 
     mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o644
     fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)

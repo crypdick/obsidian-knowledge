@@ -72,7 +72,10 @@ updates).
 
 Read, search, and write notes in the configured vault. The registry is
 `~/.config/obsidian-knowledge/vaults.yaml`; CLI paths are relative to its vault
-root, regardless of cwd. Wiki notes start with `wiki/`; plugin state starts with
+root, regardless of cwd. Shared preferences live separately in
+`~/.config/obsidian-knowledge/config.yaml`; keep absolute vault locations in the
+host registry. The former vault-local `.claude/obsidian-knowledge.yaml` is no
+longer loaded. Wiki notes start with `wiki/`; plugin state starts with
 `Utility/obsidian-knowledge/`. `Utility/` and `wiki/` are siblings. Never create
 `wiki/Utility/` or use the wiki directory as the vault root.
 
@@ -129,8 +132,12 @@ Update the folder's `index.md`
 using the same read and replace workflow. For a new folder, also link its
 index from the parent.
 
-Leave existing `updated:` timestamps to the vault linter unless the user
-explicitly requests timestamp repair. Use `[[wikilinks]]` for related notes.
+New notes receive creation-only metadata when the vault configures
+`note_creation.template` and declares defaults in that template. Supply the intended body
+and destination; headless writes do not run Templater's interactive router.
+Preserve existing `created:`, `updated:`, and `modified:` values during edits;
+do not refresh timestamps unless the user explicitly requests timestamp repair.
+Use `[[wikilinks]]` for related notes.
 
 ### Agent memory
 

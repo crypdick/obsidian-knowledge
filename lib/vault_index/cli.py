@@ -18,6 +18,7 @@ from pathlib import Path
 
 import platformdirs
 import yaml
+from vault_preferences import load_preferences, preferences_path
 
 from lib.vault_index.models import Hit, IndexBusyError
 from lib.vault_index.registration import existing_vault, read_registry, register_vault
@@ -176,7 +177,10 @@ def vaults_config_path() -> Path:
     override = os.environ.get(VAULTS_CONFIG_ENV)
     if override:
         return Path(override)
-    return Path.home() / ".config" / "obsidian-knowledge" / "vaults.yaml"
+    return (
+        Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+        / "obsidian-knowledge/vaults.yaml"
+    )
 
 
 def load_configured_vaults(config_path: Path | None = None) -> list[Path]:
@@ -358,21 +362,17 @@ def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claud
 
 
 def init_vault_index(yaml_path: Path) -> None:
-    """Add a `vault_index:` section template to the per-vault config file.
+    """Add a `vault_index:` section template to shared preferences.
 
     No-op if the section already exists. Preserves any other sections.
     """
     if yaml_path.exists():
         try:
-            existing = yaml.safe_load(yaml_path.read_text())
+            existing = load_preferences(yaml_path)
         except yaml.YAMLError as exc:
             print(f"error: malformed YAML in {yaml_path}: {exc}", file=sys.stderr)
             sys.exit(1)
-        if existing is None:
-            existing = {}
-        if not isinstance(existing, dict):
-            raise ValueError(f"expected a YAML mapping in {yaml_path}")
-        if "vault_index" in existing:
+        if "vault_index" in existing.root:
             print(f"vault_index section already present in {yaml_path}; not modified.")
             return
         with yaml_path.open("a") as f:
@@ -391,7 +391,7 @@ def setup(vault: Path, *, skip_claude_plugin: bool = False, skip_guards: bool = 
     from lib.vault_index.indexer import Indexer, default_cache_dir
 
     vault = existing_vault(vault)
-    cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+    cfg = load_config()
     # 1. Validate and atomically update vaults.yaml.
     vaults_yaml = vaults_config_path()
     vault_str = str(vault)
@@ -490,7 +490,7 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
     from lib.vault_index.indexer import Indexer, default_cache_dir
 
     vault = resolve_vault(args.vault)
-    cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+    cfg = load_config()
     cache = default_cache_dir(vault)
     idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
     if args.cmd == "doctor":
@@ -557,11 +557,10 @@ def main() -> int:
         "--timeout-seconds", type=int, default=300, help="Whole-command deadline (default: 300)"
     )
 
-    p_init = sub.add_parser(
+    sub.add_parser(
         "init-vault-index",
-        help="Add vault_index template to .claude/obsidian-knowledge.yaml",
+        help="Add vault_index defaults to shared preferences",
     )
-    p_init.add_argument("--vault", type=Path, default=None, help="Vault root")
 
     p_read = sub.add_parser("read", help="Read exact bytes from a vault-relative file")
     p_read.add_argument("path", type=Path, help="Path relative to the vault root")
@@ -679,8 +678,7 @@ def main() -> int:
     elif args.cmd == "_hook":
         return run_hook_entrypoint(args.hook_event, kind=args.kind, agent=args.agent)
     elif args.cmd == "init-vault-index":
-        vault = resolve_vault(args.vault)
-        init_vault_index(vault / ".claude" / "obsidian-knowledge.yaml")
+        init_vault_index(preferences_path())
     elif args.cmd in {"read", "write"}:
         return run_vault_file_command(args, parser)
     elif args.cmd == "reindex":
@@ -698,7 +696,7 @@ def main() -> int:
                 vault = resolve_vault(args.vault)
                 cache = default_cache_dir_for_vault(vault)
                 cache.mkdir(parents=True, exist_ok=True)
-                cfg = load_config(vault / ".claude" / "obsidian-knowledge.yaml")
+                cfg = load_config()
                 idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
                 stats = idx.full_reindex(force=args.force)
         except IndexBusyError:

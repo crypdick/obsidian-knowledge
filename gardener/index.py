@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> None:
         vault = resolve_vault(args.vault_root)
         if Path(args.index_path).name != "index.md":
             raise ValueError("garden index only edits index.md")
-        index = OrganizerPolicy.load(vault).writable(vault, args.index_path)
+        index = OrganizerPolicy.load().writable(vault, args.index_path)
         before = index.read_bytes().decode("utf-8") if index.exists() else None
         review = IndexReview.model_validate_json(sys.stdin.read())
         after = render_index(vault, index, before, review)

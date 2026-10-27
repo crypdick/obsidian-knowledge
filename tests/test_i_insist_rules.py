@@ -117,8 +117,8 @@ def test_checker_ignores_other_events_and_rejects_unknown_rule(tmp_path):
     ],
 )
 def test_file_policy_decisions(tmp_path, rule, path, content, blocked):
-    policy = tmp_path / ".claude/obsidian-knowledge.yaml"
-    policy.parent.mkdir()
+    policy = Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])
+    policy.parent.mkdir(exist_ok=True)
     policy.write_text(
         'publish_allowlist: ["Public/"]\nai_readonly_folders: [Public]\ngeneric_filenames: [plan.md, index.md]\nillegal_filename_chars: [":"]\n'
     )
@@ -398,8 +398,8 @@ def test_installer_keeps_rules_unchanged_when_runner_disabled(tmp_path, monkeypa
 
 @pytest.mark.parametrize("content", ["publish_allowlist: [broken", "- Public/", "false"])
 def test_malformed_policy_is_checker_failure(tmp_path, content):
-    policy = tmp_path / ".claude/obsidian-knowledge.yaml"
-    policy.parent.mkdir()
+    policy = Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])
+    policy.parent.mkdir(exist_ok=True)
     policy.write_text(content)
     result = run_check(tmp_path, "publish-allowlist", file_event(tmp_path, "private.md", "dg-publish: true"))
     assert result.returncode != 0

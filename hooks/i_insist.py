@@ -70,11 +70,11 @@ def readonly(path: str, roots: list[str]) -> bool:
     root = find_containing_vault(path, roots)
     if root is None:
         return False
-    policy = load_vault_policy(root)
+    policy = load_vault_policy()
     relative = Path(path).relative_to(root)
     return bool(relative.parts) and (
-        relative.parts[0] in (policy.get("ai_readonly_folders") or [])
-        or (len(relative.parts) == 1 and relative.name in (policy.get("ai_readonly_root_files") or []))
+        relative.parts[0] in policy.ai_readonly_folders
+        or (len(relative.parts) == 1 and relative.name in policy.ai_readonly_root_files)
     )
 
 
@@ -145,9 +145,9 @@ def file_blocks(name: str, change: Change, roots: list[str]) -> bool:
     if name == "frontmatter":
         return parse_frontmatter(content)[1] is not None
     relative = str(path.relative_to(root))
-    policy = load_vault_policy(root)
+    policy = load_vault_policy()
     if name == "publish-allowlist":
-        allowlist = policy.get("publish_allowlist") or []
+        allowlist = policy.publish_allowlist
         return bool(
             allowlist and re.search(r"^\s*dg-publish:\s*true\s*$", content, re.MULTILINE)
         ) and not any(
@@ -158,10 +158,10 @@ def file_blocks(name: str, change: Change, roots: list[str]) -> bool:
         return False
     if name == "generic-filenames":
         return path.name.lower() != "index.md" and path.name.lower() in {
-            item.lower() for item in (policy.get("generic_filenames") or [])
+            item.lower() for item in policy.generic_filenames
         }
     if name == "illegal-filenames":
-        return any(char in path.name for char in (policy.get("illegal_filename_chars") or []))
+        return any(char in path.name for char in policy.illegal_filename_chars)
     if name == "dated-filenames":
         return (
             is_in_dated_folder(relative) and path.name != "index.md" and not DATE_PREFIX_RE.match(path.name)

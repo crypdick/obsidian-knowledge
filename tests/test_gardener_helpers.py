@@ -234,7 +234,7 @@ def test_scanners_default_to_configured_vault(
     vault = tmp_path / "vault"
     (vault / "records").mkdir(parents=True)
     (vault / ".claude").mkdir()
-    (vault / ".claude/obsidian-knowledge.yaml").write_text("ai_managed: [records]\n")
+    (Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])).write_text("ai_managed: [records]\n")
     (vault / "records/Default Note.md").write_text("# Note\n")
     (vault / "records/source.md").write_text(
         "# Source\n[[default_note.md]]\n> [!question]\n> Defaults select this vault.\n"

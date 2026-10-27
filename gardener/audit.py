@@ -168,7 +168,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--vault", dest="vault_root", type=Path, help="default: configured vault")
     vault_root = resolve_vault(parser.parse_args(argv).vault_root)
 
-    zones = [z for z in OrganizerPolicy.load(vault_root).ai_managed if z not in AUDIT_SKIP_ZONES]
+    zones = [z for z in OrganizerPolicy.load().ai_managed if z not in AUDIT_SKIP_ZONES]
     issues: list[str] = []
     for zone in zones:
         issues.extend(walk_managed(vault_root, zone))

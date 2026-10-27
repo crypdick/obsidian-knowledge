@@ -18,7 +18,9 @@ from pathlib import Path
 
 from vault_registry import load_vault_roots as read_registry
 
-CONFIG_PATH = Path.home() / ".config" / "obsidian-knowledge" / "vaults.yaml"
+CONFIG_PATH = (
+    Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "obsidian-knowledge/vaults.yaml"
+)
 
 
 def load_vault_roots(config_path: Path | None = None) -> list[str]:
