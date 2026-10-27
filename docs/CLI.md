@@ -64,6 +64,9 @@ obsidian-knowledge reindex --timeout-seconds 300
 
 ## JSON search output
 
+See also [backfilling creation dates](#backfill-missing-creation-dates) for a
+source-checkout script that plans repairs without inferring timestamps.
+
 Use `--json` for scripts and agents:
 
 ```bash
@@ -235,6 +238,71 @@ obsidian-knowledge garden audit
 obsidian-knowledge garden frontmatter wiki/example.md
 obsidian-knowledge garden questions --report
 ```
+
+## Backfill missing creation dates
+
+From the source checkout, `scripts/backfill_created.py` produces a reviewed JSON
+plan before any note changes. It does not infer dates from filesystem creation
+or modification times, filenames, or Git commits. Identify metadata properties
+that actually recorded creation, or supply independently verified evidence:
+
+```bash
+uv run python scripts/backfill_created.py plan \
+  --vault /absolute/path/to/vault \
+  --plan /tmp/created-review.json \
+  --source-field created_at
+```
+
+Omit `--source-field` when no trustworthy alias exists. `--source-field` is
+repeatable; conflicting values are unresolved. Use `--path` to narrow the scan
+to a vault-relative file or folder. With no trusted evidence, a missing date is
+reported as unresolved and left alone. Existing `created` properties, including
+explicit nulls and empty values, are preserved.
+
+For dates recovered from verified backups or other records, pass `--evidence`
+with a JSON file in this format:
+
+```json
+{
+  "records": [
+    {
+      "path": "wiki/example.md",
+      "created": "2024-06-01T10:30:00-07:00",
+      "source": "Verified original creation metadata from backup manifest"
+    }
+  ]
+}
+```
+
+The evidence file is an explicitly trusted input; the script validates its
+dates, not the truth of its source descriptions. Modification or event dates
+are not creation evidence. Future or invalid dates are rejected. Preserve the
+original precision and timezone: a known calendar date can be `2024-06-01`,
+without inventing a time or offset.
+
+The plan records each proposal's path, date, source, and original SHA-256, plus
+unresolved paths and reasons. Store it outside the vault; it is created with
+mode `0600` and an existing plan is never overwritten. Planning is the default
+action and does not change notes. Review the plan before running:
+
+```bash
+uv run python scripts/backfill_created.py apply \
+  --vault /absolute/path/to/vault \
+  --plan /tmp/created-review.json
+```
+
+Both actions respect configured managed/assisted zones, read-only paths,
+creation-template exclusions, protected sources, hidden paths, sync conflicts,
+symlinks, and existing published notes. Application rechecks the current policy
+and all reviewed baselines before starting. It adds only missing `created`
+properties, preserving existing YAML comments, body bytes, line endings, BOM,
+permissions, and `updated`/`modified` metadata. File modification time naturally
+changes when the file is written.
+
+Each write is atomic and checks the original bytes again immediately before
+replacement. The batch is not a filesystem transaction: a concurrent edit can
+stop it partway. Rerunning the plan preserves notes that already have `created`.
+Retain the plan as the provenance record for the repair.
 
 Link recovery still needs the Obsidian CLI to supply unresolved links:
 
