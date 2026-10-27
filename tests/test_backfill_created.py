@@ -24,6 +24,7 @@ from scripts.backfill_created import (
     apply_plan,
     main,
     make_plan,
+    recover_history,
 )
 
 ROOT = Path(__file__).parents[1]
@@ -259,3 +260,86 @@ def test_script_runs_from_outside_repository(vault, tmp_path):
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_history_recovers_actual_metadata_not_the_version_filename_date(vault, tmp_path):
+    (vault / "wiki/note.md").write_text("# Same body\n")
+    history = tmp_path / "versions"
+    (history / "wiki").mkdir(parents=True)
+    (history / "wiki/note~20251230-120000.md").write_text("---\ncreated: 2020-01-01\n---\n# Same body\n")
+    original = make_plan(vault, ScanOptions())
+    found = recover_history(vault, history, original)
+    assert found.records[0].created.root.isoformat() == "2020-01-01"
+    assert not found.records[0].requires_review
+    plan = make_plan(vault, ScanOptions(evidence=found))
+    assert apply_plan(vault, plan).applied == ("wiki/note.md",)
+
+
+def test_changed_historical_body_requires_review_and_is_never_auto_applied(vault, tmp_path):
+    note = vault / "wiki/note.md"
+    note.write_text("# Current body\n")
+    history = tmp_path / "versions"
+    (history / "wiki").mkdir(parents=True)
+    (history / "wiki/note.md").write_text("---\ncreated: 2020-01-01\n---\n# Older body\n")
+    found = recover_history(vault, history, make_plan(vault, ScanOptions()))
+    assert found.records[0].requires_review
+    plan = make_plan(vault, ScanOptions(evidence=found))
+    result = apply_plan(vault, plan)
+    assert result.applied == ()
+    assert result.pending_review == ("wiki/note.md",)
+    assert note.read_text() == "# Current body\n"
+
+
+def test_conflicting_history_stays_unresolved_even_with_a_trusted_record(vault, tmp_path):
+    (vault / "wiki/note.md").write_text("# Body\n")
+    history = tmp_path / "versions"
+    (history / "wiki").mkdir(parents=True)
+    (history / "wiki/note~20240101-000000.md").write_text("---\ncreated: 2020-01-01\n---\n# Body\n")
+    trusted = EvidenceFile(
+        records=(Evidence(path="wiki/note.md", created="2021-01-01", source="creation log"),)
+    )
+    original = make_plan(vault, ScanOptions(evidence=trusted))
+    found = recover_history(vault, history, original)
+    combined = EvidenceFile(records=(*trusted.records, *found.records))
+    plan = make_plan(vault, ScanOptions(evidence=combined))
+    assert not plan.candidates
+    assert len(plan.unresolved) == 1
+
+
+def test_history_discovery_rejects_stale_body_hash(vault, tmp_path):
+    note = vault / "wiki/note.md"
+    note.write_text("# Body\n")
+    history = tmp_path / "versions"
+    (history / "wiki").mkdir(parents=True)
+    (history / "wiki/note.md").write_text("---\ncreated: 2020-01-01\n---\n# Body\n")
+    found = recover_history(vault, history, make_plan(vault, ScanOptions()))
+    note.write_text("# Changed during discovery\n")
+    plan = make_plan(vault, ScanOptions(evidence=found))
+    assert not plan.candidates
+    assert len(plan.unresolved) == 1
+
+
+def test_history_skips_conflicts_symlinks_bad_yaml_and_missing_metadata(vault, tmp_path):
+    (vault / "wiki/note.md").write_text("# Body\n")
+    history = tmp_path / "versions"
+    (history / "wiki").mkdir(parents=True)
+    (history / "wiki/note.md").write_text("# Body\n")
+    (history / "wiki/note~20240101-000000.md").write_text("---\n[bad YAML\n---\n")
+    (history / "wiki/note~20240101-010000.md").symlink_to(vault / "wiki/note.md")
+    (history / "wiki/note.sync-conflict-example.md").write_text("---\ncreated: 2020-01-01\n---\n# Body\n")
+    plan = make_plan(vault, ScanOptions())
+    assert not recover_history(vault, history, plan).records
+    with pytest.raises(ValueError, match="not a directory"):
+        recover_history(vault, tmp_path / "missing", plan)
+
+
+def test_cli_discovers_history_but_leaves_changed_bodies_pending(vault, tmp_path, capsys):
+    (vault / "wiki/note.md").write_text("# Current body\n")
+    history = tmp_path / "versions"
+    (history / "wiki").mkdir(parents=True)
+    (history / "wiki/note.md").write_text("---\ncreated: 2020-01-01\n---\n# Older body\n")
+    plan = tmp_path / "review.json"
+    main(["--vault", str(vault), "--plan", str(plan), "--syncthing-history", str(history)])
+    assert "1 require review" in capsys.readouterr().out
+    main(["apply", "--vault", str(vault), "--plan", str(plan)])
+    assert json.loads(capsys.readouterr().out)["pending_review"] == ["wiki/note.md"]
