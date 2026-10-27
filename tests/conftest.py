@@ -27,6 +27,12 @@ for _git_var in (
 
 
 @pytest.fixture(autouse=True)
+def _isolated_preferences(tmp_path, monkeypatch):
+    """Never read or mutate the operator's shared preferences during tests."""
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CONFIG", str(tmp_path / "preferences.yaml"))
+
+
+@pytest.fixture(autouse=True)
 def _disable_ollama_probe(monkeypatch):
     """Force Indexer to skip the live Ollama probe in tests.
 

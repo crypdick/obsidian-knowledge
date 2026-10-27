@@ -30,8 +30,8 @@ def test_main_lightweight_dispatches(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "resolve_vault", lambda _vault: tmp_path)
     monkeypatch.setattr(cli, "init_vault_index", lambda path: calls.append(("init", path)))
-    assert run_main(monkeypatch, "init-vault-index", "--vault", str(tmp_path)) == 0
-    assert calls[-1] == ("init", tmp_path / ".claude/obsidian-knowledge.yaml")
+    assert run_main(monkeypatch, "init-vault-index") == 0
+    assert calls[-1] == ("init", cli.preferences_path())
 
     monkeypatch.setattr(cli, "run_vault_file_command", lambda args, parser: 6)
     assert run_main(monkeypatch, "read", "note.md", "--vault", str(tmp_path)) == 6

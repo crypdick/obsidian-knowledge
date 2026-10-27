@@ -49,7 +49,9 @@ sending a token across a network. Tunnel provisioning is separate from this serv
 - `vault_write(path, content, replace=False)` atomically writes UTF-8 content,
   verifies final bytes, and returns the vault-relative path and success status.
   Blank content and existing files are rejected unless `replace=True` permits
-  overwriting. Parent directories are created as needed.
+  overwriting. Parent directories are created as needed. New Markdown notes
+  apply the declarative [configured creation defaults](configuration.md#note-creation)
+  before writing; replacements never rerun them. No running app is required.
 - `vault_patch(path, old_str, new_str, expected_sha256=None)` replaces exactly
   one occurrence of `old_str` in a UTF-8 file, including frontmatter. Empty,
   missing, and ambiguous matches (including overlaps) are rejected. Untouched

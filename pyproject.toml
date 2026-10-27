@@ -47,6 +47,7 @@ exclude = [
 [tool.hatch.build.targets.wheel.force-include]
 hooks = "hooks"
 "hooks/vault_registry.py" = "vault_registry.py"
+"hooks/vault_preferences.py" = "vault_preferences.py"
 "hooks/hookslib" = "hookslib"
 
 [dependency-groups]
@@ -193,7 +194,7 @@ exclude-newer = "3 days"
 
 [tool.deptry]
 extend_exclude = ["plugins/", "scripts/", "skills/", "spikes/"]
-known_first_party = ["lib", "vault_index", "hooks", "hookslib", "vault_registry", "gardener", "obsidian_knowledge_vendor"]
+known_first_party = ["lib", "vault_index", "hooks", "hookslib", "vault_registry", "vault_preferences", "gardener", "obsidian_knowledge_vendor"]
 
 [tool.deptry.per_rule_ignores]
 # Explicit compatibility constraints for memweave's lazy embedding stack;

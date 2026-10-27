@@ -115,7 +115,7 @@ def main(argv: list[str] | None = None) -> None:
         args.report = args.report or REPORT_PATH
     vault_root = resolve_vault(args.vault_root)
 
-    zones = OrganizerPolicy.load(vault_root).ai_managed
+    zones = OrganizerPolicy.load().ai_managed
     hits = []
     for zone in zones:
         for md in iter_markdown(vault_root, zone):

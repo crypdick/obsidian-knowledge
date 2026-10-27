@@ -1,5 +1,6 @@
 """Behavior tests for per-vault hook policy loading."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -7,32 +8,25 @@ import yaml
 from hookslib.vault_policy import find_containing_vault, load_vault_policy
 
 
-def test_load_vault_policy_returns_empty_when_config_is_absent(tmp_path: Path):
-    assert load_vault_policy(str(tmp_path)) == {}
+def test_load_vault_policy_returns_defaults_when_config_is_absent():
+    assert load_vault_policy().ai_readonly_folders == ()
 
 
-def test_load_vault_policy_loads_and_caches_mapping(tmp_path: Path):
-    config = tmp_path / ".claude" / "obsidian-knowledge.yaml"
-    config.parent.mkdir()
-    config.write_text("publishable_zones:\n  - wiki\n")
-
-    assert load_vault_policy(str(tmp_path)) == {"publishable_zones": ["wiki"]}
-
-    config.write_text("publishable_zones:\n  - Journal\n")
-    assert load_vault_policy(str(tmp_path)) == {"publishable_zones": ["wiki"]}
+def test_load_vault_policy_reads_shared_rules_and_observes_edits(monkeypatch):
+    config = Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])
+    config.write_text("ai_readonly_folders: [Public]\n")
+    assert load_vault_policy().ai_readonly_folders == ("Public",)
+    config.write_text("ai_readonly_folders: [Archive]\n")
+    assert load_vault_policy().ai_readonly_folders == ("Archive",)
 
 
-def test_load_vault_policy_distinguishes_empty_from_invalid_yaml(tmp_path: Path):
-    empty_vault = tmp_path / "empty"
-    invalid_vault = tmp_path / "invalid"
-    for vault, content in ((empty_vault, ""), (invalid_vault, "[unterminated")):
-        config = vault / ".claude" / "obsidian-knowledge.yaml"
-        config.parent.mkdir(parents=True)
-        config.write_text(content)
-
-    assert load_vault_policy(str(empty_vault)) == {}
+def test_load_vault_policy_distinguishes_empty_from_invalid_yaml():
+    config = Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])
+    config.write_text("")
+    assert load_vault_policy().ai_readonly_folders == ()
+    config.write_text("[unterminated")
     with pytest.raises(yaml.YAMLError):
-        load_vault_policy(str(invalid_vault))
+        load_vault_policy()
 
 
 def test_find_containing_vault_matches_root_and_descendants(tmp_path: Path):

@@ -33,9 +33,9 @@ Use these commands to configure, search, and maintain the vault:
 | Command | Behavior |
 | --- | --- |
 | `setup --vault PATH` | Register and index; install the Claude plugin unless skipped. Installs global guards unless `--skip-guards`. |
-| `init-vault-index [--vault PATH]` | Create `.claude/obsidian-knowledge.yaml` and its parent directory, or append the index template to an existing mapping. An existing `vault_index` section is left unchanged. |
+| `init-vault-index` | Create the shared `config.yaml` preferences and its parent directory, or append search defaults to an existing mapping. An existing `vault_index` section is left unchanged. |
 | `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
-| `write PATH [--replace]` | Read stdin, then atomically write and verify the bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Does not reindex. |
+| `write PATH [--replace]` | Read stdin, apply opt-in [configured creation defaults](configuration.md#note-creation) to new Markdown files, then atomically write and verify bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Does not reindex. |
 | `reindex [--force] [--timeout-seconds N]` | Index changed files and remove stale index entries. `--force` reprocesses unchanged files too. Does not delete vault notes. |
 | `search QUERY [--top-k N] [--all] [--json]` | Print ranked paths and snippets, or a JSON search report. `--all` bypasses the digest filter, not the indexing exclusions. |
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |

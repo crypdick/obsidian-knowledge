@@ -22,6 +22,7 @@ def exercise(executable: str, root: Path) -> None:
     env = {
         **os.environ,
         "HOME": str(root / "home"),
+        "OBSIDIAN_KNOWLEDGE_CONFIG": str(root / "preferences.yaml"),
         "CODEX_HOME": str(root / "home/.codex"),
         "CLAUDE_CONFIG_DIR": str(root / "home/.claude"),
         "XDG_CACHE_HOME": str(root / "cache"),
@@ -76,10 +77,10 @@ def exercise(executable: str, root: Path) -> None:
         assert command in help_text
         run(command, "--help")
 
-    run("init-vault-index", "--vault", str(vault))
-    config = vault / ".claude" / "obsidian-knowledge.yaml"
+    run("init-vault-index")
+    config = root / "preferences.yaml"
     before = config.read_bytes()
-    run("init-vault-index", "--vault", str(vault))
+    run("init-vault-index")
     assert config.read_bytes() == before
 
     note = "# Orchid smoke verification\n\nPurple orchids grow in the greenhouse.\n"
@@ -129,18 +130,17 @@ def exercise(executable: str, root: Path) -> None:
             if kind == "capture-session":
                 assert json.loads(output)["decision"] == "block"
     run("_hook", "stop", "--kind", "invalid", content="{}", expected=2)
-    exercise_garden(vault, run)
+    exercise_garden(vault, config, run)
     print(f"All {checks} installed CLI checks passed.")
 
 
-def exercise_garden(vault: Path, run: Callable[..., str]) -> None:
+def exercise_garden(vault: Path, config: Path, run: Callable[..., str]) -> None:
     """Exercise bundled gardener modules through the installed executable."""
     for operation in ("audit", "links", "index", "questions", "frontmatter"):
         assert "--vault" in run("garden", operation, "--help")
 
     folder = vault / "wiki/garden-smoke"
     folder.mkdir()
-    config = vault / ".claude/obsidian-knowledge.yaml"
     with config.open("a") as handle:
         handle.write("\nai_managed: [wiki]\nai_readonly_folders: [wiki/garden-smoke/readonly]\n")
     source = folder / "source.md"

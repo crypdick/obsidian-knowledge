@@ -24,6 +24,9 @@ weights, and `indexer.py` wraps memweave's keyword and dense retrieval.
 LiteLLM provider for other model identifiers. Ollama and keyword-only paths never
 import LiteLLM.
 `vault_files.py` handles confined, verified writes and text patches.
+`note_creation.py` reads the opt-in declarative creation defaults from a configured template
+and adds missing creation metadata before a new note's atomic write, without
+running Templater or changing existing notes.
 `vault_listing.py` provides bounded directory discovery. `mcp_index.py` reads
 persisted index status without rebuilding and parses CLI refresh results.
 `mcp_server.py` exposes these operations and bounded CLI search and refresh
@@ -40,7 +43,9 @@ keyword merge. Model and source filters apply before candidate selection. Pools
 above sqlite-vec's 4096-candidate ceiling retain memweave's exhaustive search.
 
 The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
-module and `hooks/hookslib/` as `hookslib`. Hooks, the CLI, and gardener commands
+module, `hooks/vault_preferences.py` as `vault_preferences`, and
+`hooks/hookslib/` as `hookslib`. The registry owns only host-local vault paths;
+preferences own portable policy and relative template selection. Hooks, the CLI, and gardener commands
 share these canonical module names in source checkouts and installed wheels.
 
 ## Invariants
@@ -52,7 +57,7 @@ Preserve these boundaries:
   imports `hookslib.repo_memory` to resolve the memory destination and `cli.py`
   dispatches to `gardener.cli`.
 - `hooks/hookslib` imports neither `lib`, `vault_index`, nor `gardener`.
-  It may import the dependency-light `vault_registry`.
+  It may import the shared `vault_registry` and `vault_preferences` modules.
 - Hook entrypoints import `hookslib` and may import `vault_index` for the doctor.
 - Keep `lib` free of import cycles. Put shared result types in `models.py`.
 

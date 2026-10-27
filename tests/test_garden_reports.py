@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -89,7 +90,7 @@ def test_garden_uses_registered_default_without_environment_overrides(
 
 def test_audit_managed_structure_and_vault_wide_content(tmp_path: Path, capsys) -> None:
     (tmp_path / ".claude").mkdir()
-    (tmp_path / ".claude/obsidian-knowledge.yaml").write_text("ai_managed: [records, Utility]\n")
+    (Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])).write_text("ai_managed: [records, Utility]\n")
     (tmp_path / "records").mkdir()
     (tmp_path / "records/note.md").write_text("# Managed\n")
     (tmp_path / "Utility").mkdir()

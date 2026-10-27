@@ -77,10 +77,11 @@ class NativeObsidian:
             if not complete:
                 with contextlib.suppress(ProcessLookupError):
                     os.killpg(process.pid, signal.SIGKILL)
-                await process.wait()
                 for task in [*readers, waiter]:
                     task.cancel()
                 await asyncio.gather(*readers, waiter, return_exceptions=True)
+                # A capped reader can leave its pipe paused; wait() alone then deadlocks.
+                await process.communicate()
         text = stdout.decode("utf-8", errors="replace")
         error = stderr.decode("utf-8", errors="replace").strip()
         if returncode:

@@ -6,9 +6,9 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
-import yaml
 from hookslib.patterns import parse_frontmatter
 from pydantic import BaseModel, ConfigDict, field_validator
+from vault_preferences import load_preferences
 
 from gardener.models import DEFAULT_STUB_PATTERNS
 from lib.vault_index.cli import resolve_vault as resolve_cli_vault
@@ -43,9 +43,8 @@ class OrganizerPolicy(BaseModel):
         return values
 
     @classmethod
-    def load(cls, vault_root: Path) -> OrganizerPolicy:
-        config = vault_root / ".claude" / "obsidian-knowledge.yaml"
-        return cls.model_validate(yaml.safe_load(config.read_text()) or {}) if config.exists() else cls()
+    def load(cls) -> OrganizerPolicy:
+        return cls.model_validate(load_preferences().root)
 
     def writable(self, vault_root: Path, relative: str) -> Path:
         path = visible_path(vault_root, relative)
@@ -124,7 +123,7 @@ def iter_markdown(vault_root: Path, zone: str | None = None) -> Iterator[Path]:
 
 def write_checked(vault_root: Path, relative: str, before: str | None, after: str) -> None:
     """Refuse changed baselines; use the CLI's durable, verified writer."""
-    path = OrganizerPolicy.load(vault_root).writable(vault_root, relative)
+    path = OrganizerPolicy.load().writable(vault_root, relative)
     current = path.read_bytes().decode("utf-8") if path.exists() else None
     if current != before:
         raise ValueError(f"file changed since review: {relative}")

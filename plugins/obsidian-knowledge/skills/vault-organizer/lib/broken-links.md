@@ -3,7 +3,7 @@
 ## Unresolved links
 
 The recovery script keeps links from `ai_managed` zones and excludes template placeholders
-and configured `stub_link_patterns` from `.claude/obsidian-knowledge.yaml`.
+and configured `stub_link_patterns` from `~/.config/obsidian-knowledge/config.yaml`.
 Defaults cover prefixes such as `(PAPER)`, `(BOOK)`, and `@Person`.
 
 Inspect every remaining candidate, in batches if needed. Plain-word links can

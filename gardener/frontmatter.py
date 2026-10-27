@@ -71,7 +71,7 @@ def find_stacked_region(lines: list[str]) -> tuple[list[int], list[int]] | None:
 
 def fix_file(vault: Path, relative: str, write: bool) -> str:
     """Return one of: 'OK', 'STRAY_FIXED', 'STRAY_DRY', 'NEEDS_MERGE'."""
-    path = OrganizerPolicy.load(vault).writable(vault, relative)
+    path = OrganizerPolicy.load().writable(vault, relative)
     text = path.read_bytes().decode("utf-8")
     newline = "\r\n" if "\r\n" in text else "\n"
     lines = text.split(newline)

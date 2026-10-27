@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -39,14 +40,14 @@ def test_paths_reject_unsafe_or_excluded_names(relative: str) -> None:
 
 
 def test_policy_uses_defaults_and_loads_configured_write_boundaries(tmp_path: Path) -> None:
-    assert OrganizerPolicy.load(tmp_path).ai_managed == ("wiki",)
-    config = tmp_path / ".claude/obsidian-knowledge.yaml"
-    config.parent.mkdir()
+    assert OrganizerPolicy.load().ai_managed == ("wiki",)
+    config = Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])
+    config.parent.mkdir(exist_ok=True)
     config.write_text(
         "ai_managed: [records]\nai_readonly_folders: [records/locked]\n"
         "ai_readonly_root_files: [records/private.md]\nstub_link_patterns: ['^skip:']\n"
     )
-    policy = OrganizerPolicy.load(tmp_path)
+    policy = OrganizerPolicy.load()
     assert policy.stub_link_patterns == ("^skip:",)
     assert policy.writable(tmp_path, "records/new.md") == tmp_path / "records/new.md"
     assert policy.writable(tmp_path, REPORT_PATH) == tmp_path / REPORT_PATH
@@ -56,10 +57,10 @@ def test_policy_uses_defaults_and_loads_configured_write_boundaries(tmp_path: Pa
     with pytest.raises(ValueError, match="outside managed zones"):
         policy.writable(tmp_path, "recordstore/note.md")
     config.write_text("")
-    assert OrganizerPolicy.load(tmp_path).ai_managed == ("wiki",)
+    assert OrganizerPolicy.load().ai_managed == ("wiki",)
     config.write_text("ai_managed: ['wiki/../private']\n")
     with pytest.raises(ValidationError):
-        OrganizerPolicy.load(tmp_path)
+        OrganizerPolicy.load()
 
 
 @pytest.mark.parametrize("link_folder", [True, False])

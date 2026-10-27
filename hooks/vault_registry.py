@@ -13,7 +13,10 @@ def load_vault_roots(config_path: Path | None = None) -> list[str]:
     path = config_path or Path(
         os.environ.get(
             "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG",
-            str(Path.home() / ".config" / "obsidian-knowledge" / "vaults.yaml"),
+            str(
+                Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+                / "obsidian-knowledge/vaults.yaml"
+            ),
         )
     )
     try:

@@ -2,10 +2,40 @@
 
 Run [setup](index.md#installation) before configuring search or agent access.
 
-## Vault configuration
+## Shared preferences and host locations
 
-Store search filters, ranking weights, and organization zones in
-`<vault>/.claude/obsidian-knowledge.yaml`. To create the search configuration:
+Two independent files separate portable preferences from machine-specific paths:
+
+| File | Contents | Synchronize across hosts? |
+| --- | --- | --- |
+| `~/.config/obsidian-knowledge/config.yaml` | Search filters and weights, protection and organization rules, relative creation-template selection | Yes, for example through a shared dotfiles overlay |
+| `~/.config/obsidian-knowledge/vaults.yaml` | Ordered absolute paths to this host's vaults | Use a separate host-specific overlay or register locally |
+
+Both follow `XDG_CONFIG_HOME` when set. `OBSIDIAN_KNOWLEDGE_CONFIG` overrides
+only the preferences file; `OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG` overrides only the
+host registry. An explicit `--vault` selects a location without changing either
+file. The shared preferences file rejects a `vaults` key, so a host's absolute
+vault paths cannot accidentally become shared preferences.
+
+Search, hooks, creation, and gardener commands all read the same preferences.
+There is no implicit fallback to `<vault>/.claude/obsidian-knowledge.yaml`.
+Migrate that file's preferences to the new shared path before upgrading.
+Keep `vaults.yaml` local to each host; its existing schema is unchanged.
+
+```yaml
+# config.yaml (shared)
+vault_index:
+  top_k: 5
+ai_managed: [wiki]
+```
+
+```yaml
+# vaults.yaml (host-specific)
+vaults:
+  - /absolute/path/on/this/host
+```
+
+To add search defaults to shared preferences, without selecting a vault:
 
 ```bash
 obsidian-knowledge init-vault-index
@@ -16,7 +46,7 @@ choose which indexed files appear in normal searches. `search --all` bypasses
 the digest filter, but cannot return files excluded from the index.
 
 Put naming conventions in the vault's `CLAUDE.md`. The organizer reads its zone
-configuration from the same YAML file: `ai_managed: [wiki]` selects managed
+configuration from the shared preferences file: `ai_managed: [wiki]` selects managed
 folders and is the default. Its state lives in
 `Utility/obsidian-knowledge/`: `needs-attention.md` lists issues for review,
 `reports/open-questions.md` collects question callouts, and `changelog/` records
@@ -27,6 +57,50 @@ are relative to that root, regardless of the working directory. Use
 `obsidian-knowledge write Utility/obsidian-knowledge/...` for state files;
 CLI and MCP writes reject `wiki/Utility/...` before creating directories.
 Existing misplaced files remain readable for recovery.
+
+### Note creation
+
+Creation defaults are opt-in and vault-owned. Choose a vault-relative template
+and any paths to exclude in shared `config.yaml`:
+
+```yaml
+note_creation:
+  template: templates/default.md
+  exclude: [templates, archive]
+```
+
+There is no default template path, exclusion list, or metadata schema. In the
+selected template, mark one single-line JSON mapping of frontmatter defaults:
+
+```javascript
+const defaults = /* obsidian-knowledge:creation-defaults */ {"recorded_at":"{{now}}","status":"draft"};
+```
+
+The variable name is arbitrary. The writer reads only the marked JSON value;
+it never executes template code. JSON keys and values define the vault's own
+metadata policy. `{{now}}` expands in strings to the current local time with
+an explicit UTC offset. Static scalars, lists, objects, and null are supported.
+For a Templater template, its initializer can consume the same mapping and
+replace this token before merging missing properties. Keep any populated-file
+guard in that template so edits and sync arrivals do not rerun initialization.
+
+On a new Markdown file, CLI and MCP writes merge only missing frontmatter
+properties before their single atomic write. Explicit properties, including
+nulls, are preserved. Existing YAML formatting, comments, other properties,
+body bytes, BOM, and line endings are retained. No property is implicitly added
+or refreshed. Replacements and patches of existing notes never apply defaults;
+`replace=True` on a missing file still counts as creation.
+
+Without `note_creation.template`, writes retain their byte-for-byte contract.
+The configured template itself, excluded paths, and non-Markdown files are
+untouched by creation defaults. A missing template, invalid declaration,
+malformed configuration, or malformed new-note frontmatter fails before creating
+target directories. Template paths cannot resolve outside the vault.
+
+This works with Obsidian closed. Headless writes use the supplied body and
+destination; they do not execute interactive routing, prompts, or arbitrary
+JavaScript from the template. The feature does not backfill existing notes,
+install templates, or change any timestamp plugin's activation.
 
 ## Switch embedding models
 

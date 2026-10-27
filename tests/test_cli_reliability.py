@@ -161,7 +161,7 @@ def test_doctor_does_not_swallow_deadline(tmp_path):
         run_search_doctor(vault=tmp_path, cache=tmp_path, idx=StalledIndex())
 
 
-@pytest.mark.parametrize("command", ["init-vault-index", "reindex", "search", "doctor"])
+@pytest.mark.parametrize("command", ["reindex", "search", "doctor"])
 def test_cli_invalid_vault_has_concise_error(tmp_path, command):
     args = [command, "--vault", str(tmp_path / "missing")]
     if command == "search":

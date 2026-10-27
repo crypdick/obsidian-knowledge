@@ -1,45 +1,26 @@
-"""Per-vault policy loader.
-
-Reads `<vault>/.claude/obsidian-knowledge.yaml` — a single config file
-that describes vault-specific policy (publishable zones, dg-publish
-allowlist, generic-filename block list, illegal-character set, zone
-descriptors). New in plugin v2.0; replaces the older split layout
-(`vault-zones.yaml` + `publish-rules.yaml` + inline lists in
-vault-local hooks).
-
-Each section is optional. A missing section means the corresponding
-rule no-ops, so users without these concerns pay no enforcement cost
-and don't need to write any config.
-"""
+"""Typed vault protection policy from the shared preferences file."""
 
 from __future__ import annotations
 
 import os
-from typing import Any
 
-import yaml
-
-CONFIG_BASENAME = ".claude/obsidian-knowledge.yaml"
-
-_cache: dict[str, dict[str, Any]] = {}
+from pydantic import BaseModel
+from vault_preferences import load_preferences
 
 
-def load_vault_policy(vault_root: str) -> dict[str, Any]:
-    """Load and cache the per-vault policy config. Returns {} if absent."""
-    if vault_root in _cache:
-        return _cache[vault_root]
-    config_path = os.path.join(vault_root, CONFIG_BASENAME)
-    try:
-        with open(config_path) as f:
-            data = yaml.safe_load(f)
-    except FileNotFoundError:
-        data = {}
-    if data is None:
-        data = {}
-    if not isinstance(data, dict):
-        raise ValueError(f"vault policy must be a mapping: {config_path}")
-    _cache[vault_root] = data
-    return data
+class VaultPolicy(BaseModel):
+    """Optional protection rules; an absent rule has no enforcement cost."""
+
+    ai_readonly_folders: tuple[str, ...] = ()
+    ai_readonly_root_files: tuple[str, ...] = ()
+    publish_allowlist: tuple[str, ...] = ()
+    generic_filenames: tuple[str, ...] = ()
+    illegal_filename_chars: tuple[str, ...] = ()
+
+
+def load_vault_policy() -> VaultPolicy:
+    """Read shared rules independently of the host's vault locations."""
+    return VaultPolicy.model_validate(load_preferences().root)
 
 
 def find_containing_vault(file_path: str, vault_roots: list[str]) -> str | None:

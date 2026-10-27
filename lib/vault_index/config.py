@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
 from pydantic import BaseModel, Field
+from vault_preferences import load_preferences
 
 
 class IndexFilter(BaseModel):
@@ -32,20 +32,13 @@ class VaultIndexConfig(BaseModel):
     min_score: float | None = None
 
 
-def load_config(yaml_path: Path) -> VaultIndexConfig:
-    """Load `vault_index:` section from `<vault>/.claude/obsidian-knowledge.yaml`.
+def load_config(yaml_path: Path | None = None) -> VaultIndexConfig:
+    """Load `vault_index:` from the shared, host-independent preferences file.
 
     Returns defaults if the section is missing. Raises pydantic ValidationError
     if the section is malformed.
     """
-    if not yaml_path.exists():
-        return VaultIndexConfig()
-    raw = yaml.safe_load(yaml_path.read_text())
-    if raw is None:
-        raw = {}
-    if not isinstance(raw, dict):
-        raise ValueError(f"expected a YAML mapping in {yaml_path}")
-    section = raw.get("vault_index", {})
+    section = load_preferences(yaml_path).root.get("vault_index", {})
     if section is None:
         section = {}
     return VaultIndexConfig.model_validate(section)

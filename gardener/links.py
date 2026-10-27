@@ -72,7 +72,7 @@ def is_stub(link: str, patterns: Iterable[re.Pattern[str]]) -> bool:
 
 def managed_sources(item: UnresolvedItem, config: OrganizerPolicy, vault_root: Path) -> tuple[str, ...]:
     prefixes = tuple(f"{zone.rstrip('/')}/" for zone in config.ai_managed)
-    policy = OrganizerPolicy.load(vault_root)
+    policy = OrganizerPolicy.load()
     sources = []
     for source in item.source_paths:
         if not source.startswith(prefixes) or not source.endswith(".md"):
@@ -305,7 +305,7 @@ def replacement_for(decision: RecoveryDecision) -> str:
 
 
 def rewrite_source(vault_root: Path, source: str, old_link: str, new_target: str) -> int:
-    path = OrganizerPolicy.load(vault_root).writable(vault_root, source)
+    path = OrganizerPolicy.load().writable(vault_root, source)
     text = path.read_bytes().decode("utf-8")
     escaped = re.escape(old_link)
     pattern = re.compile(r"\[\[(" + escaped + r")(?P<suffix>[#^|\]])")
@@ -356,7 +356,7 @@ def emit(decisions: list[RecoveryDecision], output_format: str) -> None:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     vault_root = resolve_vault(args.vault_root)
-    config = OrganizerPolicy.load(vault_root)
+    config = OrganizerPolicy.load()
     patterns = tuple(re.compile(pattern) for pattern in config.stub_link_patterns)
     raw_items = json.load(sys.stdin)
     if not isinstance(raw_items, list):

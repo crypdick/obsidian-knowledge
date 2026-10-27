@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -26,7 +27,7 @@ def run_recover(vault: Path, items: list[dict[str, str]], *args: str) -> subproc
 
 def test_classifies_unique_normalized_match_without_applying(tmp_path: Path) -> None:
     (tmp_path / ".claude").mkdir()
-    (tmp_path / ".claude" / "obsidian-knowledge.yaml").write_text("ai_managed: [wiki]\n", encoding="utf-8")
+    (Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])).write_text("ai_managed: [wiki]\n", encoding="utf-8")
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki" / "Renamed File.md").write_text("# Renamed\n", encoding="utf-8")
     (tmp_path / "wiki" / "source.md").write_text("See [[renamed_file]].\n", encoding="utf-8")
@@ -53,7 +54,7 @@ def test_skips_broken_markdown_symlinks(tmp_path: Path) -> None:
 
 def test_apply_rewrites_only_auto_fixable_links(tmp_path: Path) -> None:
     (tmp_path / ".claude").mkdir()
-    (tmp_path / ".claude" / "obsidian-knowledge.yaml").write_text("ai_managed: [wiki]\n", encoding="utf-8")
+    (Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])).write_text("ai_managed: [wiki]\n", encoding="utf-8")
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki" / "Renamed File.md").write_text("# Renamed\n", encoding="utf-8")
     (tmp_path / "wiki" / "source.md").write_text(
@@ -77,7 +78,7 @@ def test_apply_rewrites_only_auto_fixable_links(tmp_path: Path) -> None:
 
 def test_path_and_date_references_are_missing_not_concept_stubs(tmp_path: Path) -> None:
     (tmp_path / ".claude").mkdir()
-    (tmp_path / ".claude" / "obsidian-knowledge.yaml").write_text("ai_managed: [wiki]\n", encoding="utf-8")
+    (Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])).write_text("ai_managed: [wiki]\n", encoding="utf-8")
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki" / "source.md").write_text(
         "[[2026-04-05-missing]] [[scripts/foo.py]]\n", encoding="utf-8"
@@ -100,7 +101,7 @@ def test_path_and_date_references_are_missing_not_concept_stubs(tmp_path: Path) 
 
 def test_path_like_links_do_not_fall_back_to_unrelated_basename(tmp_path: Path) -> None:
     (tmp_path / ".claude").mkdir()
-    (tmp_path / ".claude" / "obsidian-knowledge.yaml").write_text("ai_managed: [wiki]\n", encoding="utf-8")
+    (Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])).write_text("ai_managed: [wiki]\n", encoding="utf-8")
     (tmp_path / "wiki" / "real").mkdir(parents=True)
     (tmp_path / "Utility" / "obsidian-knowledge").mkdir(parents=True)
     (tmp_path / "wiki" / "real" / "changelog.md").write_text("# Wrong basename\n", encoding="utf-8")
@@ -123,7 +124,7 @@ def test_path_like_links_do_not_fall_back_to_unrelated_basename(tmp_path: Path) 
 
 def test_ambiguous_fuzzy_candidates_are_not_applied(tmp_path: Path) -> None:
     (tmp_path / ".claude").mkdir()
-    (tmp_path / ".claude" / "obsidian-knowledge.yaml").write_text("ai_managed: [wiki]\n", encoding="utf-8")
+    (Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])).write_text("ai_managed: [wiki]\n", encoding="utf-8")
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki" / "vault merge design.md").write_text("# A\n", encoding="utf-8")
     (tmp_path / "wiki" / "vault merge designs.md").write_text("# B\n", encoding="utf-8")
@@ -215,7 +216,7 @@ def test_apply_preserves_protected_traversal_and_symlink_sources(tmp_path: Path,
 @pytest.mark.parametrize("reference", ["wiki/locked/source.md", "wiki//locked/source.md"])
 def test_readonly_config_overrides_managed_zone(tmp_path: Path, reference: str) -> None:
     (tmp_path / ".claude").mkdir()
-    (tmp_path / ".claude" / "obsidian-knowledge.yaml").write_text(
+    (Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"])).write_text(
         "ai_managed: [wiki]\nai_readonly_folders: [wiki/locked]\n"
     )
     (tmp_path / "wiki" / "locked").mkdir(parents=True)

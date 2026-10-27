@@ -168,7 +168,7 @@ def create_server(
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
     async def vault_write(path: str, content: str, replace: bool = False) -> dict[str, str]:
-        """Write UTF-8 text atomically and verify bytes. Existing files require replace=true."""
+        """Write atomically with opt-in configured creation defaults; existing files require replace=true."""
         target = await asyncio.to_thread(
             run_vault_mutation,
             file_lock,
