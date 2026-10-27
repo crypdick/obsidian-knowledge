@@ -259,6 +259,15 @@ to a vault-relative file or folder. With no trusted evidence, a missing date is
 reported as unresolved and left alone. Existing `created` properties, including
 explicit nulls and empty values, are preserved.
 
+Pass `--syncthing-history /absolute/path/to/.stversions` to discover explicit
+`created` properties in archived notes. The script maps Syncthing version
+filenames back to their original relative paths; it never uses the archive
+filename's timestamp as a creation date. Conflicting historical values remain
+unresolved. If the archived and current bodies differ, the proposal has
+`requires_review: true` and application skips it. Matching bodies ignore
+frontmatter and leading blank lines only. External vetted evidence for the
+same date can confirm a historical proposal.
+
 For dates recovered from verified backups or other records, pass `--evidence`
 with a JSON file in this format:
 
@@ -279,6 +288,12 @@ dates, not the truth of its source descriptions. Modification or event dates
 are not creation evidence. Future or invalid dates are rejected. Preserve the
 original precision and timezone: a known calendar date can be `2024-06-01`,
 without inventing a time or offset.
+
+Evidence records may include `requires_review: true` to retain an unconfirmed
+lead without applying it. Optional `note_sha256` binds evidence to the current
+note bytes; a mismatch is unresolved. Successful create-only tool records can
+establish a creation day; an edit, backup observation, or research event alone
+cannot. Historical path reuse and renamed notes require particular care.
 
 The plan records each proposal's path, date, source, and original SHA-256, plus
 unresolved paths and reasons. Store it outside the vault; it is created with
@@ -303,6 +318,7 @@ Each write is atomic and checks the original bytes again immediately before
 replacement. The batch is not a filesystem transaction: a concurrent edit can
 stop it partway. Rerunning the plan preserves notes that already have `created`.
 Retain the plan as the provenance record for the repair.
+The application result lists skipped `pending_review` paths separately.
 
 Link recovery still needs the Obsidian CLI to supply unresolved links:
 

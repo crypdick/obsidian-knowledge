@@ -19,6 +19,8 @@ from gardener.io import OrganizerPolicy, iter_paths, resolve_vault, validate_rel
 from lib.vault_index.note_creation import NoteCreationConfig, NoteFrontmatter, load_creation_config
 from lib.vault_index.vault_files import write_vault_file
 
+NO_EVIDENCE = "no explicit creation-date evidence"
+
 
 class CreationDate(RootModel[date | datetime]):
     """Accept explicit ISO dates only, not epoch coercions or future dates."""
@@ -51,6 +53,8 @@ class Evidence(BaseModel):
     path: str
     created: CreationDate
     source: str = Field(min_length=1)
+    requires_review: bool = False
+    note_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("source")
     @classmethod
@@ -137,6 +141,7 @@ class Note(BaseModel):
     text: str
     bom: str
     header_end: int | None
+    body_start: int = 0
     metadata: NoteFrontmatter
 
     @classmethod
@@ -162,6 +167,7 @@ class Note(BaseModel):
             text=text,
             bom="\ufeff" if content.startswith(b"\xef\xbb\xbf") else "",
             header_end=match.end("opening") if match else None,
+            body_start=match.end() if match else 0,
             metadata=metadata,
         )
 
@@ -195,12 +201,16 @@ def choose_evidence(relative: str, note: Note, options: ScanOptions) -> Evidence
             )
     if not evidence:
         return None
+    current_hash = hashlib.sha256(note.content).hexdigest()
+    if any(item.note_sha256 is not None and item.note_sha256 != current_hash for item in evidence):
+        raise ValueError("note changed during evidence discovery")
     if any(item.created.root != evidence[0].created.root for item in evidence[1:]):
         raise ValueError("conflicting creation evidence")
     return Evidence(
         path=relative,
         created=evidence[0].created,
         source="; ".join(sorted({item.source for item in evidence})),
+        requires_review=all(item.requires_review for item in evidence),
     )
 
 
@@ -230,7 +240,7 @@ def make_plan(vault: Path, options: ScanOptions) -> Plan:
                 continue
             found = choose_evidence(relative, note, options)
             if found is None:
-                unresolved.append(Unresolved(path=relative, reason="no explicit creation-date evidence"))
+                unresolved.append(Unresolved(path=relative, reason=NO_EVIDENCE))
                 continue
             candidates.append(
                 Candidate(**found.model_dump(), sha256=hashlib.sha256(note.content).hexdigest())
@@ -248,6 +258,51 @@ def make_plan(vault: Path, options: ScanOptions) -> Plan:
     )
 
 
+def recover_history(vault: Path, history: Path, plan: Plan) -> EvidenceFile:
+    """Discover explicit created properties in a selected Syncthing version tree."""
+    if not history.is_dir():
+        raise ValueError("history root is not a directory")
+    wanted = {item.path for item in plan.unresolved if item.reason == NO_EVIDENCE} | {
+        item.path for item in plan.candidates
+    }
+    scope = Scope.load()
+    notes = {}
+    records = []
+    for version in sorted(history.rglob("*.md")):
+        if version.is_symlink() or not version.is_file():
+            continue
+        relative = version.relative_to(history)
+        if ".sync-conflict-" in relative.name:
+            continue
+        original = relative.with_name(re.sub(r"~\d{8}-\d{6}(?=\.md$)", "", relative.name)).as_posix()
+        if original not in wanted or (original != relative.as_posix() and relative.as_posix() in wanted):
+            continue
+        try:
+            archived = Note.read(version)
+            value = (archived.metadata.model_extra or {}).get("created")
+            if value is None:
+                continue
+            created = CreationDate.model_validate(value)
+            if original not in notes:
+                notes[original] = Note.read(scope.target(vault, original))
+            current = notes[original]
+            same_body = current.text[current.body_start :].lstrip("\r\n") == archived.text[
+                archived.body_start :
+            ].lstrip("\r\n")
+            records.append(
+                Evidence(
+                    path=original,
+                    created=created,
+                    source=f"archived frontmatter: {version.resolve()}",
+                    requires_review=not same_body,
+                    note_sha256=hashlib.sha256(current.content).hexdigest(),
+                )
+            )
+        except (ValueError, OSError, yaml.YAMLError):
+            continue
+    return EvidenceFile(records=tuple(records))
+
+
 class PreparedEdit(BaseModel):
     path: str
     before: bytes
@@ -257,6 +312,7 @@ class PreparedEdit(BaseModel):
 class ApplyResult(BaseModel):
     applied: tuple[str, ...]
     already_present: tuple[str, ...]
+    pending_review: tuple[str, ...] = ()
 
 
 def apply_plan(vault: Path, plan: Plan) -> ApplyResult:
@@ -265,12 +321,16 @@ def apply_plan(vault: Path, plan: Plan) -> ApplyResult:
     scope = Scope.load()
     edits = []
     existing = []
+    pending = []
     # Preflight the whole reviewed set before changing any file.
     for item in plan.candidates:
         path = scope.target(vault, item.path)
         note = Note.read(path)
         if "created" in note.metadata.model_fields_set:
             existing.append(item.path)
+            continue
+        if item.requires_review:
+            pending.append(item.path)
             continue
         if hashlib.sha256(note.content).hexdigest() != item.sha256:
             raise ValueError(f"note changed since review: {item.path}")
@@ -280,7 +340,7 @@ def apply_plan(vault: Path, plan: Plan) -> ApplyResult:
         scope.target(vault, edit.path)
         write_vault_file(vault, Path(edit.path), edit.after, replace=True, expected_content=edit.before)
         applied.append(edit.path)
-    return ApplyResult(applied=tuple(applied), already_present=tuple(existing))
+    return ApplyResult(applied=tuple(applied), already_present=tuple(existing), pending_review=tuple(pending))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -299,13 +359,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--evidence", type=Path, help="JSON records with vetted path, created, and source values"
     )
+    parser.add_argument(
+        "--syncthing-history", type=Path, help="Read explicit creation metadata from archived notes"
+    )
     args = parser.parse_args(argv)
     try:
         vault = resolve_vault(args.vault)
         if args.plan.resolve().is_relative_to(vault):
             raise ValueError("store the review plan outside the vault")
         if args.action == "apply":
-            if args.source_field or args.path or args.evidence:
+            if args.source_field or args.path or args.evidence or args.syncthing_history:
                 raise ValueError("apply uses the reviewed plan; selection/evidence flags belong to planning")
             result = apply_plan(vault, Plan.model_validate_json(args.plan.read_text()))
             print(result.model_dump_json(indent=2))
@@ -315,14 +378,18 @@ def main(argv: list[str] | None = None) -> int:
                 if args.evidence
                 else EvidenceFile()
             )
-            plan = make_plan(
-                vault, ScanOptions(source_fields=args.source_field, paths=args.path, evidence=evidence)
-            )
+            options = ScanOptions(source_fields=args.source_field, paths=args.path, evidence=evidence)
+            plan = make_plan(vault, options)
+            if args.syncthing_history:
+                recovered = recover_history(vault, args.syncthing_history, plan)
+                options.evidence = EvidenceFile(records=(*evidence.records, *recovered.records))
+                plan = make_plan(vault, options)
             descriptor = os.open(args.plan, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
                 stream.write(plan.model_dump_json(indent=2) + "\n")
             print(
-                f"Planned {len(plan.candidates)} repairs; {len(plan.unresolved)} unresolved; "
+                f"Proposed {len(plan.candidates)} dates ({sum(item.requires_review for item in plan.candidates)} "
+                f"require review); {len(plan.unresolved)} unresolved; "
                 f"{plan.existing} existing dates preserved; {plan.excluded} paths excluded."
             )
             print(f"Review {args.plan}; the vault has not been changed.")
