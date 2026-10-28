@@ -63,7 +63,7 @@ from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE, make_embedding_provider
 from lib.vault_index.filters import path_passes
 from lib.vault_index.index_state import rebuild_pending, vector_table_exists
-from lib.vault_index.models import Hit, IndexBusyError, SearchReport
+from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
 from lib.vault_index.vector_search import IndexedHybridSearch
 from obsidian_knowledge_vendor import memweave
 
@@ -494,7 +494,9 @@ class Indexer:
                 allowed.append(str(abs_path))
         return allowed
 
-    def full_reindex(self, force: bool = False, *, blocking: bool = False) -> SyncStats:
+    def full_reindex(
+        self, force: bool = False, *, blocking: bool = False, progress: Progress | None = None
+    ) -> SyncStats:
         """Walk vault, index every markdown file matching index filters.
 
         Closes the current MemWeave instance and creates a new one with
@@ -507,16 +509,18 @@ class Indexer:
         Indexer init can detect a model change and auto-rebuild.
         """
         with index_lock(self.cache_dir, exclusive=True, blocking=blocking):
-            return self._full_reindex_unlocked(force=force)
+            return self._full_reindex_unlocked(force=force, progress=progress)
 
-    def _full_reindex_unlocked(self, force: bool = False) -> SyncStats:
+    def _full_reindex_unlocked(self, force: bool = False, *, progress: Progress | None = None) -> SyncStats:
         """Run memweave index assuming the caller owns the exclusive lock."""
         # Close the current store before opening a new one on the same DB.
         asyncio.run(self._store.close())
 
         allowed = self._allowed_vault_files()
         self._store = self._make_store(extra_paths=allowed)
-        result = asyncio.run(self._store.index(force=force or self._needs_rebuild))
+        result = asyncio.run(
+            self._store.index(force=force or self._needs_rebuild, progress_callback=progress)
+        )
         self._write_fingerprint()
         self._needs_rebuild = False
         return SyncStats(

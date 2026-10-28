@@ -83,6 +83,40 @@ def test_main_reindex_outcomes(tmp_path, monkeypatch, capsys, outcome):
     assert expected[outcome] in output.out + output.err
 
 
+def test_reindex_progress_is_interactive_only(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "resolve_vault", lambda _vault: tmp_path)
+    monkeypatch.setattr(cli, "default_cache_dir_for_vault", lambda _vault: tmp_path / "cache")
+    monkeypatch.setattr("sys.stderr.isatty", lambda: True)
+
+    class Index:
+        def __init__(self, **_kwargs):
+            pass
+
+        def full_reindex(self, *, force, progress):
+            progress(0, 2)
+            progress(2, 2)
+            return SimpleNamespace(indexed=2, skipped=0, deleted=0)
+
+    monkeypatch.setattr("lib.vault_index.indexer.Indexer", Index)
+    assert run_main(monkeypatch, "reindex", "--vault", str(tmp_path)) == 0
+    output = capsys.readouterr()
+    assert "2/2" in output.err
+    assert "Reindexing" not in output.out
+    assert "Indexed: 2" in output.out
+
+
+def test_reindex_progress_throttles_and_handles_empty(capsys, monkeypatch):
+    monkeypatch.setattr(cli.time, "monotonic", lambda: 1.0)
+    progress = cli.ReindexProgress()
+    progress.close()
+    progress(0, 0)
+    progress(1, 2)
+    progress.close()
+    output = capsys.readouterr().err
+    assert "0/0" in output
+    assert "1/2" not in output
+
+
 @pytest.mark.parametrize("needs_rebuild", [False, True])
 def test_search_deadline_interrupts_index_lock_wait(tmp_path, needs_rebuild):
     script = f"""

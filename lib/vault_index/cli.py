@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -23,6 +24,34 @@ from vault_preferences import load_preferences, preferences_path
 from lib.vault_index.models import Hit, IndexBusyError
 from lib.vault_index.registration import existing_vault, read_registry, register_vault
 from lib.vault_index.vault_files import read_vault_file, write_vault_file
+
+
+class ReindexProgress:
+    """Render completed files on a single terminal line."""
+
+    def __init__(self):
+        self.last_update = 0.0
+        self.shown = False
+
+    def __call__(self, done: int, total: int) -> None:
+        now = time.monotonic()
+        if done and done < total and now - self.last_update < 0.1:
+            return
+        width = 30
+        filled = width * done // total if total else width
+        print(
+            f"\rReindexing: [{'#' * filled}{'-' * (width - filled)}] {done}/{total}",
+            end="",
+            file=sys.stderr,
+            flush=True,
+        )
+        self.last_update = now
+        self.shown = True
+
+    def close(self) -> None:
+        if self.shown:
+            print(file=sys.stderr, flush=True)
+
 
 DEFAULT_VAULT_INDEX_TEMPLATE = """
 # Vault index config — drives memweave retrieval, filtering, and weighting.
@@ -698,7 +727,14 @@ def main() -> int:
                 cache.mkdir(parents=True, exist_ok=True)
                 cfg = load_config()
                 idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
-                stats = idx.full_reindex(force=args.force)
+                if sys.stderr.isatty():
+                    progress = ReindexProgress()
+                    try:
+                        stats = idx.full_reindex(force=args.force, progress=progress)
+                    finally:
+                        progress.close()
+                else:
+                    stats = idx.full_reindex(force=args.force)
         except IndexBusyError:
             print(
                 "reindex: another index operation is in progress (lock held); exiting cleanly.",

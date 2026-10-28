@@ -8,9 +8,12 @@ rather than only under TYPE_CHECKING.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 from pydantic import BaseModel
+
+Progress = Callable[[int, int], None]
 
 
 class IndexBusyError(RuntimeError):
