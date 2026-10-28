@@ -1,4 +1,4 @@
-"""Plan and apply evidence-based created-date repairs without guessing timestamps."""
+"""Plan and apply created-date repairs from explicitly supplied evidence."""
 
 from __future__ import annotations
 
@@ -54,6 +54,7 @@ class Evidence(BaseModel):
     created: CreationDate
     source: str = Field(min_length=1)
     requires_review: bool = False
+    estimated: bool = False
     note_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("source")
@@ -211,6 +212,7 @@ def choose_evidence(relative: str, note: Note, options: ScanOptions) -> Evidence
         created=evidence[0].created,
         source="; ".join(sorted({item.source for item in evidence})),
         requires_review=all(item.requires_review for item in evidence),
+        estimated=all(item.estimated for item in evidence),
     )
 
 
@@ -389,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
                 stream.write(plan.model_dump_json(indent=2) + "\n")
             print(
                 f"Proposed {len(plan.candidates)} dates ({sum(item.requires_review for item in plan.candidates)} "
-                f"require review); {len(plan.unresolved)} unresolved; "
+                f"require review, {sum(item.estimated for item in plan.candidates)} estimated); {len(plan.unresolved)} unresolved; "
                 f"{plan.existing} existing dates preserved; {plan.excluded} paths excluded."
             )
             print(f"Review {args.plan}; the vault has not been changed.")

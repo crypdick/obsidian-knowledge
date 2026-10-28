@@ -320,6 +320,55 @@ stop it partway. Rerunning the plan preserves notes that already have `created`.
 Retain the plan as the provenance record for the repair.
 The application result lists skipped `pending_review` paths separately.
 
+### Accept filename dates and infer additional dates
+
+When approximate dates are acceptable, the separate inference command produces
+evidence from a previous plan without changing notes:
+
+```bash
+uv run python -m scripts.infer_created \
+  --input-plan /tmp/created-review.json \
+  --output-evidence /tmp/created-inferred-evidence.json \
+  --filename-dates \
+  --history /absolute/path/to/vault/.stversions \
+  --mtime
+
+uv run python scripts/backfill_created.py plan \
+  --vault /absolute/path/to/vault \
+  --evidence /tmp/created-inferred-evidence.json \
+  --plan /tmp/created-inferred-review.json
+```
+
+`--filename-dates` explicitly accepts a valid, nonfuture leading `YYYY-MM-DD`
+as authoritative for missing creation dates, ahead of other evidence. This is
+opt-in because filenames can otherwise describe a document or event date.
+Existing `created` values remain unchanged. Neither command guesses incomplete
+dates such as `2024-06`.
+
+For undated filenames, existing verified proposals remain intact. Historical
+proposals that previously required review become estimates. Other missing
+dates prefer archived `created` metadata; conflicting historical dates use the
+earliest value and identify the conflict in the source. Repeat `--dated-path`
+for scopes where filename or opening dates describe note-writing and should
+be used as estimates. Unlike `--filename-dates`, those dates must not postdate
+an available observation.
+
+`--mtime` enables an upper-bound fallback: the earliest valid current/archived
+file modification time or `updated`/`modified` property. Optional
+`--observations` accepts JSON `records` containing `path`, `observed` (an ISO
+date or timestamp), and `source`, for example a backup's first observation or
+preserved modification date. These are estimates, not proof of creation.
+Filesystem ctime and the timestamps in Syncthing version filenames are never
+used. Inferred dates use calendar-day precision in the executing host's local
+timezone for filesystem timestamps.
+
+The resulting records and review plan mark approximations with `estimated:
+true` and retain their basis in `source`. Accepted filename dates have
+`estimated: false`. Evidence binds to each note's SHA-256, and output files are
+private, outside the vault, and never overwritten. Applying the reviewed plan
+also applies its estimates; review their sources before application. Only the
+`created` property is added, so retain the plan to distinguish estimates later.
+
 Link recovery still needs the Obsidian CLI to supply unresolved links:
 
 ```bash
