@@ -52,6 +52,12 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   overwriting. Parent directories are created as needed. New Markdown notes
   apply the declarative [configured creation defaults](configuration.md#note-creation)
   before writing; replacements never rerun them. No running app is required.
+  Replacements preserve the existing UID, GID and permission bits on the
+  temporary inode before publication. If ownership cannot be preserved, the
+  write fails and leaves the original file intact. New files use the writer's
+  identity and the destination directory's group inheritance; shared-vault
+  operators must configure those permissions rather than relying on a package
+  default group. This does not copy extended ACLs or other extended attributes.
 - `vault_patch(path, old_str, new_str, expected_sha256=None)` replaces exactly
   one occurrence of `old_str` in a UTF-8 file, including frontmatter. Empty,
   missing, and ambiguous matches (including overlaps) are rejected. Untouched

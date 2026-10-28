@@ -28,8 +28,11 @@ for _git_var in (
 
 @pytest.fixture(autouse=True)
 def _isolated_preferences(tmp_path, monkeypatch):
-    """Never read or mutate the operator's shared preferences during tests."""
+    """Isolate preferences and clear ambient vault registry overrides."""
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CONFIG", str(tmp_path / "preferences.yaml"))
+    # Tests exercise HOME-based discovery; caller overrides must not supersede it.
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", raising=False)
 
 
 @pytest.fixture(autouse=True)

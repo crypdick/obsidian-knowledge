@@ -73,10 +73,14 @@ def write_vault_file(
     target.parent.mkdir(parents=True, exist_ok=True)
     target = resolve_vault_file(vault_root, relative_path)
 
-    mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o644
+    original_stat = target.stat() if target.exists() else None
+    mode = stat.S_IMODE(original_stat.st_mode) if original_stat is not None else 0o644
     fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
     temp = Path(temp_name)
     try:
+        # NOTE: docs/MCP.md, vault_write: retain existing access ownership before publication.
+        if original_stat is not None:
+            os.fchown(fd, original_stat.st_uid, original_stat.st_gid)
         os.fchmod(fd, mode)
         with os.fdopen(fd, "wb") as stream:
             fd = -1
