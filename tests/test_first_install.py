@@ -69,6 +69,48 @@ def test_enabling_ollama_embeds_unchanged_keyword_index(vault, tmp_path, monkeyp
         asyncio.run(idx._store.close())
 
 
+def test_cross_file_batches_survive_interruption(vault, tmp_path, monkeypatch, embed):
+    (vault / "other.md").write_text("# Rust\nRust is a systems language.\n")
+    monkeypatch.setattr("lib.vault_index.indexer._ollama_probe", lambda *_: (True, "available"))
+    idx = Indexer(vault, tmp_path / "cache", VaultIndexConfig())
+
+    def interrupt(done, total):
+        if done == 1:
+            raise RuntimeError("interrupted")
+
+    try:
+        with pytest.raises(RuntimeError, match="interrupted"):
+            idx.full_reindex(force=True, progress=interrupt)
+        assert embed.await_count == 1
+        assert len(embed.await_args.args[0]) == 2
+        embed.reset_mock()
+        stats = idx.full_reindex(force=True)
+        assert stats.indexed == 1
+        assert stats.skipped == 1
+        embed.assert_not_awaited()
+        assert idx.row_count() == 2
+    finally:
+        asyncio.run(idx._store.close())
+
+
+def test_failed_cross_file_batch_retries_per_file(vault, tmp_path, monkeypatch, embed):
+    (vault / "other.md").write_text("# Rust\nRust is a systems language.\n")
+    monkeypatch.setattr("lib.vault_index.indexer._ollama_probe", lambda *_: (True, "available"))
+
+    async def vectors(texts):
+        if len(texts) > 1:
+            raise ValueError("batch failure")
+        return [[1.0, 0.0] for _ in texts]
+
+    embed.side_effect = vectors
+    idx = Indexer(vault, tmp_path / "cache", VaultIndexConfig())
+    try:
+        assert idx.full_reindex().indexed == 2
+        assert [len(call.args[0]) for call in embed.await_args_list] == [2, 1, 1]
+    finally:
+        asyncio.run(idx._store.close())
+
+
 def test_offline_updates_are_embedded_when_ollama_returns(vault, tmp_path, monkeypatch, embed):
     cache = tmp_path / "cache"
     monkeypatch.setattr("lib.vault_index.indexer._ollama_probe", lambda *_: (True, "available"))
