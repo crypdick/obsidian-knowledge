@@ -43,6 +43,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -590,7 +591,7 @@ class MemWeave:
 
     # ── Indexing ──────────────────────────────────────────────────────────────
 
-    async def index(self, *, force: bool = False) -> IndexResult:
+    async def index(self, *, force: bool = False, progress_callback: Callable[[int, int], None] | None = None) -> IndexResult:
         """Scan the workspace for changed files and re-index them.
 
         Uses SHA-256 hash comparison to detect changes — files whose content
@@ -618,7 +619,7 @@ class MemWeave:
         p = self.config.progress
         emit(p, EMOJI_INDEX_SCAN, "index", f"scanning workspace{' (force)' if force else ''}...")
         logger.info("index: scanning workspace %s (force=%s)", self.config.workspace_dir, force)
-        result = await self._run_sync(force=force)
+        result = await self._run_sync(force=force, progress_callback=progress_callback)
         emit(
             p,
             EMOJI_INDEX_DONE,
@@ -693,7 +694,7 @@ class MemWeave:
         logger.info("add: done — %d chunks created", index_result.chunks_created)
         return index_result
 
-    async def _run_sync(self, *, force: bool = False) -> IndexResult:
+    async def _run_sync(self, *, force: bool = False, progress_callback: Callable[[int, int], None] | None = None) -> IndexResult:
         """Full sync: discover all files, re-index changed ones, prune stale."""
         assert self._store is not None
 
@@ -702,6 +703,8 @@ class MemWeave:
         start = time.monotonic()
 
         disk_files = list_memory_files(workspace, self.config.extra_paths)
+        if progress_callback is not None:
+            progress_callback(0, len(disk_files))
         disk_paths = {relative_path(f, workspace) for f in disk_files}
         emit(p, EMOJI_INDEX_SCAN, "index", f"{len(disk_files)} file(s) found")
 
@@ -753,6 +756,8 @@ class MemWeave:
             total_chunks += r["chunks_created"]
             total_cached += r["embeddings_cached"]
             total_computed += r["embeddings_computed"]
+            if progress_callback is not None:
+                progress_callback(i, len(disk_files))
 
         # Prune stale files (removed from disk but still in DB)
         stored_files = await self._store.list_files()

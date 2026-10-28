@@ -55,6 +55,15 @@ def test_full_reindex_indexes_wiki_files(vault: Path, cfg, tmp_path: Path, make_
     assert idx.row_count() >= 2
 
 
+def test_reindex_progress_counts_completed_files(vault, cfg, tmp_path, make_indexer):
+    idx = make_indexer(vault_root=vault, cache_dir=tmp_path / "cache", config=cfg)
+    updates = []
+    stats = idx.full_reindex(progress=lambda done, total: updates.append((done, total)))
+    assert updates[0][0] == 0
+    assert updates[-1] == (stats.indexed + stats.skipped, stats.indexed + stats.skipped)
+    assert [done for done, _ in updates] == list(range(len(updates)))
+
+
 def test_full_reindex_refuses_when_index_lock_is_held(vault: Path, cfg, tmp_path: Path, make_indexer):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
