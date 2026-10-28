@@ -77,7 +77,7 @@ Or ask your agent to use a skill:
 Vault organization requires the Obsidian CLI. In Obsidian, enable
 **Settings > General > Command line interface**, **Use [[Wikilinks]]**, and
 **Automatically update internal links**. Put naming conventions in your vault's
-`CLAUDE.md` and configure [managed zones](docs/configuration.md#vault-configuration).
+`CLAUDE.md` and configure [managed zones](docs/configuration.md#shared-preferences-and-host-locations).
 Maintenance tools ship in the CLI: run `obsidian-knowledge garden --help`.
 See [vault maintenance](docs/CLI.md#vault-maintenance) for audit and repair commands.
 
