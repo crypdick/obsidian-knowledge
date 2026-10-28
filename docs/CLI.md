@@ -36,7 +36,7 @@ Use these commands to configure, search, and maintain the vault:
 | `init-vault-index` | Create the shared `config.yaml` preferences and its parent directory, or append search defaults to an existing mapping. An existing `vault_index` section is left unchanged. |
 | `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
 | `write PATH [--replace]` | Read stdin, apply opt-in [configured creation defaults](configuration.md#note-creation) to new Markdown files, then atomically write and verify bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Does not reindex. |
-| `reindex [--force] [--timeout-seconds N]` | Show an in-place progress bar on interactive stderr, index changed files and remove stale index entries. `--force` reprocesses unchanged files too. Does not delete vault notes. |
+| `reindex [--force] [--timeout-seconds N]` | Show an in-place progress bar on interactive stderr, index changed files and remove stale index entries. Embeddings for small notes are batched across files; completed notes and cached embeddings survive interruption. `--force` reprocesses unchanged files too. Does not delete vault notes. |
 | `search QUERY [--top-k N] [--all] [--json]` | Print ranked paths and snippets, or a JSON search report. `--all` bypasses the digest filter, not the indexing exclusions. |
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
 | `papercut DESCRIPTION` | Append avoidable or fixable workflow friction to the repository's vault log, or the global log if no repository is identified. |

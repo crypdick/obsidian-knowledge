@@ -82,6 +82,7 @@ from obsidian_knowledge_vendor.memweave._progress import (
 from obsidian_knowledge_vendor.memweave.chunking.markdown import chunk_markdown
 from obsidian_knowledge_vendor.memweave.config import MemoryConfig
 from obsidian_knowledge_vendor.memweave.embedding.cache import evict_cache_if_needed, get_cached_embeddings, store_embedding
+from obsidian_knowledge_vendor.memweave.embedding.prefetch import PREFETCH_FILES, prefetch_embeddings
 from obsidian_knowledge_vendor.memweave.embedding.provider import EmbeddingProvider, LiteLLMEmbeddingProvider
 from obsidian_knowledge_vendor.memweave.embedding.vectors import normalize_embedding
 from obsidian_knowledge_vendor.memweave.exceptions import EmbeddingError, SearchError, StorageError
@@ -738,6 +739,11 @@ class MemWeave:
             rel = relative_path(abs_path, workspace)
             emit(p, EMOJI_INDEX_FILE, "index", f"{rel}  ({i}/{len(disk_files)})")
             try:
+                if self._vector_available and self.config.cache.enabled and (i - 1) % PREFETCH_FILES == 0:
+                    total_computed += await prefetch_embeddings(
+                        self, disk_files[i - 1 : i - 1 + PREFETCH_FILES], workspace,
+                        force=force, completed=completed,
+                    )
                 r = await self._index_file(
                     abs_path, workspace, force=force and rel not in completed
                 )
