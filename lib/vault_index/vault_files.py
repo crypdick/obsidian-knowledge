@@ -114,6 +114,15 @@ def write_vault_file(
         temp.unlink(missing_ok=True)
 
 
+def append_vault_file(vault_root: Path, relative_path: Path, content: str, *, inline: bool = False) -> Path:
+    """Append literal UTF-8 content to an existing file through the verified writer."""
+    if not content:
+        raise ValueError("append content must not be empty")
+    baseline = read_vault_file(vault_root, relative_path)
+    combined = baseline + (b"" if inline else b"\n") + content.encode("utf-8")
+    return write_vault_file(vault_root, relative_path, combined, replace=True, expected_content=baseline)
+
+
 def patch_vault_file(
     vault_root: Path,
     relative_path: Path,

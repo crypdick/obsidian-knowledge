@@ -1,4 +1,4 @@
-"""Bounded MCP adapters for the official Obsidian CLI and app APIs."""
+"""MCP append and bounded adapters for the official Obsidian CLI and app APIs."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field, TypeAdapter
 
 from lib.vault_index.obsidian_cli import NativeObsidian
-from lib.vault_index.vault_files import resolve_vault_file
+from lib.vault_index.vault_files import append_vault_file, resolve_vault_file
 
 
 class _NativeMatch(BaseModel):
@@ -122,7 +122,7 @@ def _recent_report(vault: Path, value: object, limit: int) -> dict[str, Any]:
 
 
 def register_native_tools(server: FastMCP, vault: Path, file_lock: LockType) -> None:
-    """Register seven app-backed operations against one configured vault."""
+    """Register confined append and six app-backed operations against one vault."""
     # NOTE: docs/MCP.md, App-backed tools, documents native contracts and discovery bounds.
     native = NativeObsidian(vault)
 
@@ -140,12 +140,13 @@ def register_native_tools(server: FastMCP, vault: Path, file_lock: LockType) -> 
     async def vault_append(
         path: str, content: Annotated[str, Field(min_length=1)], inline: bool = False
     ) -> dict[str, str]:
-        """Append through Obsidian; inline disables its automatic leading newline."""
+        """Append literal UTF-8 atomically without the app; inline disables the leading newline."""
         path = _path(vault, path)
-        arguments = [f"path={path}", f"content={content}"]
-        if inline:
-            arguments.append("inline")
-        await run("append", *arguments)
+        await asyncio.to_thread(
+            run_vault_mutation,
+            file_lock,
+            lambda: append_vault_file(vault, Path(path), content, inline=inline),
+        )
         return {"path": path, "status": "appended"}
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))

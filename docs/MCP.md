@@ -41,6 +41,12 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   failures or lock contention can be retried by a search after 60 seconds.
   `vault_search_update` remains available for an explicit refresh.
 - `vault_read(path)` returns UTF-8 file content.
+- `vault_append(path, content, inline=False)` atomically appends literal UTF-8
+  content to an existing file without a running app. Adds one leading newline
+  unless `inline=True`; backslash escapes remain literal. Empty content is
+  rejected. Existing bytes and access ownership are preserved through the
+  verified writer. Hidden paths, `_sources`, dependency directories, sync
+  conflicts, and symlinks are rejected, as for app tool paths.
 - `download_file(path)` delivers original bytes as an embedded MCP binary
   resource, with filename, MIME type, byte count, and SHA-256 in structured
   metadata. Files above 6 MiB are rejected before encoding; the file reader
@@ -91,8 +97,8 @@ parent-directory escapes are rejected. These tools share the CLI's file
 safeguards; agent lifecycle hooks and zone policies do not run on MCP calls.
 The additional app tools below use the official Obsidian CLI.
 
-Writes and patches serialize within one server, including when a client cancels
-while its write thread is still running. Patch baseline checks detect edits
+Writes, patches, and appends serialize within one server, including when a client cancels
+while its write thread is still running. Patch and append baseline checks detect edits
 before replacement but cannot guarantee atomic comparison and replacement
 against external editors or sync processes.
 
@@ -112,7 +118,7 @@ request timeout are split into smaller batches, preserving order and avoiding
 repeated attempts at the same oversized batch. These behaviors do not require
 deployment-specific wrappers, longer deadlines, or increased CPU limits.
 
-Search uses the current index. Writes and patches do not automatically reindex.
+Search uses the current index. Writes, patches, and appends do not automatically reindex.
 Use `vault_search_update()` or the existing
 `obsidian-knowledge reindex --vault /absolute/path/to/vault` workflow after
 changing notes. See [CLI reference](CLI.md) for indexing, embeddings, and search
@@ -120,13 +126,10 @@ timeout configuration.
 
 ## App-backed tools
 
-These seven tools delegate to the official Obsidian CLI connected to a running
+These six tools delegate to the official Obsidian CLI connected to a running
 app. They are always discoverable; calls fail with an actionable error if the
 CLI or app is unavailable. The original tools above remain usable without the app.
 
-- `vault_append(path, content, inline=False)` uses native append. Obsidian adds
-  its normal leading newline unless `inline=True`. Native CLI escape handling
-  applies to content; this operation does not promise verbatim byte appends.
 - `vault_frontmatter(path, updates=None)` reads native properties. A nonempty
   `updates` object merges fields through Obsidian's `processFrontMatter` API.
   Native YAML formatting and property types apply; this is not a byte-preserving
