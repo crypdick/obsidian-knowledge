@@ -30,7 +30,7 @@ running Templater or changing existing notes.
 `vault_listing.py` provides bounded directory discovery. `mcp_index.py` reads
 persisted index status without rebuilding and parses CLI refresh results.
 `mcp_server.py` exposes these operations and bounded CLI search and refresh
-subprocesses over Streamable HTTP. `mcp_native.py` registers app-backed tools and
+subprocesses over Streamable HTTP. `mcp_native.py` registers confined filesystem append and app-backed tools and
 shares mutation serialization with existing file writes. `obsidian_cli.py` runs
 the official CLI with fixed vault selection, filesystem identity checks, bounded
 output, and subprocess deadlines. Obsidian owns app operations and link rewriting;
