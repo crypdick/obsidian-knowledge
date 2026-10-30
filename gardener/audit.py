@@ -39,7 +39,7 @@ def is_skipped(name: str) -> bool:
 
 
 def extract_wikilink_targets(text: str) -> set[str]:
-    return set(re.findall(r"\[\[([^\]|#^]+)(?:[#^|][^\]]*)?\]\]", text))
+    return set(re.findall(r"\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]", text))
 
 
 def has_visible_content(folder: Path, vault_root: Path) -> bool:
@@ -50,9 +50,24 @@ def has_visible_content(folder: Path, vault_root: Path) -> bool:
 
 
 def links_entry(targets: set[str], entry: Path, folder: Path, vault_root: Path) -> bool:
+    # NOTE: docs/CLI.md, Vault maintenance, describes conservative path resolution.
     expected = entry.relative_to(vault_root).as_posix().removesuffix(".md")
-    local = entry.relative_to(folder).as_posix().removesuffix(".md")
-    return any(target.removesuffix(".md") in {expected, local} for target in targets)
+    bases = (vault_root, folder, *(vault_root / parent for parent in folder.relative_to(vault_root).parents))
+    for target in targets:
+        target = target.removesuffix(".md")
+        if expected != target and not expected.endswith("/" + target):
+            continue
+        for base in bases:
+            relative = base.relative_to(vault_root) / (target + ".md")
+            try:
+                candidate = visible_path(vault_root, relative.as_posix())
+            except ValueError:
+                break
+            if candidate.is_file():
+                if candidate == entry:
+                    return True
+                break
+    return False
 
 
 def audit_folder(folder: Path, vault_root: Path) -> list[str]:

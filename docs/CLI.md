@@ -222,6 +222,14 @@ operations, or `obsidian-knowledge garden OPERATION --help` for their arguments.
 | `questions [--report] [--timestamp ISO_TIME] [--apply]` | Scan managed Markdown for question callouts. Default output is TSV; `--report` previews the standard Markdown report. `--apply` writes `Utility/obsidian-knowledge/reports/open-questions.md`. |
 | `frontmatter PATH... [--apply]` | Preview removal of stray stacked frontmatter markers. Real second YAML blocks require a manual merge and return nonzero. Paths must be vault-relative Markdown files. |
 
+Index coverage checks recognize existing vault-root targets first, then paths
+relative to the source folder and its ancestors, nearest first. A nearer
+existing target prevents credit for a different child. This handles common
+shortened folder paths without guessing from arbitrary suffixes or aliases.
+Heading and block suffixes start at `#`; a literal caret in a filename is not
+treated as a block separator. This filesystem check does not certify every
+Obsidian link-resolution or filename rule.
+
 Repairs default to previews. Use `--apply` for deterministic repairs; preview
 when review would help. Ambiguous link targets and real frontmatter merges
 require judgment.
