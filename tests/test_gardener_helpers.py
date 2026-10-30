@@ -80,6 +80,80 @@ def test_audit_still_flags_misplaced_dates_and_ancestor_name_collision(tmp_path:
     assert f"NOT_INDEXED\t{folder / 'index.md'}\tentry=topic.md" in result.stdout
 
 
+def test_audit_accepts_ancestor_relative_targets_and_literal_caret(tmp_path: Path) -> None:
+    folder = tmp_path / "wiki" / "systems" / "accounts"
+    (folder / "diary").mkdir(parents=True)
+    (folder / "R^n.md").write_text("# Real space\n")
+    (folder / "diary" / "entry.md").write_text("# Entry\n")
+    (folder / "diary" / "index.md").write_text("# Diary\n- [[entry#^block]] — entry\n")
+    index = folder / "index.md"
+    index.write_text(
+        "# Accounts\n- [[accounts/R^n]] — real space\n- [[systems/accounts/diary/index|Diary]] — entries\n"
+    )
+    result = run_garden("audit", tmp_path)
+    assert f"NOT_INDEXED\t{index}" not in result.stdout
+    assert "entry=entry.md" not in result.stdout
+
+    index.write_text(
+        "# Accounts\n- [[other/accounts/R^n]] — wrong prefix\n- [[systems/accounts/diary/entry]] — descendant\n"
+    )
+    result = run_garden("audit", tmp_path)
+    assert f"NOT_INDEXED\t{index}\tentry=R^n.md" in result.stdout
+    assert f"NOT_INDEXED\t{index}\tentry=diary/" in result.stdout
+
+
+def test_audit_does_not_credit_a_nearer_shadow_or_wrong_prefix(tmp_path: Path) -> None:
+    folder = tmp_path / "wiki" / "systems" / "accounts"
+    child = folder / "diary"
+    child.mkdir(parents=True)
+    (child / "entry.md").write_text("# Entry\n")
+    (child / "index.md").write_text("# Diary\n- [[entry]] — entry\n")
+    (folder / "accounts" / "diary").mkdir(parents=True)
+    (folder / "accounts" / "diary" / "index.md").write_text("# Shadow\n")
+    index = folder / "index.md"
+    index.write_text("# Accounts\n- [[accounts/diary/index]] — nearer shadow\n")
+    assert f"NOT_INDEXED\t{index}\tentry=diary/" in run_garden("audit", tmp_path).stdout
+
+    (tmp_path / "accounts" / "diary").mkdir(parents=True)
+    (tmp_path / "accounts" / "diary" / "index.md").write_text("# Vault-root shadow\n")
+    index.write_text("# Accounts\n- [[accounts/diary/index]] — vault-root shadow\n")
+    assert f"NOT_INDEXED\t{index}\tentry=diary/" in run_garden("audit", tmp_path).stdout
+
+    index.write_text("# Accounts\n- [[wiki/systems/accounts/diary/index.md#^block|Diary]] — exact target\n")
+    assert f"NOT_INDEXED\t{index}\tentry=diary/" not in run_garden("audit", tmp_path).stdout
+
+    (tmp_path / "diary").mkdir()
+    (tmp_path / "diary" / "index.md").write_text("# Root diary\n")
+    index.write_text("# Accounts\n- [[diary/index]] — existing vault-root target\n")
+    assert f"NOT_INDEXED\t{index}\tentry=diary/" in run_garden("audit", tmp_path).stdout
+
+
+def test_audit_does_not_credit_a_missing_child_index_or_unsafe_target(tmp_path: Path) -> None:
+    folder = tmp_path / "wiki" / "topic"
+    child = folder / "child"
+    child.mkdir(parents=True)
+    (child / "note.md").write_text("# Note\n")
+    index = folder / "index.md"
+    index.write_text(
+        "# Topic\n- [[child/index]] — missing\n- [[../topic/child/index]] — unsafe\n- [[/child/index]] — absolute\n"
+    )
+    result = run_garden("audit", tmp_path)
+    assert f"MISSING_INDEX\t{child}" in result.stdout
+    assert f"NOT_INDEXED\t{index}\tentry=child/" in result.stdout
+
+
+def test_audit_does_not_follow_symlink_when_resolving_shortened_target(tmp_path: Path) -> None:
+    folder = tmp_path / "wiki" / "topic"
+    child = folder / "child"
+    child.mkdir(parents=True)
+    (child / "entry.md").write_text("# Entry\n")
+    (child / "index.md").write_text("# Child\n- [[entry]] — entry\n")
+    (tmp_path / "topic").symlink_to(folder, target_is_directory=True)
+    index = folder / "index.md"
+    index.write_text("# Topic\n- [[topic/child/index]] — symlink target\n")
+    assert f"NOT_INDEXED\t{index}\tentry=child/" in run_garden("audit", tmp_path).stdout
+
+
 def test_index_editor_preserves_sections_and_dry_run(tmp_path: Path) -> None:
     folder = tmp_path / "wiki" / "topic"
     (folder / "child").mkdir(parents=True)
