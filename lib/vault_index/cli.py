@@ -719,6 +719,11 @@ def main() -> int:
     if delegated is not None:
         return delegated
 
+    return run_command(args, parser)
+
+
+def run_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Run an already-parsed command after host write delegation."""
     if args.cmd == "setup":
         with search_ttl(args.timeout_seconds, label="setup"):
             setup(
