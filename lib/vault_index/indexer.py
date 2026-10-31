@@ -52,7 +52,10 @@ import re
 import sqlite3
 import urllib.error
 import urllib.request
+from collections.abc import Callable
+from contextlib import closing
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +67,7 @@ from lib.vault_index.filters import path_passes
 from lib.vault_index.index_lock import index_lock
 from lib.vault_index.index_state import indexed_file_count, rebuild_pending, vector_table_exists
 from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
+from lib.vault_index.snippets import with_snippets
 from lib.vault_index.vector_search import IndexedHybridSearch
 from obsidian_knowledge_vendor import memweave
 
@@ -79,7 +83,6 @@ FINGERPRINT_FILENAME = "embedder-fingerprint.txt"
 APP_NAME = "obsidian-knowledge"
 CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
 SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
-SNIPPET_MAX_CHARS = 240
 
 
 def _cache_base_dir() -> Path:
@@ -342,71 +345,12 @@ class Indexer:
         terms = re.findall(r"[\w-]+", query)
         return " OR ".join(f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms)
 
-    @staticmethod
-    def _query_terms(query: str) -> list[str]:
-        """Return normalized query tokens used for snippet selection."""
-        return [term.lower() for term in re.findall(r"[\w-]+", query) if term.strip()]
-
-    @staticmethod
-    def _collapse_snippet_text(text: str) -> str:
-        return re.sub(r"\s+", " ", text).strip()
-
-    @staticmethod
-    def _crop_snippet(line: str, terms: list[str]) -> str:
-        """Crop a single-line snippet around the earliest query-term match."""
-        if len(line) <= SNIPPET_MAX_CHARS:
-            return line
-
-        lowered = line.lower()
-        positions = [lowered.find(term) for term in terms if lowered.find(term) >= 0]
-        anchor = min(positions) if positions else 0
-        start = max(0, anchor - SNIPPET_MAX_CHARS // 3)
-        end = start + SNIPPET_MAX_CHARS
-        if end > len(line):
-            end = len(line)
-            start = max(0, end - SNIPPET_MAX_CHARS)
-        snippet = line[start:end].strip()
-        if start > 0:
-            snippet = "..." + snippet
-        if end < len(line):
-            snippet += "..."
-        return snippet
-
-    def _snippet_for_path(self, rel_path: str, terms: list[str]) -> str:
-        """Read a vault-relative markdown file and return a one-line search snippet."""
-        candidate = self.vault_root / rel_path
-        try:
-            candidate.resolve().relative_to(self.vault_root.resolve())
-        except (OSError, ValueError):
-            return ""
-
-        try:
-            text = candidate.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return ""
-
-        lines = [self._collapse_snippet_text(line) for line in text.splitlines()]
-        lines = [line for line in lines if line]
-        if not lines:
-            return ""
-
-        def score(line: str) -> tuple[int, int]:
-            lowered = line.lower()
-            matched = sum(1 for term in terms if term in lowered)
-            return (matched, -len(line))
-
-        if terms:
-            best = max(lines, key=score)
-            if score(best)[0] > 0:
-                return self._crop_snippet(best, terms)
-
-        return self._crop_snippet(lines[0], terms)
-
     def _with_snippets(self, hits: list[Hit], query: str) -> list[Hit]:
-        terms = self._query_terms(query)
-        return [hit.model_copy(update={"snippet": self._snippet_for_path(hit.path, terms)}) for hit in hits]
+        return with_snippets(self.vault_root, hits, query)
 
-    def _sqlite_fts_search(self, query: str, candidate_count: int) -> list[Hit]:
+    def _sqlite_fts_search(
+        self, query: str, candidate_count: int, keep: Callable[[str], bool] = lambda _path: True
+    ) -> list[Hit]:
         """Use the persisted FTS table directly when vector retrieval is degraded.
 
         memweave can still touch vector/litellm machinery during search even
@@ -418,21 +362,30 @@ class Indexer:
         if not db_path.exists():
             return []
 
-        def run(match_query: str) -> list[tuple[str, float]]:
-            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
-                return conn.execute(
+        def run(match_query: str) -> dict[str, float]:
+            # Filter paths while reading rather than after a LIMIT: otherwise
+            # many matching chunks outside ``keep`` can hide every kept path.
+            best_by_path: dict[str, float] = {}
+            with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
+                rows = conn.execute(
                     """
                     SELECT path, -bm25(chunks_fts) AS score
                     FROM chunks_fts
                     WHERE chunks_fts MATCH ?
                     ORDER BY bm25(chunks_fts)
-                    LIMIT ?
                     """,
-                    (match_query, max(candidate_count * 3, candidate_count)),
-                ).fetchall()
+                    (match_query,),
+                )
+                for path, score in rows:
+                    rel = self._abs_to_rel(path)
+                    if rel not in best_by_path and keep(rel):
+                        best_by_path[rel] = score  # rows arrive best-first
+                        if len(best_by_path) == candidate_count:
+                            break
+            return best_by_path
 
         try:
-            rows = run(query)
+            best_by_path = run(query)
         except sqlite3.DatabaseError as exc:
             if "database is locked" in str(exc).lower():
                 raise IndexBusyError(f"vault index is busy: {exc}") from exc
@@ -440,20 +393,14 @@ class Indexer:
             if not safe_query:
                 return []
             try:
-                rows = run(safe_query)
+                best_by_path = run(safe_query)
             except sqlite3.DatabaseError as exc:
                 if "database is locked" in str(exc).lower():
                     raise IndexBusyError(f"vault index is busy: {exc}") from exc
                 return []
 
-        best_by_path: dict[str, float] = {}
-        for path, score in rows:
-            rel = self._abs_to_rel(path)
-            best_by_path[rel] = max(best_by_path.get(rel, float("-inf")), score)
-        ranked = sorted(best_by_path.items(), key=lambda item: item[1], reverse=True)
         return [
-            Hit(path=path, score=round(score, 1), weight_applied=1.0)
-            for path, score in ranked[:candidate_count]
+            Hit(path=path, score=round(score, 1), weight_applied=1.0) for path, score in best_by_path.items()
         ]
 
     def row_count(self) -> int:
@@ -467,13 +414,15 @@ class Indexer:
         return [self._abs_to_rel(f.path) for f in files]
 
     def _allowed_vault_files(self) -> list[str]:
-        """Return absolute paths of all vault .md files passing index filters."""
+        """Return absolute paths of all vault .md files passing index filters, digest first."""
         allowed = []
         for abs_path in self.vault_root.rglob("*.md"):
             rel = str(abs_path.relative_to(self.vault_root))
             if path_passes(rel, self.config.index):
-                allowed.append(str(abs_path))
-        return allowed
+                allowed.append((not path_passes(rel, self.config.digest), rel, str(abs_path)))
+        # Index digest notes first so a slow first build or rebuild makes the
+        # notes searched by default available earliest.
+        return [abs_path for _later, _rel, abs_path in sorted(allowed)]
 
     def full_reindex(
         self, force: bool = False, *, blocking: bool = False, progress: Progress | None = None
@@ -584,7 +533,12 @@ class Indexer:
             return apply_filters(hits, cfg, override_digest_filter=override_digest_filter)
 
         def keyword_report(reason: str) -> SearchReport:
-            hits = self._with_snippets(filtered(self._sqlite_fts_search(query, candidate_count)), query)
+            keep = (
+                (lambda _path: True)
+                if override_digest_filter
+                else partial(path_passes, filt=self.config.digest)
+            )
+            hits = self._with_snippets(filtered(self._sqlite_fts_search(query, candidate_count, keep)), query)
             return SearchReport(mode="keyword", degraded_reason=reason, hits=hits)
 
         if not self._vector_enabled:
