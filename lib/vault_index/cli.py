@@ -517,6 +517,8 @@ def run_host_write_command(command: str, repository: str | None, vault: Path | N
     if selected not in [root.expanduser().resolve() for root in writer.vaults]:
         return None
     arguments = sys.argv[1:]
+    if vault is None:
+        arguments = [*arguments, "--vault", str(selected)]
     if command == "papercut" and repository is None:
         from lib.vault_index.papercuts import papercut_repository
 
@@ -551,6 +553,9 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
     from lib.vault_index.config import load_config
     from lib.vault_index.indexer import Indexer, default_cache_dir
 
+    no_wait = getattr(args, "no_wait", False)
+    if args.cmd == "search" and no_wait and not getattr(args, "no_rebuild", False):
+        raise ValueError("search --no-wait requires --no-rebuild")
     vault = resolve_vault(args.vault)
     cfg = load_config()
     cache = default_cache_dir(vault)
@@ -571,7 +576,11 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
     query = args.query if args.cmd == "search" else args.memory
     if args.cmd == "search" and getattr(args, "json", False):
         search_report = idx.search_report(
-            query, top_k=args.top_k, override_digest_filter=args.all, allow_rebuild=not args.no_rebuild
+            query,
+            top_k=args.top_k,
+            override_digest_filter=args.all,
+            allow_rebuild=not args.no_rebuild,
+            wait_for_writer=not no_wait,
         )
         print(search_report.model_dump_json())
         return 0
@@ -580,6 +589,7 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
         top_k=args.top_k,
         override_digest_filter=args.all,
         allow_rebuild=not getattr(args, "no_rebuild", False),
+        wait_for_writer=not no_wait,
     )
     if args.cmd == "remember":
         print(format_remember_candidates(hits))
@@ -662,6 +672,11 @@ def main() -> int:
     p_search.add_argument("--top-k", type=positive_int, default=None)
     p_search.add_argument(
         "--no-rebuild", action="store_true", help="Use keyword results when vector reindexing is required."
+    )
+    p_search.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Report busy instead of waiting for an index writer; requires --no-rebuild.",
     )
     p_search.add_argument(
         "--json", action="store_true", help="Print hits and retrieval mode as one JSON object"
