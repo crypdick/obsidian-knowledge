@@ -162,7 +162,8 @@ def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
     memweave uses one SQLite DB per vault cache. Reindex/sync are writers and
     must be exclusive; search is a reader and takes a shared lock so writers do
     not collide with an in-flight query. Scheduled indexing skips contention;
-    searches wait, bounded by the caller's deadline.
+    CLI searches normally wait within their deadline; MCP searches request a
+    nonblocking shared lock and report busy. See docs/MCP.md's search contract.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     lock_path = cache_dir / ".index.sqlite.lock"
@@ -173,7 +174,9 @@ def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
         try:
             fcntl.flock(lock_f.fileno(), mode)
         except BlockingIOError as exc:
-            raise IndexBusyError("vault index is busy") from exc
+            raise IndexBusyError(
+                "vault index is busy: another operation holds the index lock; retry after it completes"
+            ) from exc
         try:
             yield
         finally:
@@ -554,6 +557,7 @@ class Indexer:
         min_score: float | None = None,
         override_digest_filter: bool = False,
         allow_rebuild: bool = True,
+        wait_for_writer: bool = True,
     ) -> list[Hit]:
         """Return ranked hits; see search_report for retrieval metadata."""
         return self.search_report(
@@ -562,6 +566,7 @@ class Indexer:
             min_score=min_score,
             override_digest_filter=override_digest_filter,
             allow_rebuild=allow_rebuild,
+            wait_for_writer=wait_for_writer,
         ).hits
 
     def search_report(
@@ -572,6 +577,7 @@ class Indexer:
         min_score: float | None = None,
         override_digest_filter: bool = False,
         allow_rebuild: bool = True,
+        wait_for_writer: bool = True,
     ) -> SearchReport:
         """Run retrieval and report its actual mode, including query fallbacks.
 
@@ -613,7 +619,7 @@ class Indexer:
             try:
                 # NOTE: docs/CLI.md "Search health and network access" documents
                 # waiting within the whole-command search deadline.
-                with index_lock(self.cache_dir, exclusive=False, blocking=True):
+                with index_lock(self.cache_dir, exclusive=False, blocking=wait_for_writer):
                     return asyncio.run(self._store.search(query, max_results=candidate_count, min_score=0.0))
             except (sqlite3.OperationalError, memweave.StorageError) as exc:
                 if "database is locked" in str(exc).lower():
