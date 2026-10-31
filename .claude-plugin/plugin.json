@@ -1,6 +1,6 @@
 {
   "name": "obsidian-knowledge",
-  "version": "3.30.14",
+  "version": "3.30.15",
   "description": "Claude Code plugin that manages an Obsidian knowledge vault: capture, organize, index, and garden",
   "author": {
     "name": "Ricardo Decal"
