@@ -101,6 +101,7 @@ DEFAULT_SEARCH_TTL_SECONDS = 30
 
 
 class _WriterConfig(BaseModel):
+    vaults: list[Path] = Field(default_factory=list)
     write_command: (
         Annotated[list[Annotated[str, Field(strict=True, min_length=1)]], Field(min_length=1)] | None
     ) = None
@@ -503,7 +504,7 @@ def run_papercut(
     return 0
 
 
-def run_host_write_command(command: str, repository: str | None) -> int | None:
+def run_host_write_command(command: str, repository: str | None, vault: Path | None) -> int | None:
     """Delegate host note mutations without changing their caller's identity."""
     if command not in {"write", "papercut"}:
         return None
@@ -511,6 +512,9 @@ def run_host_write_command(command: str, repository: str | None) -> int | None:
     # never fall back to creating notes as a different identity after failure.
     writer = _WriterConfig.model_validate(read_registry(vaults_config_path()))
     if writer.write_command is None:
+        return None
+    selected = resolve_vault(vault)
+    if selected not in [root.expanduser().resolve() for root in writer.vaults]:
         return None
     arguments = sys.argv[1:]
     if command == "papercut" and repository is None:
@@ -715,7 +719,9 @@ def main() -> int:
     sub.add_parser("garden", help="audit and repair vault structure, links and reports")
     args = parser.parse_args()
 
-    delegated = run_host_write_command(args.cmd, getattr(args, "repository", None))
+    delegated = run_host_write_command(
+        args.cmd, getattr(args, "repository", None), getattr(args, "vault", None)
+    )
     if delegated is not None:
         return delegated
 

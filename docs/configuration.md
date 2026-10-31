@@ -52,7 +52,9 @@ write_command:
   - /usr/local/bin/shared-vault-writer
 ```
 
-The CLI appends the original subcommand and arguments without a shell, preserves
+The prefix applies only to roots registered in that host file; an explicit,
+unregistered `--vault` keeps its normal local behavior. The CLI appends the
+original subcommand and arguments without a shell, preserves
 stdin and working directory, and returns the writer's exit code. Failures never
 fall back to local writes. Reads, retrieval and lifecycle hooks stay local.
 Before delegating a papercut it captures the caller's repository scope, so the
