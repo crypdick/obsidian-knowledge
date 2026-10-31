@@ -216,7 +216,11 @@ and prints `index: not updated (...); the next sync will index PATH` to stderr.
 
 `reindex` has no deadline unless you pass `--timeout-seconds`. Always pass it
 for scheduled jobs. Zero or negative deadline values disable the deadline.
-A hard watchdog allows five extra seconds to terminate stuck native calls.
+A hard watchdog allows five extra seconds to terminate stuck native calls and
+exits with code 124. If native code blocks while holding Python's interpreter
+lock, a separate helper process kills the command with SIGKILL five seconds
+after that, so a stuck `reindex` cannot keep the index lock. These deadlines
+cover `search`, `remember`, `doctor`, `setup`, and `reindex --timeout-seconds`.
 
 For model, cache, and sandbox settings, see [configuration](configuration.md).
 Use `OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG` to select an alternate registry YAML file.
