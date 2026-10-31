@@ -457,6 +457,8 @@ def test_cli_reindex_smoke(tmp_path: Path):
     env = {
         **os.environ,
         "XDG_CACHE_HOME": str(tmp_path / "cache"),
+        # Exercise offline CLI indexing; a shared live embedder is not a fixture.
+        "MEMWEAVE_EMBEDDING_API_BASE": "http://127.0.0.1:1",
     }
     result = subprocess.run(
         [sys.executable, "-m", "lib.vault_index.cli", "reindex", "--vault", str(vault)],
@@ -476,6 +478,7 @@ def test_cli_reindex_accepts_timeout_flag(tmp_path: Path):
     env = {
         **os.environ,
         "XDG_CACHE_HOME": str(tmp_path / "cache"),
+        "MEMWEAVE_EMBEDDING_API_BASE": "http://127.0.0.1:1",
     }
     result = subprocess.run(
         [

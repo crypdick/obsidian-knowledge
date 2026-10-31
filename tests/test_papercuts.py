@@ -134,6 +134,27 @@ def test_record_papercut_uses_global_fallback_when_git_is_unavailable(tmp_path: 
     assert record.path == vault / GLOBAL_PAPERCUTS_RELATIVE_PATH
 
 
+@pytest.mark.parametrize("repository", ["acme/tools", ""])
+def test_delegated_repository_does_not_need_git_access(tmp_path, monkeypatch, repository):
+    vault = _make_vault(tmp_path)
+
+    def no_git(*_args, **_kwargs):
+        raise AssertionError("delegated scope must not query the writer's Git access")
+
+    monkeypatch.setattr("lib.vault_index.papercuts.subprocess.run", no_git)
+    record = record_papercut(vault, "delegated report", cwd=tmp_path, repository=repository)
+    expected = Path("wiki/repos/acme/tools/PAPERCUTS.md") if repository else GLOBAL_PAPERCUTS_RELATIVE_PATH
+    assert record.path == vault / expected
+    assert "delegated report" in record.path.read_text()
+
+
+@pytest.mark.parametrize("repository", ["../tools", "acme/../tools", "acme", "/tools"])
+def test_delegated_repository_rejects_unsafe_scope(tmp_path, repository):
+    vault = _make_vault(tmp_path)
+    with pytest.raises(ValueError, match="repository must be"):
+        record_papercut(vault, "report", cwd=tmp_path, repository=repository)
+
+
 def test_record_papercut_preserves_repeated_reports_as_separate_occurrences(tmp_path: Path):
     vault = _make_vault(tmp_path)
     workdir = tmp_path / "work"

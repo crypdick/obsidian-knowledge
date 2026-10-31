@@ -344,7 +344,7 @@ def test_setup_success_modes(tmp_path, monkeypatch, capsys, plugin_mode):
 
 @pytest.mark.parametrize("error_number", [None, errno.EROFS])
 def test_papercut_write_errors(tmp_path, monkeypatch, capsys, error_number):
-    def fail(*_args):
+    def fail(*_args, **_kwargs):
         raise OSError(error_number, "denied")
 
     monkeypatch.setattr("lib.vault_index.papercuts.record_papercut", fail)
@@ -357,12 +357,13 @@ def test_papercut_write_errors(tmp_path, monkeypatch, capsys, error_number):
 def test_papercut_success_and_validation(tmp_path, monkeypatch, capsys):
     note = tmp_path / "papercuts.md"
     monkeypatch.setattr(
-        "lib.vault_index.papercuts.record_papercut", lambda *_args: SimpleNamespace(path=note)
+        "lib.vault_index.papercuts.record_papercut", lambda *_args, **_kwargs: SimpleNamespace(path=note)
     )
     assert cli.run_papercut(vault=tmp_path, description="friction", parser=ArgumentParser()) == 0
     assert "Logged papercut: papercuts.md" in capsys.readouterr().out
     monkeypatch.setattr(
-        "lib.vault_index.papercuts.record_papercut", lambda *_args: (_ for _ in ()).throw(ValueError("blank"))
+        "lib.vault_index.papercuts.record_papercut",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("blank")),
     )
     with pytest.raises(SystemExit):
         cli.run_papercut(vault=tmp_path, description="", parser=ArgumentParser())
