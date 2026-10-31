@@ -1,6 +1,7 @@
 """A configured writer owns CLI mutations, including failures and stdin."""
 
 import json
+import os
 import subprocess
 import sys
 
@@ -61,3 +62,28 @@ def test_invalid_writer_rejected_before_local_write(tmp_path, monkeypatch, inval
     with pytest.raises(ValueError, match="write_command"):
         cli.main()
     assert not (tmp_path / "note.md").exists()
+
+
+def test_explicit_unregistered_vault_keeps_local_write_behavior(tmp_path, monkeypatch):
+    registered, local = tmp_path / "shared", tmp_path / "local"
+    registered.mkdir()
+    local.mkdir()
+    registry = tmp_path / "vaults.yaml"
+    registry.write_text(
+        yaml.safe_dump(
+            {
+                "vaults": [str(registered)],
+                "write_command": [str(tmp_path / "must-not-run")],
+            }
+        )
+    )
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
+    monkeypatch.setattr(sys, "argv", ["obsidian-knowledge", "write", "note.md", "--vault", str(local)])
+    with (tmp_path / "input.txt").open("w+") as stream:
+        stream.write("# Local note\n")
+        stream.seek(0)
+        monkeypatch.setattr(sys, "stdin", stream)
+        assert cli.main() == 0
+    assert (local / "note.md").read_text() == "# Local note\n"
+    assert (local / "note.md").stat().st_uid == os.geteuid()
+    assert not (registered / "note.md").exists()
