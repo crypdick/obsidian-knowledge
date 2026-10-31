@@ -4,75 +4,27 @@ from __future__ import annotations
 
 import asyncio
 import fcntl
-import json
 import subprocess
 import sys
-import time
-from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import Thread
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
-from pydantic import BaseModel
 
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.indexer import Indexer, default_cache_dir
 from lib.vault_index.mcp_server import create_server
 
 
-@dataclass
-class Endpoint:
-    requests: int = 0
-    delay: float = 0
-
-
-class EmbedRequest(BaseModel):
-    input: list[str]
-
-
 @pytest.fixture
-def vector_vault(tmp_path, monkeypatch):
-    endpoint = Endpoint()
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.respond(b'{"models": [{"name": "bge-m3:latest"}]}')
-
-        def do_POST(self):
-            payload = EmbedRequest.model_validate_json(self.rfile.read(int(self.headers["Content-Length"])))
-            endpoint.requests += 1
-            time.sleep(endpoint.delay)
-            self.respond(json.dumps({"embeddings": [[1.0, 0.0] for _ in payload.input]}).encode())
-
-        def respond(self, payload: bytes):
-            self.send_response(200)
-            self.end_headers()
-            try:
-                self.wfile.write(payload)
-            except (BrokenPipeError, ConnectionResetError):
-                pass  # Expected when the bounded CLI terminates a slow request.
-
-        def log_message(self, *_args):
-            pass
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    monkeypatch.setenv("MEMWEAVE_EMBEDDING_API_BASE", f"http://127.0.0.1:{server.server_port}")
+def vector_vault(tmp_path, monkeypatch, fake_ollama):
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path / "cache"))
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki/orchid.md").write_text("# Orchid\nPurple greenhouse orchids\n")
     instance = Indexer(tmp_path, default_cache_dir(tmp_path), VaultIndexConfig(), skip_probe=True)
     instance.full_reindex()
     asyncio.run(instance._store.close())
-    endpoint.requests = 0
-    try:
-        yield tmp_path, default_cache_dir(tmp_path), endpoint
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
+    fake_ollama.requests = 0
+    return tmp_path, default_cache_dir(tmp_path), fake_ollama
 
 
 def test_cli_no_wait_reports_held_writer_without_empty_results(vector_vault):

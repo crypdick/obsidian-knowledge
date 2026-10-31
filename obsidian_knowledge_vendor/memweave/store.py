@@ -82,6 +82,7 @@ from obsidian_knowledge_vendor.memweave._progress import (
 from obsidian_knowledge_vendor.memweave.chunking.markdown import chunk_markdown
 from obsidian_knowledge_vendor.memweave.config import MemoryConfig
 from obsidian_knowledge_vendor.memweave.embedding.cache import evict_cache_if_needed, get_cached_embeddings, store_embedding
+from obsidian_knowledge_vendor.memweave.embedding.checkpoint import CheckpointBatcher
 from obsidian_knowledge_vendor.memweave.embedding.prefetch import PREFETCH_FILES, prefetch_embeddings
 from obsidian_knowledge_vendor.memweave.embedding.provider import EmbeddingProvider, LiteLLMEmbeddingProvider
 from obsidian_knowledge_vendor.memweave.embedding.vectors import normalize_embedding
@@ -114,6 +115,17 @@ logger = logging.getLogger(__name__)
 # If it changes, the index is rebuilt from scratch (full re-embed).
 _META_KEY = "memory_index_meta_v1"
 _REBUILD_KEY = "memory_index_rebuild_v1"
+
+
+def _same_rebuild_target(pending: str | None, target: str) -> bool:
+    """Compare rebuild targets, ignoring the vector mode older releases recorded."""
+    try:
+        recorded = json.loads(pending) if pending else None
+    except json.JSONDecodeError:
+        return False
+    if isinstance(recorded, dict):
+        recorded.pop("vector_enabled", None)
+    return recorded == json.loads(target)
 
 
 class MemWeave:
@@ -173,6 +185,8 @@ class MemWeave:
             if embedding_provider is not None
             else LiteLLMEmbeddingProvider(self.config.embedding)
         )
+        # Shared by prefetch and per-file embedding so the learned pace persists.
+        self.embed_batcher = CheckpointBatcher(self.config.embedding.batch_size)
 
         # Internal state — populated by _ensure_db()
         self._db: aiosqlite.Connection | None = None
@@ -718,16 +732,25 @@ class MemWeave:
         completed: set[str] = set()
         if rebuilding:
             force = True
-            if pending != target:
+            if not _same_rebuild_target(pending, target):
+                # Only an online pass starts a vector generation. Offline, the
+                # stale vectors stay until the embedder can replace them.
                 if self._vector_available:
                     await self._db.execute("DROP TABLE IF EXISTS chunks_vec")
-                await self._db.execute("DELETE FROM index_rebuild_files")
-                await self._store.set_meta(_REBUILD_KEY, target)
-                await self._store.commit()
+                    await self._db.execute("DELETE FROM index_rebuild_files")
+                    await self._store.set_meta(_REBUILD_KEY, target)
+                    await self._store.commit()
             else:
                 cursor = await self._db.execute("SELECT path FROM index_rebuild_files")
                 completed = {row[0] for row in await cursor.fetchall()}
                 logger.info("Resuming rebuild with %d completed files", len(completed))
+
+        # Chunks indexed while vectors were unavailable keep their file hash.
+        # Re-index exactly those files instead of rebuilding the whole vault.
+        missing_vectors = await self._paths_missing_vectors()
+
+        def must_index(rel: str) -> bool:
+            return (force and rel not in completed) or rel in missing_vectors
 
         files_indexed = 0
         files_skipped = 0
@@ -741,12 +764,9 @@ class MemWeave:
             try:
                 if self._vector_available and self.config.cache.enabled and (i - 1) % PREFETCH_FILES == 0:
                     total_computed += await prefetch_embeddings(
-                        self, disk_files[i - 1 : i - 1 + PREFETCH_FILES], workspace,
-                        force=force, completed=completed,
+                        self, disk_files[i - 1 : i - 1 + PREFETCH_FILES], workspace, must_index=must_index
                     )
-                r = await self._index_file(
-                    abs_path, workspace, force=force and rel not in completed
-                )
+                r = await self._index_file(abs_path, workspace, force=must_index(rel))
                 if rebuilding:
                     await self._db.execute(
                         "INSERT OR IGNORE INTO index_rebuild_files VALUES (?)", [rel]
@@ -785,10 +805,12 @@ class MemWeave:
                     "DELETE FROM chunks_vec WHERE id NOT IN (SELECT id FROM chunks)"
                 )
 
-        # Update provider fingerprint meta
-        await self._save_provider_fingerprint()
-        await self._db.execute("DELETE FROM meta WHERE key = ?", [_REBUILD_KEY])
-        await self._db.execute("DELETE FROM index_rebuild_files")
+        # A keyword-only pass completes no vector generation: keep the last
+        # vector fingerprint and any pending rebuild for the next online sync.
+        if self._vector_available:
+            await self._save_provider_fingerprint()
+            await self._db.execute("DELETE FROM meta WHERE key = ?", [_REBUILD_KEY])
+            await self._db.execute("DELETE FROM index_rebuild_files")
 
         await self._store.commit()
         self._dirty = False
@@ -909,11 +931,11 @@ class MemWeave:
                 "index",
                 f"embedding {len(miss_texts)} new chunk(s) via API  [{rel}]",
             )
-            batch_size = self.config.embedding.batch_size
-            for start in range(0, len(miss_texts), batch_size):
-                batch = miss_texts[start : start + batch_size]
+            start = 0
+            while start < len(miss_texts):
+                batch = miss_texts[start : start + self.embed_batcher.size]
                 try:
-                    batch_vecs = await self.embedding_provider.embed_batch(batch)
+                    batch_vecs = await self.embed_batcher.embed(batch, self.embedding_provider.embed_batch)
                     embeddings_computed += len(batch_vecs)
                 except Exception as exc:
                     emit(p, EMOJI_WARN, "index", f"batch embedding failed for {rel}: {exc}")
@@ -929,7 +951,7 @@ class MemWeave:
                         embeddings_computed += bool(vec)
                 new_vecs.extend(batch_vecs)
                 if self.config.cache.enabled:
-                    for idx, vec in zip(miss_indices[start : start + batch_size], batch_vecs):
+                    for idx, vec in zip(miss_indices[start : start + len(batch)], batch_vecs):
                         if vec:
                             await store_embedding(
                                 self._store,
@@ -941,6 +963,7 @@ class MemWeave:
                     # No file rows have been changed yet. Persist expensive API
                     # work even when this file cannot finish within one attempt.
                     await self._store.commit()
+                start += len(batch)
 
         # Merge cached + new embeddings in original order
         miss_vec_map = dict(zip(miss_indices, new_vecs))
@@ -1068,6 +1091,19 @@ class MemWeave:
 
     # ── Provider fingerprint ──────────────────────────────────────────────────
 
+    async def _paths_missing_vectors(self) -> set[str]:
+        """Return indexed paths with at least one chunk lacking a stored vector."""
+        if not self._vector_available:
+            return set()
+        assert self._db is not None
+        table = await (
+            await self._db.execute("SELECT 1 FROM sqlite_master WHERE name = 'chunks_vec'")
+        ).fetchone()
+        query = "SELECT DISTINCT path FROM chunks"
+        if table:
+            query += " WHERE id NOT IN (SELECT id FROM chunks_vec)"
+        return {row[0] for row in await (await self._db.execute(query)).fetchall()}
+
     async def _provider_fingerprint_changed(self) -> bool:
         """Return True if the stored provider/model fingerprint differs from config.
 
@@ -1096,7 +1132,6 @@ class MemWeave:
             or meta.get("provider_key") != current_key
             or meta.get("chunk_tokens") != cfg.chunking.tokens
             or meta.get("chunk_overlap") != cfg.chunking.overlap
-            or meta.get("vector_enabled", True) != cfg.vector.enabled
         )
 
     def _provider_fingerprint(self) -> dict[str, Any]:
@@ -1112,7 +1147,6 @@ class MemWeave:
             "provider_key": provider_key,
             "chunk_tokens": cfg.chunking.tokens,
             "chunk_overlap": cfg.chunking.overlap,
-            "vector_enabled": self.config.vector.enabled,
         }
 
     async def _save_provider_fingerprint(self) -> None:

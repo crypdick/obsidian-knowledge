@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from argparse import Namespace
 from types import SimpleNamespace
 
 import pytest
 
 from lib.vault_index import cli, indexer
 from lib.vault_index.config import VaultIndexConfig
+from lib.vault_index.models import Hit, SearchReport
 from obsidian_knowledge_vendor import memweave
 
 
@@ -47,12 +49,12 @@ def test_no_rebuild_search_serves_keywords_from_stale_vector_index(
     keyword_index, monkeypatch, capsys, json_output
 ):
     keyword_index._vector_enabled = True
-    keyword_index._needs_rebuild = True
+    keyword_index.vector_issue = "index rebuild incomplete"
 
     def unexpected_rebuild(*args, **kwargs):
-        pytest.fail("bounded search must not rebuild the index")
+        pytest.fail("--no-rebuild must not start a reindex")
 
-    monkeypatch.setattr(keyword_index, "_auto_rebuild", unexpected_rebuild)
+    monkeypatch.setattr(cli, "start_background_reindex", unexpected_rebuild)
     monkeypatch.setattr(indexer, "Indexer", lambda **kwargs: keyword_index)
     arguments = [
         "obsidian-knowledge",
@@ -74,7 +76,7 @@ def test_no_rebuild_search_serves_keywords_from_stale_vector_index(
         assert report["hits"][0]["path"] == "wiki/orchid.md"
     else:
         assert "wiki/orchid.md" in output.out
-    assert keyword_index._needs_rebuild is True
+    assert keyword_index.vector_issue == "index rebuild incomplete"
 
 
 @pytest.mark.parametrize(
@@ -87,6 +89,7 @@ def test_no_rebuild_search_serves_keywords_from_stale_vector_index(
 def test_report_tracks_query_fallback_then_hybrid_success(tmp_path, monkeypatch, message, reason):
     (tmp_path / "note.md").write_text("An orchid note.")
     instance = indexer.Indexer(tmp_path, tmp_path / "cache", VaultIndexConfig(), skip_probe=True)
+    instance.vector_issue = None
     calls = 0
 
     async def retrieve(*args, **kwargs):
@@ -98,11 +101,11 @@ def test_report_tracks_query_fallback_then_hybrid_success(tmp_path, monkeypatch,
 
     monkeypatch.setattr(instance._store, "search", retrieve)
     try:
-        fallback = instance.search_report("orchid", allow_rebuild=False)
+        fallback = instance.search_report("orchid")
         assert fallback.mode == "keyword"
         assert fallback.degraded_reason == reason
         assert instance.vector_enabled is True
-        hybrid = instance.search_report("orchid", allow_rebuild=False)
+        hybrid = instance.search_report("orchid")
         assert hybrid.mode == "hybrid"
         assert hybrid.degraded_reason is None
         assert [hit.model_dump() for hit in hybrid.hits] == [
@@ -162,3 +165,24 @@ def test_json_search_errors_do_not_emit_success(keyword_index, monkeypatch, caps
     output = capsys.readouterr()
     assert output.out == ""
     assert "timed out" in output.err
+
+
+def test_retrieval_with_healthy_vector_index(tmp_path, monkeypatch, capsys):
+    class HealthyIndex:
+        vector_enabled = True
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def search_report(self, *_args, **_kwargs):
+            return SearchReport(
+                mode="hybrid", degraded_reason=None, hits=[Hit(path="wiki/note.md", score=2.0)]
+            )
+
+    monkeypatch.setattr("lib.vault_index.indexer.Indexer", HealthyIndex)
+    monkeypatch.setattr("lib.vault_index.indexer.default_cache_dir", lambda _vault: tmp_path / "cache")
+    args = Namespace(cmd="search", vault=tmp_path, query="q", top_k=1, all=False)
+    assert cli.run_retrieval_command(args) == 0
+    output = capsys.readouterr()
+    assert "wiki/note.md" in output.out
+    assert output.err == ""

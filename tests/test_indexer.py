@@ -255,8 +255,10 @@ def test_full_reindex_writes_fingerprint(monkeypatch, vault: Path, cfg, tmp_path
     assert "320/64" in fp
 
 
-def test_init_auto_rebuilds_on_embedder_change(monkeypatch, vault: Path, cfg, tmp_path: Path, make_indexer):
-    """Stale fingerprint + populated index → search() triggers rebuild before returning."""
+def test_embedder_change_serves_keywords_without_rebuilding(
+    monkeypatch, vault: Path, cfg, tmp_path: Path, make_indexer
+):
+    """Stale fingerprint + populated index → search reports it and embeds nothing."""
     monkeypatch.setattr(
         "lib.vault_index.indexer._ollama_probe",
         lambda api_base, model: (True, "test-stub: probe ok"),
@@ -289,22 +291,19 @@ def test_init_auto_rebuilds_on_embedder_change(monkeypatch, vault: Path, cfg, tm
     (cache_dir / "embedder-fingerprint.txt").write_text("ollama/old-model@320/64")
 
     idx2 = make_indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
-    assert idx2._needs_rebuild is True
+    assert idx2.vector_issue == "embedder changed (was ollama/old-model@320/64, now ollama/bge-m3@320/64)"
 
-    # Stub the rebuild so the test doesn't actually re-run memweave.index().
-    rebuilt = {"n": 0}
+    async def unexpected_embed(self, texts):
+        pytest.fail("search must not embed while vectors are stale")
 
-    def fake_rebuild(reason: str) -> None:
-        rebuilt["n"] += 1
-        idx2._needs_rebuild = False
-
-    monkeypatch.setattr(idx2, "_auto_rebuild", fake_rebuild)
-    idx2.search("python")
-    assert rebuilt["n"] == 1
+    monkeypatch.setattr("lib.vault_index.embeddings.OllamaEmbeddingProvider.embed_batch", unexpected_embed)
+    report = idx2.search_report("python")
+    assert (report.mode, report.degraded_reason) == ("keyword", "vector index requires reindex")
+    assert any("python" in hit.path.lower() for hit in report.hits)
 
 
-def test_init_no_rebuild_on_fresh_install(monkeypatch, tmp_path: Path, make_indexer):
-    """Empty cache must not trigger a rebuild — that's a fresh install, not a swap."""
+def test_fresh_install_is_reported_as_first_build(monkeypatch, tmp_path: Path, make_indexer):
+    """Empty cache is a fresh install, not an embedder swap."""
     monkeypatch.setattr(
         "lib.vault_index.indexer._ollama_probe",
         lambda api_base, model: (True, "test-stub: probe ok"),
@@ -313,7 +312,7 @@ def test_init_no_rebuild_on_fresh_install(monkeypatch, tmp_path: Path, make_inde
 
     cache_dir = tmp_path / "cache"
     idx = make_indexer(vault_root=tmp_path, cache_dir=cache_dir, config=VaultIndexConfig())
-    assert idx._needs_rebuild is False
+    assert idx.vector_issue == "index not built yet"
 
 
 def asyncio_close(idx: Indexer) -> None:
