@@ -42,7 +42,7 @@ desktop apps, MCP services and host CLI creation. Shared groups grant access but
 do not make new files share an owner. Atomic replacement preserves the existing
 UID/GID and fails safely when the writer cannot retain them.
 
-To route host CLI `write` and `papercut` calls through the same identity, set an
+To route host CLI `write`, `papercut` and `garden` calls through the same identity, set an
 argument-vector prefix in the host-local `vaults.yaml`:
 
 ```yaml
@@ -56,7 +56,8 @@ The prefix applies only to roots registered in that host file; an explicit,
 unregistered `--vault` keeps its normal local behavior. The CLI appends the
 original subcommand and arguments without a shell, preserves
 stdin and working directory, and returns the writer's exit code. Failures never
-fall back to local writes. Reads, retrieval and lifecycle hooks stay local.
+fall back to local writes. File reads, retrieval and lifecycle hooks stay local.
+Gardener commands use the writer identity for both audits and applied repairs.
 Before delegating a papercut it captures the caller's repository scope, so the
 writer need not read the caller's private Git metadata. The internal
 `papercut --repository owner/repo` argument carries that scope; an empty value

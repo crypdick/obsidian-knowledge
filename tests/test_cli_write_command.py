@@ -10,7 +10,7 @@ import yaml
 from lib.vault_index import cli
 
 
-@pytest.mark.parametrize("command", ["write", "papercut"])
+@pytest.mark.parametrize("command", ["write", "papercut", "garden"])
 @pytest.mark.parametrize("repository", ["", "acme/tools"])
 def test_configured_writer_receives_original_call(tmp_path, monkeypatch, command, repository):
     if repository:
@@ -38,7 +38,7 @@ def test_configured_writer_receives_original_call(tmp_path, monkeypatch, command
     )
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     monkeypatch.chdir(tmp_path)
-    arguments = [command, "note.md", "--vault", str(tmp_path)]
+    arguments = [command, "audit" if command == "garden" else "note.md", "--vault", str(tmp_path)]
     monkeypatch.setattr(sys, "argv", ["obsidian-knowledge", *arguments])
     with (tmp_path / "input.txt").open("w+") as stream:
         stream.write("literal $text\\n\n")
