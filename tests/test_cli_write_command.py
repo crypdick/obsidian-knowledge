@@ -13,7 +13,8 @@ from lib.vault_index import cli
 
 @pytest.mark.parametrize("command", ["write", "papercut", "garden"])
 @pytest.mark.parametrize("repository", ["", "acme/tools"])
-def test_configured_writer_receives_original_call(tmp_path, monkeypatch, command, repository):
+@pytest.mark.parametrize("explicit_vault", [True, False])
+def test_configured_writer_receives_original_call(tmp_path, monkeypatch, command, repository, explicit_vault):
     if repository:
         subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
         subprocess.run(
@@ -39,13 +40,17 @@ def test_configured_writer_receives_original_call(tmp_path, monkeypatch, command
     )
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     monkeypatch.chdir(tmp_path)
-    arguments = [command, "audit" if command == "garden" else "note.md", "--vault", str(tmp_path)]
+    arguments = [command, "audit" if command == "garden" else "note.md"]
+    if explicit_vault:
+        arguments += ["--vault", str(tmp_path)]
     monkeypatch.setattr(sys, "argv", ["obsidian-knowledge", *arguments])
     with (tmp_path / "input.txt").open("w+") as stream:
         stream.write("literal $text\\n\n")
         stream.seek(0)
         monkeypatch.setattr(sys, "stdin", stream)
         assert cli.main() == 7
+    if not explicit_vault:
+        arguments += ["--vault", str(tmp_path)]
     if command == "papercut":
         arguments += ["--repository", repository]
     assert json.loads(receipt.read_text()) == [arguments, "literal $text\\n\n", str(tmp_path)]
