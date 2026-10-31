@@ -904,15 +904,24 @@ def _exit_hard(code: int) -> None:
     whether the CLI is invoked via `python -m lib.vault_index.cli` or via
     the `obsidian-knowledge` entry point.
     """
-    sys.stdout.flush()
-    sys.stderr.flush()
+    # A vanished reader makes flushing raise BrokenPipeError. Escaping here
+    # would fall into normal interpreter shutdown, which waits forever on the
+    # same dependency threads, after the command deadline was already disarmed.
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(OSError, ValueError):
+            stream.flush()
     os._exit(code)
 
 
 def cli_main() -> None:
     """Console-script entry point. See [project.scripts] in pyproject.toml."""
+    code = 1
     try:
         code = main()
+    except SystemExit as exc:  # argparse and parser.error must still exit hard
+        code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+    except KeyboardInterrupt:
+        code = 130
     except SearchTimeoutError as exc:
         print(f"obsidian-knowledge: timed out ({exc})", file=sys.stderr)
         code = 124
@@ -920,9 +929,11 @@ def cli_main() -> None:
         print(f"obsidian-knowledge: {exc}", file=sys.stderr)
         code = 2
     except Exception:  # allow: exception-handling  (CLI must bypass dependency shutdown hangs)
-        traceback.print_exc()
+        with contextlib.suppress(OSError):
+            traceback.print_exc()
         code = 1
-    _exit_hard(code)
+    finally:
+        _exit_hard(code)
 
 
 if __name__ == "__main__":
