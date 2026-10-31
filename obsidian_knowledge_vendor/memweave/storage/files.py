@@ -53,7 +53,8 @@ def list_memory_files(workspace_dir: Path, extra_paths: list[str] | None = None)
                        - A directory (all ``.md`` files inside are included).
 
     Returns:
-        Sorted list of absolute ``Path`` objects, one per discovered file.
+        Absolute ``Path`` objects, one per discovered file: sorted memory files,
+        then ``extra_paths`` in caller order.
 
     Example::
 
@@ -68,7 +69,7 @@ def list_memory_files(workspace_dir: Path, extra_paths: list[str] | None = None)
     found: list[Path] = []
 
     if memory_dir.exists() and memory_dir.is_dir():
-        for path in memory_dir.rglob("*.md"):
+        for path in sorted(memory_dir.rglob("*.md")):
             # Skip .memweave internal directory (SQLite database, lock files, etc.)
             if ".memweave" in path.parts:
                 continue
@@ -76,19 +77,24 @@ def list_memory_files(workspace_dir: Path, extra_paths: list[str] | None = None)
                 found.append(path)
 
     # Resolve and append extra_paths
+    seen = set(found)
     for extra in extra_paths or []:
         ep = Path(extra)
         if not ep.is_absolute():
             ep = workspace_dir / ep
         if ep.is_file() and ep.suffix == ".md":
-            if ep not in found:
-                found.append(ep)
+            candidates = [ep]
         elif ep.is_dir():
-            for path in ep.rglob("*.md"):
-                if path.is_file() and path not in found:
-                    found.append(path)
+            candidates = [path for path in sorted(ep.rglob("*.md")) if path.is_file()]
+        else:
+            candidates = []
+        for path in candidates:
+            if path not in seen:
+                seen.add(path)
+                found.append(path)
 
-    return sorted(found)
+    # Keep the caller's extra_paths order; callers use it to prioritize indexing.
+    return found
 
 
 def build_file_entry(path: Path) -> dict[str, str | float | int]:

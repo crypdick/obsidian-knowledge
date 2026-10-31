@@ -193,7 +193,9 @@ Indexing commits embeddings in batches sized to take about five seconds each,
 starting with four chunks and adapting to the embedder's measured speed. On a
 CPU-only host embedding about one chunk every two seconds, an interrupted
 reindex loses at most the few chunks in flight; rerunning computes only the
-remainder. Fast embedders grow to batches of 64.
+remainder. Fast embedders grow to batches of 64. Indexing processes notes in
+the digest (the default search scope) first, so a first build or rebuild makes
+them searchable before other indexed notes.
 
 A sync while the embedder is unavailable indexes changed files for keyword
 search only. The next sync with the embedder available adds vectors to exactly

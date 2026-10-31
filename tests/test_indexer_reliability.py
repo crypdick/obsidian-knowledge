@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import pytest
 
 from lib.vault_index import indexer
+from lib.vault_index import snippets as snippet_text
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.embeddings import KeywordOnlyEmbeddingProvider
 from lib.vault_index.models import Hit, IndexBusyError
@@ -194,14 +195,14 @@ def test_search_snippets_handle_long_missing_empty_and_traversal_files(tmp_path,
         Hit(path="missing.md", score=8, weight_applied=1),
         Hit(path="../outside.md", score=7, weight_applied=1),
     ]
-    monkeypatch.setattr(instance, "_sqlite_fts_search", lambda query, count: hits)
+    monkeypatch.setattr(instance, "_sqlite_fts_search", lambda query, count, keep: hits)
     try:
         result = instance.search("needle", top_k=10, min_score=0.0)
     finally:
         close(instance)
     snippets = {hit.path: hit.snippet for hit in result}
     assert "needle" in snippets["long.md"]
-    assert len(snippets["long.md"]) <= indexer.SNIPPET_MAX_CHARS + 6
+    assert len(snippets["long.md"]) <= snippet_text.SNIPPET_MAX_CHARS + 6
     assert snippets["long.md"].startswith("...") and snippets["long.md"].endswith("...")
     assert snippets["empty.md"] == ""
     assert snippets["missing.md"] == ""
@@ -214,7 +215,7 @@ def test_snippet_falls_back_to_first_line_when_query_has_no_match(tmp_path, monk
     monkeypatch.setattr(
         instance,
         "_sqlite_fts_search",
-        lambda query, count: [Hit(path="note.md", score=1, weight_applied=1)],
+        lambda query, count, keep: [Hit(path="note.md", score=1, weight_applied=1)],
     )
     try:
         assert instance.search("absent")[0].snippet == "short first line"
@@ -235,11 +236,11 @@ def test_fts_search_is_empty_without_database_and_on_invalid_database(tmp_path):
 
 def test_snippet_crop_handles_match_near_end_and_one_sided_ellipsis():
     text = "prefix " * 70 + "needle"
-    snippet = indexer.Indexer._crop_snippet(text, ["needle"])
+    snippet = snippet_text.crop_snippet(text, ["needle"])
     assert snippet.startswith("...")
     assert snippet.endswith("needle")
 
-    beginning = indexer.Indexer._crop_snippet("needle " + "suffix " * 80, ["needle"])
+    beginning = snippet_text.crop_snippet("needle " + "suffix " * 80, ["needle"])
     assert beginning.startswith("needle")
     assert beginning.endswith("...")
 
@@ -359,7 +360,7 @@ def test_missing_vector_table_can_fall_back_without_rebuild(tmp_path, monkeypatc
 
     instance._store.search = fail
     fallback = [Hit(path="note.md", score=1, weight_applied=1)]
-    monkeypatch.setattr(instance, "_sqlite_fts_search", lambda query, count: fallback)
+    monkeypatch.setattr(instance, "_sqlite_fts_search", lambda query, count, keep: fallback)
     monkeypatch.setattr(instance, "_with_snippets", lambda hits, query: hits)
     try:
         assert instance.search("query") == fallback
@@ -375,7 +376,7 @@ def test_query_embedding_failure_falls_back_to_keyword_search(tmp_path, monkeypa
 
     instance._store.search = fail
     fallback = [Hit(path="note.md", score=1, weight_applied=1)]
-    monkeypatch.setattr(instance, "_sqlite_fts_search", lambda query, count: fallback)
+    monkeypatch.setattr(instance, "_sqlite_fts_search", lambda query, count, keep: fallback)
     monkeypatch.setattr(instance, "_with_snippets", lambda hits, query: hits)
     try:
         assert instance.search("/data/Videos/Movies") == fallback
