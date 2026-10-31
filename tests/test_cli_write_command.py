@@ -92,3 +92,43 @@ def test_explicit_unregistered_vault_keeps_local_write_behavior(tmp_path, monkey
     assert (local / "note.md").read_text() == "# Local note\n"
     assert (local / "note.md").stat().st_uid == os.geteuid()
     assert not (registered / "note.md").exists()
+
+
+@pytest.mark.parametrize("command", ["write", "papercut"])
+@pytest.mark.parametrize("separator", [True, False])
+def test_writer_preserves_target_and_literal_arguments(tmp_path, monkeypatch, command, separator):
+    target, decoy = tmp_path / "target", tmp_path / "decoy"
+    target.mkdir()
+    decoy.mkdir()
+    child_registry = tmp_path / "child.yaml"
+    child_registry.write_text(yaml.safe_dump({"vaults": [str(decoy)]}))
+    registry = tmp_path / "host.yaml"
+    registry.write_text(
+        yaml.safe_dump(
+            {
+                "vaults": [str(target)],
+                "write_command": [
+                    "env",
+                    f"OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG={child_registry}",
+                    sys.executable,
+                    "-m",
+                    "lib.vault_index.cli",
+                ],
+            }
+        )
+    )
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
+    monkeypatch.chdir(tmp_path)
+    value = "-literal.md" if separator else "literal.md"
+    arguments = [command, *(["--"] if separator else []), value]
+    monkeypatch.setattr(sys, "argv", ["obsidian-knowledge", *arguments])
+    with (tmp_path / "input.txt").open("w+") as stream:
+        stream.write("# Literal content\n")
+        stream.seek(0)
+        monkeypatch.setattr(sys, "stdin", stream)
+        assert cli.main() == 0
+    relative = value if command == "write" else "wiki/systems/knowledge-base/PAPERCUTS.md"
+    assert (target / relative).exists()
+    assert not (decoy / relative).exists()
+    expected = "# Literal content\n" if command == "write" else value
+    assert expected in (target / relative).read_text()

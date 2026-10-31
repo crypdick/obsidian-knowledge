@@ -59,6 +59,7 @@ stdin and working directory, and returns the writer's exit code. An implicit
 vault selection is forwarded as an explicit absolute `--vault`, so the target
 cannot select a different registry default. Failures never fall back to local
 writes. File reads, retrieval and lifecycle hooks stay local.
+Arguments after `--` remain literal during delegation.
 Gardener commands use the writer identity for both audits and applied repairs.
 Before delegating a papercut it captures the caller's repository scope, so the
 writer need not read the caller's private Git metadata. The internal

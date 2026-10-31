@@ -517,12 +517,15 @@ def run_host_write_command(command: str, repository: str | None, vault: Path | N
     if selected not in [root.expanduser().resolve() for root in writer.vaults]:
         return None
     arguments = sys.argv[1:]
+    metadata: list[str] = []
     if vault is None:
-        arguments = [*arguments, "--vault", str(selected)]
+        metadata.extend(("--vault", str(selected)))
     if command == "papercut" and repository is None:
         from lib.vault_index.papercuts import papercut_repository
 
-        arguments = [*arguments, "--repository", papercut_repository(Path.cwd())]
+        metadata.extend(("--repository", papercut_repository(Path.cwd())))
+    separator = arguments.index("--") if "--" in arguments else len(arguments)
+    arguments = [*arguments[:separator], *metadata, *arguments[separator:]]
     return subprocess.run([*writer.write_command, *arguments], stdin=sys.stdin, check=False).returncode
 
 
