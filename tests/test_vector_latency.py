@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import sqlite3
 import struct
@@ -31,13 +32,24 @@ def seed_cache(cache: Path, vault: Path, count: int = 6000) -> None:
             await ensure_vector_table(connection, 1024)
 
     asyncio.run(schema())
+    # Real caches retain full JSON embeddings alongside chunks_vec. NULL here
+    # hid a hundreds-of-megabytes eligibility scan in the deployed index.
+    stored_embedding = json.dumps([math.nextafter(1 / math.sqrt(1024), 1.0)] * 1024)
     with closing(sqlite3.connect(database)) as connection, connection:
         connection.enable_load_extension(True)
         sqlite_vec.load(connection)
         connection.executemany(
-            "INSERT INTO chunks VALUES (?, ?, ?, 1, 1, ?, ?, ?, NULL, 0)",
+            "INSERT INTO chunks VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, 0)",
             [
-                (str(i), str(vault / f"note-{i}.md"), "memory", str(i), "ollama/bge-m3", "indexed text")
+                (
+                    str(i),
+                    str(vault / f"note-{i}.md"),
+                    "memory",
+                    str(i),
+                    "ollama/bge-m3",
+                    "indexed text",
+                    stored_embedding,
+                )
                 for i in range(count)
             ],
         )
@@ -45,6 +57,32 @@ def seed_cache(cache: Path, vault: Path, count: int = 6000) -> None:
             "INSERT INTO chunks_vec (id, embedding) VALUES (?, ?)",
             [(str(i), struct.pack("1024f", 1.0 if i == 0 else -1.0, *([0.0] * 1023))) for i in range(count)],
         )
+
+
+@pytest.mark.parametrize("source_filter", [None, "memory", "sessions"])
+def test_existing_cache_schema_adds_covering_eligibility_index_without_rebuild(tmp_path, source_filter):
+    cache = tmp_path / "cache"
+    seed_cache(cache, tmp_path, count=10)
+    database = cache / "index.sqlite"
+    with closing(sqlite3.connect(database)) as connection, connection:
+        connection.execute("DROP INDEX IF EXISTS idx_chunks_model_source_id")
+
+    async def reopen():
+        async with aiosqlite.connect(database) as connection:
+            await ensure_schema(connection)
+            await ensure_schema(connection)
+            async with connection.execute(
+                "EXPLAIN QUERY PLAN SELECT id FROM chunks WHERE model = ? AND (? IS NULL OR source = ?)",
+                ("ollama/bge-m3", source_filter, source_filter),
+            ) as cursor:
+                plan = await cursor.fetchall()
+            assert any("USING COVERING INDEX idx_chunks_model_source_id" in row[3] for row in plan)
+            async with connection.execute(
+                "SELECT count(*) FROM chunks WHERE embedding IS NOT NULL"
+            ) as cursor:
+                assert await cursor.fetchone() == (10,)
+
+    asyncio.run(reopen())
 
 
 def test_populated_cache_search_preserves_semantics_within_budget(tmp_path):

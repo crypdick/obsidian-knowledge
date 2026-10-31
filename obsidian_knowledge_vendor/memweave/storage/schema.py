@@ -113,6 +113,9 @@ _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);",
     # Source-filtered chunk queries (e.g. search only "memory" or "sessions")
     "CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source);",
+    # Native KNN eligibility must not scan chunk text and JSON embeddings.
+    # NOTE: docs/ARCHITECTURE.md describes the covering model/source filter.
+    "CREATE INDEX IF NOT EXISTS idx_chunks_model_source_id ON chunks(model, source, id);",
     # Hash-based deduplication during indexing
     "CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(hash);",
 ]
