@@ -110,6 +110,14 @@ cleanup allowance; refresh also passes that deadline to the CLI. Cancellation
 or timeout kills and reaps the subprocess. File operations remain available
 during indexing. Queue waiting is outside the active-operation deadline.
 
+MCP search selects `--no-rebuild --no-wait`: an active vector-index writer
+returns an actionable busy tool error asking the caller to retry after indexing
+completes, rather than spending the search deadline waiting on its lock. It
+does not return empty success or silently change to keyword ranking because of
+contention. Existing keyword-only/degraded searches can still read committed
+FTS data. Ordinary CLI searches keep their deadline-bounded wait behavior;
+slow query embedding and SQL remain bounded by the whole-command deadline.
+
 Automatic repair has its own 1800-second CLI deadline plus a ten-second cleanup
 allowance. A cancelled search does not cancel the repair; server shutdown does.
 With memweave's resumable rebuild support, later attempts retain completed files

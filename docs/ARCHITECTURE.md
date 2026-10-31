@@ -45,6 +45,9 @@ Schema initialization adds a covering `(model, source, id)` chunk index to both
 new and existing caches. This keeps candidate eligibility off the large chunk
 text/JSON-embedding table without changing ranking, filters, or embedding policy;
 no re-embedding is required.
+`index_lock.py` owns the existing shared-reader/exclusive-writer file lock.
+CLI retrieval normally waits within its deadline; MCP requests nonblocking
+reader access and reports contention without reading partial vector generations.
 
 The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
 module, `hooks/vault_preferences.py` as `vault_preferences`, and

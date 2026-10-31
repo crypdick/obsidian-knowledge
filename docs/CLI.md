@@ -161,12 +161,18 @@ process Documents or Full Disk Access, restart it, and retry.
 
 `search`, `remember`, and `doctor` have a 30-second deadline covering initialization
 and retrieval. Override it with `OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`.
-Vector searches wait for an active index writer within that deadline, including
+Vector searches normally wait for an active index writer within that deadline, including
 when search needs to rebuild the index. Keyword search can read committed
 SQLite data while indexing continues. If lock waiting exhausts the deadline,
 the command reports a timeout and exits with code 124. Database contention that
 persists after SQLite's own wait reports a busy error with code 2; it does not
 appear as an empty result set.
+For callers that cannot wait for an index writer, `search --no-rebuild --no-wait`
+returns an actionable busy error with code 2 instead. It does not switch a
+hybrid query to keyword ranking because of contention. `--no-wait` requires
+`--no-rebuild`, leaving automatic rebuilds outside that request. The default
+CLI behavior still waits, and the whole-command deadline still bounds slow
+embedding or retrieval when the index is available.
 Use `search --no-rebuild` to serve existing keyword results when vectors need
 reindexing. MCP searches always use this option so an embedder change cannot
 start a full rebuild inside the query deadline. Run `reindex` separately to
