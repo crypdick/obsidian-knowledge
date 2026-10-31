@@ -551,7 +551,8 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
     from lib.vault_index.config import load_config
     from lib.vault_index.indexer import Indexer, default_cache_dir
 
-    if args.cmd == "search" and args.no_wait and not args.no_rebuild:
+    no_wait = getattr(args, "no_wait", False)
+    if args.cmd == "search" and no_wait and not getattr(args, "no_rebuild", False):
         raise ValueError("search --no-wait requires --no-rebuild")
     vault = resolve_vault(args.vault)
     cfg = load_config()
@@ -577,7 +578,7 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
             top_k=args.top_k,
             override_digest_filter=args.all,
             allow_rebuild=not args.no_rebuild,
-            wait_for_writer=not args.no_wait,
+            wait_for_writer=not no_wait,
         )
         print(search_report.model_dump_json())
         return 0
@@ -586,7 +587,7 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
         top_k=args.top_k,
         override_digest_filter=args.all,
         allow_rebuild=not getattr(args, "no_rebuild", False),
-        wait_for_writer=not getattr(args, "no_wait", False),
+        wait_for_writer=not no_wait,
     )
     if args.cmd == "remember":
         print(format_remember_candidates(hits))

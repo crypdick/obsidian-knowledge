@@ -45,7 +45,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import errno
-import fcntl
 import hashlib
 import json
 import os
@@ -62,6 +61,7 @@ import platformdirs
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE, make_embedding_provider
 from lib.vault_index.filters import path_passes
+from lib.vault_index.index_lock import index_lock
 from lib.vault_index.index_state import rebuild_pending, vector_table_exists
 from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
 from lib.vault_index.vector_search import IndexedHybridSearch
@@ -153,34 +153,6 @@ class SyncStats:
     indexed: int
     skipped: int
     deleted: int
-
-
-@contextlib.contextmanager
-def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
-    """Hold the per-vault SQLite access lock.
-
-    memweave uses one SQLite DB per vault cache. Reindex/sync are writers and
-    must be exclusive; search is a reader and takes a shared lock so writers do
-    not collide with an in-flight query. Scheduled indexing skips contention;
-    CLI searches normally wait within their deadline; MCP searches request a
-    nonblocking shared lock and report busy. See docs/MCP.md's search contract.
-    """
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    lock_path = cache_dir / ".index.sqlite.lock"
-    mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
-    if not blocking:
-        mode |= fcntl.LOCK_NB
-    with open(lock_path, "w") as lock_f:
-        try:
-            fcntl.flock(lock_f.fileno(), mode)
-        except BlockingIOError as exc:
-            raise IndexBusyError(
-                "vault index is busy: another operation holds the index lock; retry after it completes"
-            ) from exc
-        try:
-            yield
-        finally:
-            fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
 
 
 def _rescale(raw: float) -> float:
