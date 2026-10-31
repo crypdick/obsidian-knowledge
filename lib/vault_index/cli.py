@@ -506,7 +506,7 @@ def run_papercut(
 
 def run_host_write_command(command: str, repository: str | None, vault: Path | None) -> int | None:
     """Delegate host note mutations without changing their caller's identity."""
-    if command not in {"write", "papercut"}:
+    if command not in {"write", "papercut", "garden"}:
         return None
     # NOTE: docs/configuration.md, Host writer command: preserve stdin and cwd;
     # never fall back to creating notes as a different identity after failure.
@@ -597,6 +597,12 @@ def positive_int(value: str) -> int:
 
 def main() -> int:
     if sys.argv[1:2] == ["garden"]:
+        selection = argparse.ArgumentParser(add_help=False)
+        selection.add_argument("--vault", type=Path, default=None)
+        selected, _ = selection.parse_known_args(sys.argv[2:])
+        delegated = run_host_write_command("garden", None, selected.vault)
+        if delegated is not None:
+            return delegated
         from gardener.cli import main as garden_main
 
         return garden_main(sys.argv[2:])
