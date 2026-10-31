@@ -1,8 +1,14 @@
 """Shared test fixtures for obsidian-knowledge plugin hooks."""
 
+import hashlib
+import json
 import os
 import sys
+import time
+from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 
 import pytest
 
@@ -108,3 +114,60 @@ def subprocess_vault(tmp_path):
         "OBSIDIAN_KNOWLEDGE_SKIP_OLLAMA_PROBE": "1",
     }
     return vault, env
+
+
+@dataclass
+class FakeOllama:
+    """Deterministic local stand-in for Ollama's tags and batch-embed endpoints."""
+
+    url: str
+    requests: int = 0
+    delay: float = 0
+    texts: list[str] = field(default_factory=list)
+    models: tuple[str, ...] = ("bge-m3:latest",)
+
+
+@pytest.fixture
+def fake_ollama(monkeypatch):
+    """Serve deterministic embeddings and point indexer processes at them."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+    endpoint = FakeOllama(url=f"http://127.0.0.1:{server.server_port}")
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.respond(json.dumps({"models": [{"name": name} for name in endpoint.models]}).encode())
+
+        def do_POST(self):
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            endpoint.requests += 1
+            time.sleep(endpoint.delay)
+            endpoint.texts.extend(payload["input"])
+            vectors = []
+            for text in payload["input"]:
+                digest = hashlib.sha256(text.encode()).digest()
+                vectors.append([1.0, digest[0] / 255.0, digest[1] / 255.0])
+            self.respond(json.dumps({"embeddings": vectors}).encode())
+
+        def respond(self, payload: bytes):
+            self.send_response(200)
+            self.end_headers()
+            try:
+                self.wfile.write(payload)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # Expected when a bounded CLI terminates a slow request.
+
+        def log_message(self, *_args):
+            pass
+
+    server.RequestHandlerClass = Handler
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv("MEMWEAVE_EMBEDDING_API_BASE", endpoint.url)
+    # Subprocesses probe the fake server; in-process indexers bypass the stub.
+    monkeypatch.setattr("lib.vault_index.indexer._ollama_probe", lambda api_base, model: (True, "ok: fake"))
+    try:
+        yield endpoint
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()

@@ -54,6 +54,10 @@ def seed_cache(cache: Path, vault: Path, count: int = 6000) -> None:
             ],
         )
         connection.executemany(
+            "INSERT INTO files VALUES (?, 'memory', ?, 0, 0)",
+            [(str(vault / f"note-{i}.md"), str(i)) for i in range(count)],
+        )
+        connection.executemany(
             "INSERT INTO chunks_vec (id, embedding) VALUES (?, ?)",
             [(str(i), struct.pack("1024f", 1.0 if i == 0 else -1.0, *([0.0] * 1023))) for i in range(count)],
         )
@@ -96,7 +100,7 @@ def test_populated_cache_search_preserves_semantics_within_budget(tmp_path):
     instance._store.embedding_provider.embed_query = embed_query
     started = time.monotonic()
     try:
-        report = instance.search_report("no-keyword-match", top_k=1, allow_rebuild=False)
+        report = instance.search_report("no-keyword-match", top_k=1)
         elapsed = time.monotonic() - started
         assert report.mode == "hybrid"
         assert report.hits[0].path == "note-0.md"

@@ -29,3 +29,12 @@ def vector_table_exists(database: Path) -> bool:
     except sqlite3.Error:
         return False
     return row is not None
+
+
+def indexed_file_count(database: Path) -> int | None:
+    """Return the number of indexed files, or None when the index is unreadable."""
+    try:
+        with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
+            return int(connection.execute("SELECT count(*) FROM files").fetchone()[0])
+    except sqlite3.Error:
+        return None

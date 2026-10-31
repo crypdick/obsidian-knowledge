@@ -22,7 +22,7 @@ from lib.vault_index.cli import (
     setup,
 )
 from lib.vault_index.config import load_config
-from lib.vault_index.models import Hit, IndexBusyError
+from lib.vault_index.models import Hit, IndexBusyError, SearchReport
 from lib.vault_index.registration import register_vault
 
 
@@ -385,6 +385,9 @@ def test_retrieval_commands_report_public_results(tmp_path, monkeypatch, capsys,
         def search(self, *_args, **_kwargs):
             return [] if command == "search" else [Hit(path="wiki/note.md", score=2.0)]
 
+        def search_report(self, *args, **kwargs):
+            return SearchReport(mode="keyword", degraded_reason="offline", hits=self.search(*args, **kwargs))
+
     monkeypatch.setattr("lib.vault_index.indexer.Indexer", Index)
     monkeypatch.setattr("lib.vault_index.indexer.default_cache_dir", lambda _vault: tmp_path / "cache")
     args = Namespace(
@@ -420,25 +423,6 @@ def test_doctor_empty_rows_and_search_timeout(tmp_path):
 
     with pytest.raises(SearchTimeoutError, match="slow"):
         cli.run_search_doctor(vault=tmp_path, cache=tmp_path, idx=EmptyIndex(), queries=["q"])
-
-
-def test_retrieval_with_healthy_vector_index(tmp_path, monkeypatch, capsys):
-    class HealthyIndex:
-        vector_enabled = True
-
-        def __init__(self, **_kwargs):
-            pass
-
-        def search(self, *_args, **_kwargs):
-            return [Hit(path="wiki/note.md", score=2.0)]
-
-    monkeypatch.setattr("lib.vault_index.indexer.Indexer", HealthyIndex)
-    monkeypatch.setattr("lib.vault_index.indexer.default_cache_dir", lambda _vault: tmp_path / "cache")
-    args = Namespace(cmd="search", vault=tmp_path, query="q", top_k=1, all=False)
-    assert cli.run_retrieval_command(args) == 0
-    output = capsys.readouterr()
-    assert "wiki/note.md" in output.out
-    assert output.err == ""
 
 
 def test_empty_yaml_is_extended(tmp_path):

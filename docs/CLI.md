@@ -35,8 +35,8 @@ Use these commands to configure, search, and maintain the vault:
 | `setup --vault PATH` | Register and index; install the Claude plugin unless skipped. Installs global guards unless `--skip-guards`. |
 | `init-vault-index` | Create the shared `config.yaml` preferences and its parent directory, or append search defaults to an existing mapping. An existing `vault_index` section is left unchanged. |
 | `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
-| `write PATH [--replace]` | Read stdin, apply opt-in [configured creation defaults](configuration.md#note-creation) to new Markdown files, then atomically write and verify bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Does not reindex. |
-| `reindex [--force] [--timeout-seconds N]` | Show an in-place progress bar on interactive stderr, index changed files and remove stale index entries. Embeddings for small notes are batched across files; completed notes and cached embeddings survive interruption. `--force` reprocesses unchanged files too. Does not delete vault notes. |
+| `write PATH [--replace]` | Read stdin, apply opt-in [configured creation defaults](configuration.md#note-creation) to new Markdown files, then atomically write and verify bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Then [indexes the written note](#index-on-write). |
+| `reindex [--force] [--path PATH] [--timeout-seconds N]` | Show an in-place progress bar on interactive stderr, index changed files and remove stale index entries. Files indexed while embeddings were unavailable get vectors without rebuilding the rest. Embeddings for small notes are batched across files; see [indexing progress](#indexing-progress). `--force` reprocesses unchanged files too. `--path` (repeatable) indexes only the named vault-relative files and exits 3 when the index is not ready, the embedder is unavailable, or another index operation holds the lock. Does not delete vault notes. |
 | `search QUERY [--top-k N] [--all] [--json]` | Print ranked paths and snippets, or a JSON search report. `--all` bypasses the digest filter, not the indexing exclusions. |
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
 | `papercut DESCRIPTION` | Append avoidable or fixable workflow friction to the repository's vault log, or the global log if no repository is identified. |
@@ -48,7 +48,8 @@ Use these commands to configure, search, and maintain the vault:
 command arguments. Replace `N` with a numeric value. Square brackets mark
 optional arguments; omit the brackets when running a command.
 
-`--top-k` must be positive. `read` and `write` do not load the embedding stack.
+`--top-k` must be positive. `read` does not load the embedding stack; `write`
+loads it only in a child process after the write succeeds.
 For literal Markdown containing backticks, dollar signs, or wikilinks, use a
 quoted heredoc delimiter:
 
@@ -102,7 +103,7 @@ Hits use the same filters, weights, snippets, and ordering as text output.
 retrieval modes are not directly comparable. A successful search with no matches
 returns `"hits": []` and still includes the retrieval mode and reason.
 
-Warnings and rebuild progress go to stderr. Failed searches exit nonzero and
+Warnings and background reindex notices go to stderr. Failed searches exit nonzero and
 do not emit a success object. Timeout and busy exit codes are described below.
 
 ## Search health and network access
@@ -161,23 +162,56 @@ process Documents or Full Disk Access, restart it, and retry.
 
 `search`, `remember`, and `doctor` have a 30-second deadline covering initialization
 and retrieval. Override it with `OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`.
-Vector searches normally wait for an active index writer within that deadline, including
-when search needs to rebuild the index. Keyword search can read committed
-SQLite data while indexing continues. If lock waiting exhausts the deadline,
+Search embeds only the query. It never embeds vault content, so a slow or
+CPU-only embedder cannot push a search past its deadline.
+Vector searches normally wait for an active index writer within that deadline.
+Keyword search can read committed SQLite data while indexing continues. If lock waiting exhausts the deadline,
 the command reports a timeout and exits with code 124. Database contention that
 persists after SQLite's own wait reports a busy error with code 2; it does not
 appear as an empty result set.
 For callers that cannot wait for an index writer, `search --no-rebuild --no-wait`
 returns an actionable busy error with code 2 instead. It does not switch a
 hybrid query to keyword ranking because of contention. `--no-wait` requires
-`--no-rebuild`, leaving automatic rebuilds outside that request. The default
-CLI behavior still waits, and the whole-command deadline still bounds slow
-embedding or retrieval when the index is available.
-Use `search --no-rebuild` to serve existing keyword results when vectors need
-reindexing. MCP searches always use this option so an embedder change cannot
-start a full rebuild inside the query deadline. Run `reindex` separately to
-restore vector retrieval. JSON output reports `vector index requires reindex`
-or `vector index unavailable` as the degraded reason.
+`--no-rebuild`. The default CLI behavior still waits, and the whole-command
+deadline still bounds slow embedding or retrieval when the index is available.
+
+When vectors are missing or stale, search returns keyword hits immediately and
+starts one detached `reindex` with a 1800-second deadline. Its output goes to
+`background-reindex.log` in the vault's [cache directory](configuration.md#cache-location).
+If another index operation holds the lock, search assumes it is that reindex
+and does not start a second one. Stderr names the cause, for example
+`index not built yet` on a new host, `vectors missing after keyword-only sync`,
+or `embedder changed (was ..., now ...)`. JSON output reports
+`vector index rebuilding` as the degraded reason. A deadline or interruption
+keeps completed work, so a later search resumes rather than restarts.
+`search --no-rebuild` starts nothing and reports `vector index requires reindex`
+or `vector index unavailable`; MCP searches use it because the MCP server owns
+its own repair worker.
+### Indexing progress
+
+Indexing commits embeddings in batches sized to take about five seconds each,
+starting with four chunks and adapting to the embedder's measured speed. On a
+CPU-only host embedding about one chunk every two seconds, an interrupted
+reindex loses at most the few chunks in flight; rerunning computes only the
+remainder. Fast embedders grow to batches of 64.
+
+A sync while the embedder is unavailable indexes changed files for keyword
+search only. The next sync with the embedder available adds vectors to exactly
+those files and keeps every other stored vector. Only a different embedding
+model, endpoint, or chunking setting rebuilds vectors for the whole vault, and
+cached embeddings make returning to a previous model cheap.
+
+### Index on write
+
+After `write` verifies the new bytes, it indexes that one note in a child
+process, bounded by the search deadline. Unchanged content is skipped and
+unchanged chunks reuse cached embeddings, so only new or edited chunks are
+embedded. If the index is not built yet, the embedder is unavailable, another
+index operation holds the lock, or the deadline expires, `write` still exits 0
+and prints `index: not updated (...); the next sync will index PATH` to stderr.
+
+### Reindex deadlines
+
 `reindex` has no deadline unless you pass `--timeout-seconds`. Always pass it
 for scheduled jobs. Zero or negative deadline values disable the deadline.
 A hard watchdog allows five extra seconds to terminate stuck native calls.
@@ -187,7 +221,7 @@ Use `OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG` to select an alternate registry YAML file
 
 Exit codes are 0 for success (including no search results or reindex skipped
 because another process holds the lock), 2 for usage or configuration errors or a
-failed `doctor` check, and 124 for a deadline. Some file or configuration write failures
+failed `doctor` check, 3 for a deferred `reindex --path`, and 124 for a deadline. Some file or configuration write failures
 return 1. Error messages identify the failing path or operation.
 
 ## Papercut logs

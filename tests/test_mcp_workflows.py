@@ -24,7 +24,11 @@ def test_patch_and_listing_tools(tmp_path):
                 "expected_sha256": hashlib.sha256(original).hexdigest(),
             },
         )
-        assert patched[1] == {"path": "note.md", "status": "patched and verified"}
+        assert patched[1] == {
+            "path": "note.md",
+            "status": "patched and verified",
+            "index": "deferred to next sync: reindex: deferred (index not built yet)",
+        }
         assert (tmp_path / "note.md").read_bytes() == original.replace(b"Old paragraph", b"New paragraph")
         listed = await server.call_tool("vault_list", {})
         assert listed[1]["entries"][0]["path"] == "note.md"

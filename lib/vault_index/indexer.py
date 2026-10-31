@@ -62,7 +62,7 @@ from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE, make_embedding_provider
 from lib.vault_index.filters import path_passes
 from lib.vault_index.index_lock import index_lock
-from lib.vault_index.index_state import rebuild_pending, vector_table_exists
+from lib.vault_index.index_state import indexed_file_count, rebuild_pending, vector_table_exists
 from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
 from lib.vault_index.vector_search import IndexedHybridSearch
 from obsidian_knowledge_vendor import memweave
@@ -206,10 +206,9 @@ class Indexer:
             if not ok:
                 self._vector_enabled = False
 
-        # Lazy auto-rebuild flag: set to True if the stored embedder fingerprint
-        # differs from the current one. The next .search() or .full_reindex()
-        # call will trigger a force-rebuild before serving results.
-        self._needs_rebuild = self._stale_fingerprint() if self._vector_enabled else False
+        # Why persisted vectors cannot serve searches yet, or None when ready.
+        # Search never repairs this inline; callers start a background reindex.
+        self.vector_issue = self._vector_issue() if self._vector_enabled else None
 
         # Start with an empty-extra_paths store for read-only queries.
         # full_reindex() will replace this with the full allowed-paths store.
@@ -248,34 +247,41 @@ class Indexer:
         except OSError:
             return None
 
-    def _write_fingerprint(self) -> None:
-        # An offline sync can add unembedded chunks even when an older vector
-        # table exists. Mark the mode so restoring Ollama rebuilds those files.
-        fingerprint = self._embedder_fingerprint() if self._vector_enabled else "keyword-only"
+    def _write_fingerprint(self, *, indexed: int) -> None:
+        # An offline sync that indexed files leaves their chunks without
+        # vectors; mark it so the next online sync is reported as catching up.
+        if self._vector_enabled:
+            fingerprint = self._embedder_fingerprint()
+        elif indexed:
+            fingerprint = "keyword-only"
+        else:
+            return
         with contextlib.suppress(OSError):
             self._fingerprint_path().write_text(fingerprint)
 
-    def _stale_fingerprint(self) -> bool:
-        """True iff a populated index exists but was built with a different embedder.
+    def _vector_issue(self) -> str | None:
+        """Explain why the persisted vector index cannot serve searches yet.
 
-        We only consider the fingerprint stale when there is *something* to
-        invalidate — an empty cache or a never-indexed vault is a fresh install,
-        not a model swap, so we don't auto-rebuild on first run.
+        memweave owns rebuild decisions; this only reports readiness. A new or
+        interrupted first build is not an embedder change, so name it apart.
         """
         db = self.cache_dir / "index.sqlite"
-        if not db.exists():
-            return False
+        if not db.exists() or indexed_file_count(db) == 0:
+            return "index not built yet"
         if rebuild_pending(db):
-            return True
+            return "index rebuild incomplete"
         stored = self._read_stored_fingerprint()
         if stored is None:
-            # Pre-fingerprint cache. Do not assume it is FTS-only: some live
-            # deployments already have a populated vector table but predate the
-            # fingerprint marker. For those, synchronous search/prefetch should
-            # use the existing cache rather than spending the whole gateway
-            # memory-prefetch timeout on a rebuild every turn.
-            return not self._vector_table_exists(db)
-        return stored != self._embedder_fingerprint() or not self._vector_table_exists(db)
+            # Pre-fingerprint caches with a vector table remain usable.
+            return None if self._vector_table_exists(db) else "index not built yet"
+        if stored == "keyword-only":
+            return "vectors missing after keyword-only sync"
+        current = self._embedder_fingerprint()
+        if stored != current:
+            return f"embedder changed (was {stored}, now {current})"
+        if not self._vector_table_exists(db):
+            return "vector index unavailable"
+        return None
 
     @staticmethod
     def _vector_table_exists(db_path: Path) -> bool:
@@ -493,29 +499,37 @@ class Indexer:
 
         allowed = self._allowed_vault_files()
         self._store = self._make_store(extra_paths=allowed)
-        result = asyncio.run(
-            self._store.index(force=force or self._needs_rebuild, progress_callback=progress)
-        )
-        self._write_fingerprint()
-        self._needs_rebuild = False
+        result = asyncio.run(self._store.index(force=force, progress_callback=progress))
+        self._write_fingerprint(indexed=result.files_indexed)
+        self.vector_issue = self._vector_issue() if self._vector_enabled else None
         return SyncStats(
             indexed=result.files_indexed,
             skipped=result.files_skipped,
             deleted=result.files_deleted,
         )
 
-    def _auto_rebuild(self, reason: str) -> None:
-        """Force-rebuild the index, printing a notice. Used for embedder swaps."""
-        import sys
+    def index_paths(self, rel_paths: list[str]) -> SyncStats:
+        """Incrementally index specific vault files without walking the vault.
 
-        stored = self._read_stored_fingerprint() or "none"
-        current = self._embedder_fingerprint()
-        print(  # noqa: T201 -- intentional stderr progress for interactive reindex
-            f"# vault-index: rebuilding ({reason}; was {stored}, now {current})",
-            file=sys.stderr,
-            flush=True,
-        )
-        self.full_reindex(force=True, blocking=True)
+        Unchanged files are hash-skipped and cached chunk embeddings reused.
+        Raises ``IndexBusyError`` instead of waiting for another index writer.
+        Files that are missing or excluded by index filters are skipped.
+        """
+        if not self._vector_enabled:
+            raise IndexBusyError(f"vector embeddings unavailable ({self.vector_status})")
+        if self.vector_issue is not None:
+            raise IndexBusyError(f"vector index not ready ({self.vector_issue})")
+        indexed = skipped = 0
+        with index_lock(self.cache_dir, exclusive=True, blocking=False):
+            for rel in rel_paths:
+                path = self.vault_root / rel
+                if not path_passes(rel, self.config.index) or not path.is_file():
+                    skipped += 1
+                    continue
+                result = asyncio.run(self._store.add(path))
+                indexed += result.files_indexed
+                skipped += result.files_skipped
+        return SyncStats(indexed=indexed, skipped=skipped, deleted=0)
 
     def sync(self) -> SyncStats:
         """Incremental re-index. Same as full_reindex without force."""
@@ -528,7 +542,6 @@ class Indexer:
         top_k: int | None = None,
         min_score: float | None = None,
         override_digest_filter: bool = False,
-        allow_rebuild: bool = True,
         wait_for_writer: bool = True,
     ) -> list[Hit]:
         """Return ranked hits; see search_report for retrieval metadata."""
@@ -537,7 +550,6 @@ class Indexer:
             top_k=top_k,
             min_score=min_score,
             override_digest_filter=override_digest_filter,
-            allow_rebuild=allow_rebuild,
             wait_for_writer=wait_for_writer,
         ).hits
 
@@ -548,7 +560,6 @@ class Indexer:
         top_k: int | None = None,
         min_score: float | None = None,
         override_digest_filter: bool = False,
-        allow_rebuild: bool = True,
         wait_for_writer: bool = True,
     ) -> SearchReport:
         """Run retrieval and report its actual mode, including query fallbacks.
@@ -576,16 +587,13 @@ class Indexer:
             hits = self._with_snippets(filtered(self._sqlite_fts_search(query, candidate_count)), query)
             return SearchReport(mode="keyword", degraded_reason=reason, hits=hits)
 
-        # Auto-rebuild when the embedder fingerprint changed since the last
-        # successful index. Chat prefetch calls can opt out so stale caches do
-        # not spend the turn-start budget rebuilding before the model responds.
-        if self._needs_rebuild and not allow_rebuild:
-            return keyword_report("vector index requires reindex")
-        if self._needs_rebuild:
-            self._auto_rebuild(reason="embedder changed")
-
         if not self._vector_enabled:
             return keyword_report(self.vector_status)
+        # Never embed vault content inside a search deadline. Catching up is
+        # the job of a separate (background) reindex.
+        # NOTE: docs/CLI.md "Search health and network access" documents this.
+        if self.vector_issue is not None:
+            return keyword_report("vector index requires reindex")
 
         def retrieve():
             try:
@@ -607,15 +615,9 @@ class Indexer:
             # https://github.com/ollama/ollama/issues/16625
             if "query_vec (got None)" in str(exc):
                 return keyword_report("query embedding unavailable")
-            # Defensive net: reindex didn't run for some reason but the index
-            # is missing chunks_vec. Trigger a rebuild and retry once.
-            if "chunks_vec" in str(exc) and self._vector_enabled:
-                if not allow_rebuild:
-                    return keyword_report("vector index unavailable")
-                self._auto_rebuild(reason="chunks_vec missing")
-                raw = retrieve()
-            else:
-                raise
+            if "chunks_vec" in str(exc):
+                return keyword_report("vector index unavailable")
+            raise
         hits = [Hit(path=self._abs_to_rel(r.path), score=_rescale(r.score), weight_applied=1.0) for r in raw]
 
         return SearchReport(

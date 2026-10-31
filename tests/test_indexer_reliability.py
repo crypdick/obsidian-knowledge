@@ -39,7 +39,7 @@ def test_interrupted_rebuild_does_not_serve_partial_vectors(tmp_path):
         connection.execute("CREATE TABLE chunks_vec (id TEXT)")
     (cache / "embedder-fingerprint.txt").write_text("ollama/bge-m3@320/64")
     instance = indexer.Indexer(vault, cache, VaultIndexConfig(), skip_probe=True)
-    report = instance.search_report("orchid", allow_rebuild=False)
+    report = instance.search_report("orchid")
     assert report.mode == "keyword"
     assert report.degraded_reason == "vector index requires reindex"
     close(instance)
@@ -55,7 +55,7 @@ def test_indexer_regression_run_exits_after_assertions():
             sys.executable,
             "-m",
             "pytest",
-            "tests/test_indexer.py::test_init_auto_rebuilds_on_embedder_change",
+            "tests/test_indexer.py::test_embedder_change_serves_keywords_without_rebuilding",
             "-o",
             "addopts=",
             "--no-cov",
@@ -156,7 +156,7 @@ def test_pre_fingerprint_cache_rebuild_depends_on_vector_table(tmp_path, with_ve
         skip_probe=True,
     )
     try:
-        assert instance._needs_rebuild is (not with_vector_table)
+        assert (instance.vector_issue is None) is with_vector_table
     finally:
         close(instance)
 
@@ -286,13 +286,16 @@ def test_blocking_index_lock_does_not_request_nonblocking_mode(tmp_path, monkeyp
 
 
 def vector_indexer(tmp_path) -> indexer.Indexer:
-    return indexer.Indexer(
+    """Return an indexer whose persisted vectors are treated as ready."""
+    instance = indexer.Indexer(
         tmp_path,
         tmp_path / "cache",
         VaultIndexConfig(),
         vector_enabled=True,
         skip_probe=True,
     )
+    instance.vector_issue = None
+    return instance
 
 
 def test_vector_search_waits_for_writer_then_returns_results(tmp_path):
@@ -334,22 +337,13 @@ def test_vector_search_waits_for_writer_then_returns_results(tmp_path):
         (sqlite3.OperationalError("disk failure"), sqlite3.OperationalError),
     ],
 )
-@pytest.mark.parametrize("rebuild_before_error", [False, True])
-def test_vector_search_handles_only_lock_storage_errors(
-    tmp_path, monkeypatch, error, expected_error, rebuild_before_error
-):
+def test_vector_search_handles_only_lock_storage_errors(tmp_path, error, expected_error):
     instance = vector_indexer(tmp_path)
-    calls = 0
 
     async def fail(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        if rebuild_before_error and calls == 1:
-            raise memweave.SearchError("no such table: chunks_vec")
         raise error
 
     instance._store.search = fail
-    monkeypatch.setattr(instance, "_auto_rebuild", lambda reason: None)
     try:
         with pytest.raises(expected_error, match=str(error)):
             instance.search("query")
@@ -368,48 +362,7 @@ def test_missing_vector_table_can_fall_back_without_rebuild(tmp_path, monkeypatc
     monkeypatch.setattr(instance, "_sqlite_fts_search", lambda query, count: fallback)
     monkeypatch.setattr(instance, "_with_snippets", lambda hits, query: hits)
     try:
-        assert instance.search("query", allow_rebuild=False) == fallback
-    finally:
-        close(instance)
-
-
-def test_missing_vector_table_rebuilds_and_retries_once(tmp_path, monkeypatch):
-    instance = vector_indexer(tmp_path)
-    calls = 0
-
-    async def search(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            raise memweave.SearchError("no such table: chunks_vec")
-        return [SimpleNamespace(path=str(tmp_path / "note.md"), score=0.5)]
-
-    instance._store.search = search
-    monkeypatch.setattr(instance, "_auto_rebuild", lambda reason: None)
-    monkeypatch.setattr(instance, "_with_snippets", lambda hits, query: hits)
-    try:
-        result = instance.search("query")
-        assert result == [Hit(path="note.md", score=50.0, weight_applied=1.0)]
-        assert calls == 2
-    finally:
-        close(instance)
-
-
-def test_missing_vector_table_does_not_hide_rebuild_contention(tmp_path, monkeypatch):
-    instance = vector_indexer(tmp_path)
-
-    async def fail(*args, **kwargs):
-        raise memweave.SearchError("no such table: chunks_vec")
-
-    instance._store.search = fail
-    monkeypatch.setattr(
-        instance,
-        "_auto_rebuild",
-        lambda reason: (_ for _ in ()).throw(IndexBusyError("busy")),
-    )
-    try:
-        with pytest.raises(IndexBusyError, match="busy"):
-            instance.search("query")
+        assert instance.search("query") == fallback
     finally:
         close(instance)
 
@@ -442,17 +395,3 @@ def test_unrelated_memweave_search_error_is_not_hidden(tmp_path):
             instance.search("query")
     finally:
         close(instance)
-
-
-def test_auto_rebuild_reports_reason_and_forces_reindex(tmp_path, monkeypatch, capsys):
-    instance = vector_indexer(tmp_path)
-    calls = []
-    monkeypatch.setattr(
-        instance, "full_reindex", lambda force=False, *, blocking=False: calls.append((force, blocking))
-    )
-    try:
-        instance._auto_rebuild("model changed")
-    finally:
-        close(instance)
-    assert calls == [(True, True)]
-    assert "rebuilding (model changed" in capsys.readouterr().err

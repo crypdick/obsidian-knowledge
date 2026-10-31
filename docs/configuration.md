@@ -149,7 +149,8 @@ Set these environment variables before running the CLI:
 | `MEMWEAVE_EMBEDDING_API_BASE` | `http://127.0.0.1:11434` | Embedding endpoint |
 | `MEMWEAVE_EMBEDDING_API_KEY` | Unset | Authentication, if required |
 
-Changing the model causes the next search to rebuild the index.
+Changing the model makes the next search start a background reindex that
+rebuilds vectors; search serves keyword results until it finishes.
 For service and permission errors, see [search troubleshooting](CLI.md#search-health-and-network-access).
 
 ## Cache location

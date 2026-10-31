@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,7 +21,7 @@ MAX_PREFETCH_BYTES = 16384
 
 
 async def prefetch_embeddings(
-    mem: MemWeave, paths: list[Path], workspace: Path, *, force: bool, completed: set[str]
+    mem: MemWeave, paths: list[Path], workspace: Path, *, must_index: Callable[[str], bool]
 ) -> int:
     """Cache embeddings ahead of file transactions, retaining existing fallback behavior."""
     assert mem._store is not None
@@ -33,7 +34,7 @@ async def prefetch_embeddings(
             entry = build_file_entry(path)
             if entry["size"] > MAX_PREFETCH_BYTES:
                 continue
-            if not force or rel in completed:
+            if not must_index(rel):
                 stored = await store.get_file(rel)
                 if stored and stored["hash"] == entry["hash"]:
                     continue
@@ -47,24 +48,23 @@ async def prefetch_embeddings(
 
     model = config.embedding.model
     provider_key = make_provider_key("litellm", model, config.embedding.api_base)
-    hashes = list(texts)
+    cached = await get_cached_embeddings(store, list(texts), model, provider_key)
+    missing = [key for key in texts if key not in cached]
     count = 0
-    size = config.embedding.batch_size
-    for start in range(0, len(hashes), size):
-        group = hashes[start : start + size]
-        cached = await get_cached_embeddings(store, group, model, provider_key)
-        missing = [key for key in group if key not in cached]
-        if not missing:
-            continue
+    while count < len(missing):
+        batch = missing[count : count + mem.embed_batcher.size]
         try:
-            vectors = await mem.embedding_provider.embed_batch([texts[key] for key in missing])
-            if len(vectors) != len(missing) or any(not vector for vector in vectors):
+            vectors = await mem.embed_batcher.embed(
+                [texts[key] for key in batch], mem.embedding_provider.embed_batch
+            )
+            if len(vectors) != len(batch) or any(not vector for vector in vectors):
                 raise ValueError("incomplete embedding batch")
         except Exception as exc:
             logger.warning("Cross-file embedding batch failed; retrying per file: %s", exc)
             break
-        for key, vector in zip(missing, vectors, strict=True):
+        # Commit every batch so an interrupted run keeps all completed work.
+        for key, vector in zip(batch, vectors, strict=True):
             await store_embedding(store, key, vector, model=model, provider_key=provider_key)
         await store.commit()
-        count += len(missing)
+        count += len(vectors)
     return count

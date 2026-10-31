@@ -34,8 +34,8 @@ sending a token across a network. Tunnel provisioning is separate from this serv
 - `vault_search(query, top_k=None, all_paths=False)` returns a structured search
   report with `mode`, `degraded_reason`, and scored `hits`. `top_k` must be
   positive. `all_paths` bypasses the digest filter, retaining index exclusions.
-  Queries do not wait for vector rebuilds. If the embedder has changed, a
-  rebuild was interrupted, or vector tables are unavailable, search returns
+  Queries do not wait for vector rebuilds. If the index is new, the embedder
+  has changed, a rebuild was interrupted, or vector tables are unavailable, search returns
   keyword hits and requests one background repair. While it runs the reason
   is `vector index rebuilding`. Repeated queries share the same worker;
   failures or lock contention can be retried by a search after 60 seconds.
@@ -53,7 +53,8 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   reads at most the limit plus one byte. Empty files are supported. Unknown
   MIME types use `application/octet-stream`.
 - `vault_write(path, content, replace=False)` atomically writes UTF-8 content,
-  verifies final bytes, and returns the vault-relative path and success status.
+  verifies final bytes, and returns the vault-relative path, success status,
+  and `index` result (see [indexing after writes](#indexing-after-writes)).
   Blank content and existing files are rejected unless `replace=True` permits
   overwriting. Parent directories are created as needed. New Markdown notes
   apply the declarative [configured creation defaults](configuration.md#note-creation)
@@ -70,6 +71,7 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   bytes, line endings, and file permissions are preserved. An optional lowercase
   SHA-256 of the original file rejects stale edits. The original bytes are
   checked again immediately before replacement; blank output is rejected.
+  Returns the path, status, and `index` result like `vault_write`.
 - `vault_list(path="", recursive=False, depth=3, pattern=None, limit=100,
   offset=0)` returns `entries` and `next_offset`. Entries contain vault-relative
   `path`, `name`, `is_directory`, and `size_bytes` (null for directories).
@@ -126,10 +128,17 @@ request timeout are split into smaller batches, preserving order and avoiding
 repeated attempts at the same oversized batch. These behaviors do not require
 deployment-specific wrappers, longer deadlines, or increased CPU limits.
 
-Search uses the current index. Writes, patches, and appends do not automatically reindex.
+### Indexing after writes
+
+`vault_write` and `vault_patch` index the changed note with
+`obsidian-knowledge reindex --path`, bounded by the search deadline plus a
+ten-second cleanup allowance. Their `index` field is `updated`, or
+`deferred to next sync: REASON` when the index is not built yet, the embedder
+is unavailable, the index lock is busy, or the deadline expires. Deferral never
+fails the write. Appends, frontmatter edits, moves, and deletes do not index.
 Use `vault_search_update()` or the existing
 `obsidian-knowledge reindex --vault /absolute/path/to/vault` workflow after
-changing notes. See [CLI reference](CLI.md) for indexing, embeddings, and search
+those changes. See [CLI reference](CLI.md) for indexing, embeddings, and search
 timeout configuration.
 
 ## App-backed tools

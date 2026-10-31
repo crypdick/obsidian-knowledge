@@ -23,6 +23,12 @@ import yaml
 from pydantic import BaseModel, Field
 from vault_preferences import load_preferences, preferences_path
 
+from lib.vault_index.background_reindex import (
+    LOG_FILENAME,
+    REINDEX_REASONS,
+    index_command,
+    start_background_reindex,
+)
 from lib.vault_index.models import Hit, IndexBusyError
 from lib.vault_index.registration import existing_vault, read_registry, register_vault
 from lib.vault_index.vault_files import read_vault_file, write_vault_file
@@ -547,8 +553,37 @@ def run_vault_file_command(
         )
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
-    print(f"Wrote and verified: {target}")
+    print(f"Wrote and verified: {target}", flush=True)
+    index_written_file(vault, target.relative_to(vault).as_posix())
     return 0
+
+
+def index_written_file(vault: Path, rel_path: str) -> None:
+    """Index one written note within the interactive deadline; never fail the write.
+
+    Runs in a child process so a stuck embedder can be killed. Busy locks, an
+    unavailable embedder, or the deadline leave the note for the next sync;
+    embeddings completed before a deadline stay cached.
+    """
+    # NOTE: docs/CLI.md "Index on write" documents this deadline and deferral.
+    deadline = search_ttl_seconds()
+    command = index_command(vault, "--path", rel_path, "--timeout-seconds", str(deadline))
+    try:
+        result = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=deadline + _HARD_TIMEOUT_GRACE_SECONDS + 5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        reason = str(exc)
+    else:
+        if result.returncode == 0:
+            return
+        reason = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "index failed"
+    print(f"index: not updated ({reason}); the next sync will index {rel_path}", file=sys.stderr)
 
 
 def run_retrieval_command(args: argparse.Namespace) -> int:
@@ -577,27 +612,26 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
     if not idx.vector_enabled:
         print(f"# search ranking degraded ({idx.vector_status})", file=sys.stderr)
     query = args.query if args.cmd == "search" else args.memory
-    if args.cmd == "search" and getattr(args, "json", False):
-        search_report = idx.search_report(
-            query,
-            top_k=args.top_k,
-            override_digest_filter=args.all,
-            allow_rebuild=not args.no_rebuild,
-            wait_for_writer=not no_wait,
-        )
-        print(search_report.model_dump_json())
-        return 0
-    hits = idx.search(
+    result = idx.search_report(
         query,
         top_k=args.top_k,
         override_digest_filter=args.all,
-        allow_rebuild=not getattr(args, "no_rebuild", False),
         wait_for_writer=not no_wait,
     )
-    if args.cmd == "remember":
-        print(format_remember_candidates(hits))
+    if result.degraded_reason in REINDEX_REASONS and not getattr(args, "no_rebuild", False):
+        cause = idx.vector_issue or result.degraded_reason
+        result = result.model_copy(update={"degraded_reason": "vector index rebuilding"})
+        if start_background_reindex(vault, idx.cache_dir):
+            log = idx.cache_dir / LOG_FILENAME
+            print(f"# vault-index: {cause}; started background reindex (log: {log})", file=sys.stderr)
+        else:
+            print(f"# vault-index: {cause}; a reindex is already running", file=sys.stderr)
+    if args.cmd == "search" and getattr(args, "json", False):
+        print(result.model_dump_json())
+    elif args.cmd == "remember":
+        print(format_remember_candidates(result.hits))
     else:
-        print(format_search_hits(hits) if hits else "(no results)")
+        print(format_search_hits(result.hits) if result.hits else "(no results)")
     return 0
 
 
@@ -663,6 +697,12 @@ def main() -> int:
     p_reindex.add_argument("--vault", type=Path, default=None)
     p_reindex.add_argument("--force", action="store_true")
     p_reindex.add_argument(
+        "--path",
+        action="append",
+        dest="paths",
+        help="Index only this vault-relative file; may be repeated. Exits 3 when deferred.",
+    )
+    p_reindex.add_argument(
         "--timeout-seconds",
         type=int,
         default=None,
@@ -674,7 +714,9 @@ def main() -> int:
     p_search.add_argument("--vault", type=Path, default=None)
     p_search.add_argument("--top-k", type=positive_int, default=None)
     p_search.add_argument(
-        "--no-rebuild", action="store_true", help="Use keyword results when vector reindexing is required."
+        "--no-rebuild",
+        action="store_true",
+        help="Do not start a background reindex when vectors are missing or stale.",
     )
     p_search.add_argument(
         "--no-wait",
@@ -793,9 +835,15 @@ def run_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
 
                 vault = resolve_vault(args.vault)
                 cache = default_cache_dir_for_vault(vault)
+                if args.paths and not (cache / "index.sqlite").exists():
+                    # Building a new index is a full sync's job, not a file update's.
+                    print("reindex: deferred (index not built yet)", file=sys.stderr)
+                    return 3
                 cache.mkdir(parents=True, exist_ok=True)
                 cfg = load_config()
                 idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+                if args.paths:
+                    return index_selected_paths(idx, args.paths)
                 if sys.stderr.isatty():
                     progress = ReindexProgress()
                     try:
@@ -828,6 +876,17 @@ def run_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
         with search_ttl(search_ttl_seconds(), label=args.cmd):
             return run_retrieval_command(args)
 
+    return 0
+
+
+def index_selected_paths(idx, paths: list[str]) -> int:
+    """Index named files now, or exit 3 when indexing must wait for a full sync."""
+    try:
+        stats = idx.index_paths(paths)
+    except IndexBusyError as exc:
+        print(f"reindex: deferred ({exc})", file=sys.stderr)
+        return 3
+    print(f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}", flush=True)
     return 0
 
 

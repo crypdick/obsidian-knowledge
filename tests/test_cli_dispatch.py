@@ -117,8 +117,7 @@ def test_reindex_progress_throttles_and_handles_empty(capsys, monkeypatch):
     assert "1/2" not in output
 
 
-@pytest.mark.parametrize("needs_rebuild", [False, True])
-def test_search_deadline_interrupts_index_lock_wait(tmp_path, needs_rebuild):
+def test_search_deadline_interrupts_index_lock_wait(tmp_path):
     script = f"""
 import fcntl, sys
 import lib.vault_index.indexer as indexer
@@ -127,7 +126,7 @@ from lib.vault_index.config import VaultIndexConfig
 from pathlib import Path
 vault = Path({str(tmp_path)!r})
 instance = indexer.Indexer(vault, vault / 'cache', VaultIndexConfig(), skip_probe=True)
-instance._needs_rebuild = {needs_rebuild!r}
+instance.vector_issue = None
 indexer.Indexer = lambda *args, **kwargs: instance
 lock = open(instance.cache_dir / '.index.sqlite.lock', 'w')
 fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
