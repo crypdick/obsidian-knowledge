@@ -16,9 +16,11 @@ import threading
 import time
 import traceback
 from pathlib import Path
+from typing import Annotated
 
 import platformdirs
 import yaml
+from pydantic import BaseModel, Field
 from vault_preferences import load_preferences, preferences_path
 
 from lib.vault_index.models import Hit, IndexBusyError
@@ -96,6 +98,15 @@ APP_NAME = "obsidian-knowledge"
 CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
 SEARCH_TTL_ENV = "OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS"
 DEFAULT_SEARCH_TTL_SECONDS = 30
+
+
+class _WriterConfig(BaseModel):
+    vaults: list[Path] = Field(default_factory=list)
+    write_command: (
+        Annotated[list[Annotated[str, Field(strict=True, min_length=1)]], Field(min_length=1)] | None
+    ) = None
+
+
 # Extra time past the signal-based deadline before the watchdog hard-exits.
 # Lets the clean SIGALRM/unwind path win when it can; the watchdog only fires
 # when the work is wedged in a C call the signal cannot interrupt.
@@ -468,12 +479,14 @@ def setup(vault: Path, *, skip_claude_plugin: bool = False, skip_guards: bool = 
     print("\nSetup complete.")
 
 
-def run_papercut(*, vault: Path, description: str, parser: argparse.ArgumentParser) -> int:
+def run_papercut(
+    *, vault: Path, description: str, parser: argparse.ArgumentParser, repository: str | None = None
+) -> int:
     """Record a papercut without loading the search/indexing stack."""
     from lib.vault_index.papercuts import record_papercut
 
     try:
-        record = record_papercut(vault, description)
+        record = record_papercut(vault, description, repository=repository)
     except OSError as exc:
         print(f"papercut: could not complete vault log write: {exc}", file=sys.stderr)
         if exc.errno in {errno.EROFS, errno.EACCES, errno.EPERM}:
@@ -489,6 +502,26 @@ def run_papercut(*, vault: Path, description: str, parser: argparse.ArgumentPars
         parser.error(str(exc))
     print(f"Logged papercut: {record.path.relative_to(vault)}")
     return 0
+
+
+def run_host_write_command(command: str, repository: str | None, vault: Path | None) -> int | None:
+    """Delegate host note mutations without changing their caller's identity."""
+    if command not in {"write", "papercut"}:
+        return None
+    # NOTE: docs/configuration.md, Host writer command: preserve stdin and cwd;
+    # never fall back to creating notes as a different identity after failure.
+    writer = _WriterConfig.model_validate(read_registry(vaults_config_path()))
+    if writer.write_command is None:
+        return None
+    selected = resolve_vault(vault)
+    if selected not in [root.expanduser().resolve() for root in writer.vaults]:
+        return None
+    arguments = sys.argv[1:]
+    if command == "papercut" and repository is None:
+        from lib.vault_index.papercuts import papercut_repository
+
+        arguments = [*arguments, "--repository", papercut_repository(Path.cwd())]
+    return subprocess.run([*writer.write_command, *arguments], stdin=sys.stdin, check=False).returncode
 
 
 def run_vault_file_command(
@@ -653,6 +686,7 @@ def main() -> int:
     )
     p_papercut.add_argument("description", help="What caused friction; quote multi-word descriptions")
     p_papercut.add_argument("--vault", type=Path, default=None, help="Vault root")
+    p_papercut.add_argument("--repository", default=None, help=argparse.SUPPRESS)
 
     p_doctor = sub.add_parser(
         "doctor",
@@ -685,6 +719,17 @@ def main() -> int:
     sub.add_parser("garden", help="audit and repair vault structure, links and reports")
     args = parser.parse_args()
 
+    delegated = run_host_write_command(
+        args.cmd, getattr(args, "repository", None), getattr(args, "vault", None)
+    )
+    if delegated is not None:
+        return delegated
+
+    return run_command(args, parser)
+
+
+def run_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Run an already-parsed command after host write delegation."""
     if args.cmd == "setup":
         with search_ttl(args.timeout_seconds, label="setup"):
             setup(
@@ -753,6 +798,7 @@ def main() -> int:
             vault=resolve_vault(args.vault),
             description=args.description,
             parser=parser,
+            repository=args.repository,
         )
     elif args.cmd in {"doctor", "search", "remember"}:  # pragma: no branch  # exhaustive parser
         with search_ttl(search_ttl_seconds(), label=args.cmd):
