@@ -733,11 +733,13 @@ class MemWeave:
         if rebuilding:
             force = True
             if not _same_rebuild_target(pending, target):
+                # Only an online pass starts a vector generation. Offline, the
+                # stale vectors stay until the embedder can replace them.
                 if self._vector_available:
                     await self._db.execute("DROP TABLE IF EXISTS chunks_vec")
-                await self._db.execute("DELETE FROM index_rebuild_files")
-                await self._store.set_meta(_REBUILD_KEY, target)
-                await self._store.commit()
+                    await self._db.execute("DELETE FROM index_rebuild_files")
+                    await self._store.set_meta(_REBUILD_KEY, target)
+                    await self._store.commit()
             else:
                 cursor = await self._db.execute("SELECT path FROM index_rebuild_files")
                 completed = {row[0] for row in await cursor.fetchall()}

@@ -353,3 +353,22 @@ def test_write_survives_a_wedged_index_process(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli.subprocess, "run", wedged)
     cli.index_written_file(tmp_path, "wiki/note.md")
     assert "the next sync will index wiki/note.md" in capsys.readouterr().err
+
+
+def test_model_change_during_offline_sync_still_rebuilds_vectors(tmp_path, monkeypatch, fake_ollama):
+    vault = make_vault(tmp_path)
+    cache = tmp_path / "cache"
+    build_index(vault, cache)
+    fake_ollama.models = ("other-embed:latest",)
+    monkeypatch.setenv("MEMWEAVE_EMBEDDING_MODEL", "ollama/other-embed")
+    offline = Indexer(vault, cache, CONFIG, vector_enabled=False)
+    offline.full_reindex()
+    close(offline)
+
+    restored = Indexer(vault, cache, CONFIG)
+    try:
+        assert restored.full_reindex().indexed == 3
+        report = restored.search_report("orchid")
+    finally:
+        close(restored)
+    assert report.mode == "hybrid"

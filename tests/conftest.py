@@ -145,7 +145,9 @@ def fake_ollama(monkeypatch):
             vectors = []
             for text in payload["input"]:
                 digest = hashlib.sha256(text.encode()).digest()
-                vectors.append([1.0, digest[0] / 255.0, digest[1] / 255.0])
+                # Other models get another width, like a real model swap.
+                width = 3 if payload["model"] == "bge-m3" else 4
+                vectors.append([1.0, digest[0] / 255.0, digest[1] / 255.0, 0.5][:width])
             self.respond(json.dumps({"embeddings": vectors}).encode())
 
         def respond(self, payload: bytes):
