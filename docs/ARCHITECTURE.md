@@ -41,6 +41,10 @@ nearest-neighbor query. Memweave normalizes embeddings, so L2 candidate ordering
 matches cosine ordering; the strategy keeps the original cosine scores and
 keyword merge. Model and source filters apply before candidate selection. Pools
 above sqlite-vec's 4096-candidate ceiling retain memweave's exhaustive search.
+Schema initialization adds a covering `(model, source, id)` chunk index to both
+new and existing caches. This keeps candidate eligibility off the large chunk
+text/JSON-embedding table without changing ranking, filters, or embedding policy;
+no re-embedding is required.
 
 The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
 module, `hooks/vault_preferences.py` as `vault_preferences`, and
