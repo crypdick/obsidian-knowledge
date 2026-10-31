@@ -43,6 +43,7 @@ def record_papercut(
     *,
     cwd: Path | None = None,
     now: datetime | None = None,
+    repository: str | None = None,
 ) -> PapercutRecord:
     """Append one papercut to the repository-specific log under ``vault_root``.
 
@@ -59,7 +60,7 @@ def record_papercut(
 
     timestamp = (now or datetime.now(UTC)).astimezone(UTC)
     working_directory = (cwd or Path.cwd()).expanduser().resolve()
-    scope = _scope_for(working_directory)
+    scope = _scope_for(working_directory, repository)
     log_path = vault / scope.relative_path
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -70,13 +71,21 @@ def record_papercut(
     return PapercutRecord(path=log_path)
 
 
-def _scope_for(working_directory: Path) -> _PapercutScope:
+def papercut_repository(working_directory: Path) -> str:
+    """Capture caller scope before delegating to a writer with different Git access."""
+    return "/".join(_repository_from_origin(working_directory) or ())
+
+
+def _scope_for(working_directory: Path, hint: str | None) -> _PapercutScope:
     """Prefer a stable per-repository log, with a central fallback."""
-    repository = _repository_from_origin(working_directory)
-    if repository is None:
+    repository = papercut_repository(working_directory) if hint is None else hint
+    if not repository:
         return _PapercutScope(relative_path=GLOBAL_PAPERCUTS_RELATIVE_PATH, kind="global")
 
-    owner, repo = repository
+    parts = repository.split("/")
+    if len(parts) != 2 or not all(_is_safe_repository_component(part) for part in parts):
+        raise ValueError("repository must be owner/repo or empty for the global log")
+    owner, repo = parts
     return _PapercutScope(
         relative_path=REPO_PAPERCUTS_ROOT / owner / repo / PAPERCUTS_FILENAME,
         kind="repo",

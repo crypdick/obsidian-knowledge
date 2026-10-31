@@ -20,7 +20,7 @@ vault paths cannot accidentally become shared preferences.
 Search, hooks, creation, and gardener commands all read the same preferences.
 There is no implicit fallback to `<vault>/.claude/obsidian-knowledge.yaml`.
 Migrate that file's preferences to the new shared path before upgrading.
-Keep `vaults.yaml` local to each host; its existing schema is unchanged.
+Keep `vaults.yaml` local to each host.
 
 ```yaml
 # config.yaml (shared)
@@ -34,6 +34,37 @@ ai_managed: [wiki]
 vaults:
   - /absolute/path/on/this/host
 ```
+
+### Host writer command
+
+A shared vault should have one note-writing identity, including sync receivers,
+desktop apps, MCP services and host CLI creation. Shared groups grant access but
+do not make new files share an owner. Atomic replacement preserves the existing
+UID/GID and fails safely when the writer cannot retain them.
+
+To route host CLI `write` and `papercut` calls through the same identity, set an
+argument-vector prefix in the host-local `vaults.yaml`:
+
+```yaml
+vaults:
+  - /absolute/path/on/this/host
+write_command:
+  - /usr/local/bin/shared-vault-writer
+```
+
+The CLI appends the original subcommand and arguments without a shell, preserves
+stdin and working directory, and returns the writer's exit code. Failures never
+fall back to local writes. Reads, retrieval and lifecycle hooks stay local.
+Before delegating a papercut it captures the caller's repository scope, so the
+writer need not read the caller's private Git metadata. The internal
+`papercut --repository owner/repo` argument carries that scope; an empty value
+selects the global log, and unsafe components are rejected.
+
+The target must run with a registry **without** `write_command`, avoiding
+recursive delegation, and must have the intended shared preferences and vault
+paths. Keep the writer executable and its environment accessible to that identity.
+This is host execution configuration, not portable vault policy; do not put it in
+shared preferences. Other tools creating notes directly must use the same identity.
 
 To add search defaults to shared preferences, without selecting a vault:
 

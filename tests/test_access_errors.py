@@ -69,7 +69,7 @@ def test_papercut_write_failure_is_not_a_usage_error(tmp_path, monkeypatch, caps
     assert "could not complete vault log write" in output.err
     assert "usage:" not in output.err
     assert str(tmp_path) in output.err
-    record.assert_called_once_with(tmp_path, "original friction")
+    record.assert_called_once_with(tmp_path, "original friction", repository=None)
     if error_number == errno.ENOSPC:
         assert "approved permission" not in output.err
     else:
