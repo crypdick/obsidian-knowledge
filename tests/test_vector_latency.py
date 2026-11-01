@@ -7,7 +7,6 @@ import json
 import math
 import sqlite3
 import struct
-import time
 from contextlib import closing
 from pathlib import Path
 
@@ -89,7 +88,9 @@ def test_existing_cache_schema_adds_covering_eligibility_index_without_rebuild(t
     asyncio.run(reopen())
 
 
-def test_populated_cache_search_preserves_semantics_within_budget(tmp_path):
+def test_populated_cache_search_uses_native_vector_search(tmp_path, monkeypatch):
+    from obsidian_knowledge_vendor.memweave.search.hybrid import HybridSearch
+
     cache = tmp_path / "cache"
     seed_cache(cache, tmp_path)
     instance = Indexer(tmp_path, cache, VaultIndexConfig(), skip_probe=True)
@@ -97,17 +98,51 @@ def test_populated_cache_search_preserves_semantics_within_budget(tmp_path):
     async def embed_query(text):
         return [1.0, *([0.0] * 1023)]
 
+    async def exhaustive(*args, **kwargs):
+        pytest.fail("populated caches must not fall back to fetching every vector")
+
     instance._store.embedding_provider.embed_query = embed_query
-    started = time.monotonic()
+    monkeypatch.setattr(HybridSearch, "search", exhaustive)
     try:
         report = instance.search_report("no-keyword-match", top_k=1)
-        elapsed = time.monotonic() - started
         assert report.mode == "hybrid"
         assert report.hits[0].path == "note-0.md"
         assert report.hits[0].score == pytest.approx(70.0)
-        assert elapsed < 1.0, f"vector retrieval took {elapsed:.2f}s"
     finally:
         asyncio.run(instance._store.close())
+
+
+def test_vector_query_plan_never_scans_chunks(tmp_path):
+    """Guard retrieval cost through the query plan, not machine-dependent wall time.
+
+    The deployed regression scanned every chunk row, including its stored JSON
+    embedding, to decide eligibility. Native KNN plus the covering index keeps
+    chunk access to index lookups regardless of cache size.
+    """
+    from lib.vault_index.vector_search import IndexedHybridSearch
+    from obsidian_knowledge_vendor.memweave import HybridConfig
+
+    cache = tmp_path / "cache"
+    seed_cache(cache, tmp_path, count=50)
+
+    async def plan() -> list[str]:
+        async with aiosqlite.connect(cache / "index.sqlite") as connection:
+            await connection.enable_load_extension(True)
+            await connection.load_extension(sqlite_vec.loadable_path())
+            statements: list[str] = []
+            await connection.set_trace_callback(statements.append)
+            strategy = IndexedHybridSearch(HybridConfig())
+            await strategy.search(connection, "x", [1.0, *([0.0] * 1023)], "ollama/bge-m3", 1)
+            await connection.set_trace_callback(None)
+            (vector_sql,) = [sql for sql in statements if "embedding MATCH" in sql]
+            async with connection.execute("EXPLAIN QUERY PLAN " + vector_sql) as cursor:
+                return [row[3] for row in await cursor.fetchall()]
+
+    steps = asyncio.run(plan())
+    assert any(step.startswith("SCAN chunks_vec VIRTUAL TABLE") for step in steps)
+    assert "SEARCH chunks USING COVERING INDEX idx_chunks_model_source_id (model=?)" in steps
+    scans = [step for step in steps if step.startswith("SCAN")]
+    assert all(step.startswith(("SCAN chunks_vec VIRTUAL TABLE", "SCAN n")) for step in scans), steps
 
 
 @pytest.mark.parametrize("source_filter", [None, "memory", "sessions", "absent"])
