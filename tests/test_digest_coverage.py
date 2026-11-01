@@ -47,3 +47,33 @@ def test_rebuild_embeds_digest_notes_first(tmp_path, fake_ollama):
     finally:
         asyncio.run(instance._store.close())
     assert "documented workaround" in fake_ollama.texts[0]
+
+
+def test_empty_digest_result_reports_matches_outside_digest(tmp_path, monkeypatch, capsys):
+    import json
+    import sys
+
+    from lib.vault_index import cli, indexer
+
+    vault = tmp_path / "vault"
+    (vault / "Utility").mkdir(parents=True)
+    (vault / "Utility/run.md").write_text("# Run\n\nA papercut appeared.\n")
+    instance = Indexer(vault, tmp_path / "cache", CONFIG, vector_enabled=False)
+    instance.full_reindex()
+    try:
+        report = instance.search_report("papercut")
+        assert (report.hits, report.outside_digest_matches) == ([], 1)
+        assert instance.search_report("absentzzz").outside_digest_matches == 0
+        assert instance.search_report("papercut", override_digest_filter=True).outside_digest_matches == 0
+
+        monkeypatch.setattr(indexer, "Indexer", lambda **kwargs: instance)
+        for json_output in (False, True):
+            arguments = ["obsidian-knowledge", "search", "papercut", "--vault", str(vault)]
+            monkeypatch.setattr(sys, "argv", arguments + (["--json"] if json_output else []))
+            assert cli.main() == 0
+            output = capsys.readouterr()
+            assert "1 matching note outside the default digest; rerun with --all" in output.err
+            if json_output:
+                assert json.loads(output.out)["outside_digest_matches"] == 1
+    finally:
+        asyncio.run(instance._store.close())

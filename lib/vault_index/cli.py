@@ -117,6 +117,7 @@ class _WriterConfig(BaseModel):
 # Lets the clean SIGALRM/unwind path win when it can; the watchdog only fires
 # when the work is wedged in a C call the signal cannot interrupt.
 _HARD_TIMEOUT_GRACE_SECONDS = 5
+# NOTE: docs/CLI.md "Reindex deadlines" documents both grace periods.
 # A separate process SIGKILLs this one if even the watchdog thread cannot run,
 # e.g. a C extension blocking while it holds the GIL. It stops polling once its
 # parent exits, so it never signals a reused PID.
@@ -651,6 +652,10 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
             print(f"# vault-index: {cause}; started background reindex (log: {log})", file=sys.stderr)
         else:
             print(f"# vault-index: {cause}; a reindex is already running", file=sys.stderr)
+    if result.outside_digest_matches:
+        count = result.outside_digest_matches
+        noun = "note" if count == 1 else "notes"
+        print(f"# {count} matching {noun} outside the default digest; rerun with --all", file=sys.stderr)
     if args.cmd == "search" and getattr(args, "json", False):
         print(result.model_dump_json())
     elif args.cmd == "remember":

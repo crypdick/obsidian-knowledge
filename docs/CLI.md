@@ -87,7 +87,8 @@ Successful searches write one JSON object to stdout:
       "weight_applied": 1.5,
       "snippet": "Purple orchids grow in the greenhouse."
     }
-  ]
+  ],
+  "outside_digest_matches": 0
 }
 ```
 
@@ -102,6 +103,11 @@ Hits use the same filters, weights, snippets, and ordering as text output.
 `score` is a ranking value, not a confidence percentage; scores from different
 retrieval modes are not directly comparable. A successful search with no matches
 returns `"hits": []` and still includes the retrieval mode and reason.
+When keyword retrieval finds no notes in the default digest but other indexed
+notes match, `outside_digest_matches` counts them (up to 50) and stderr suggests
+rerunning with `--all`. This happens, for example, while a first build or
+rebuild has not yet reached digest notes. It is `0` otherwise, including for
+hybrid retrieval and `--all` searches.
 
 Warnings and background reindex notices go to stderr. Failed searches exit nonzero and
 do not emit a success object. Timeout and busy exit codes are described below.

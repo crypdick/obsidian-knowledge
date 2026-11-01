@@ -546,7 +546,12 @@ class Indexer:
                 else partial(path_passes, filt=self.config.digest)
             )
             hits = self._with_snippets(filtered(self._sqlite_fts_search(query, candidate_count, keep)), query)
-            return SearchReport(mode="keyword", degraded_reason=reason, hits=hits)
+            hidden = (
+                0 if hits or override_digest_filter else len(self._sqlite_fts_search(query, candidate_count))
+            )
+            return SearchReport(
+                mode="keyword", degraded_reason=reason, hits=hits, outside_digest_matches=hidden
+            )
 
         if not self._vector_enabled:
             return keyword_report(self.vector_status)

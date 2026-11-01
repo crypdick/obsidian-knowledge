@@ -34,6 +34,8 @@ sending a token across a network. Tunnel provisioning is separate from this serv
 - `vault_search(query, top_k=None, all_paths=False)` returns a structured search
   report with `mode`, `degraded_reason`, and scored `hits`. `top_k` must be
   positive. `all_paths` bypasses the digest filter, retaining index exclusions.
+  An empty keyword result reports `outside_digest_matches`, the number of other
+  indexed notes that match; retry with `all_paths=True` to see them.
   Queries do not wait for vector rebuilds. If the index is new, the embedder
   has changed, a rebuild was interrupted, or vector tables are unavailable, search returns
   keyword hits and requests one background repair. While it runs the reason

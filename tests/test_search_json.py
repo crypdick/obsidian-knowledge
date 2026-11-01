@@ -136,7 +136,7 @@ def test_search_json_stdout_is_one_document(keyword_index, monkeypatch, capsys, 
     assert cli.main() == 0
     output = capsys.readouterr()
     report = json.loads(output.out)
-    assert set(report) == {"mode", "degraded_reason", "hits"}
+    assert set(report) == {"mode", "degraded_reason", "hits", "outside_digest_matches"}
     assert report["mode"] == "keyword"
     assert report["degraded_reason"] == "disabled-by-caller"
     assert "search ranking degraded" in output.err
