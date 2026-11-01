@@ -458,27 +458,34 @@ class Indexer:
         )
 
     def index_paths(self, rel_paths: list[str]) -> SyncStats:
-        """Incrementally index specific vault files without walking the vault.
+        """Bring specific vault files or folders up to date without walking the vault.
 
-        Unchanged files are hash-skipped and cached chunk embeddings reused.
-        Raises ``IndexBusyError`` instead of waiting for another index writer.
-        Files that are missing or excluded by index filters are skipped.
+        Existing allowed notes are indexed (hash-skipped, reusing cached chunk
+        embeddings, so a moved note embeds nothing new). Index entries at or
+        under a path that is now missing or excluded are removed, which keeps
+        deletes and moves consistent. Raises ``IndexBusyError`` instead of
+        waiting for another index writer.
         """
         if not self._vector_enabled:
             raise IndexBusyError(f"vector embeddings unavailable ({self.vector_status})")
         if self.vector_issue is not None:
             raise IndexBusyError(f"vector index not ready ({self.vector_issue})")
-        indexed = skipped = 0
+        indexed = skipped = deleted = 0
         with index_lock(self.cache_dir, exclusive=True, blocking=False):
+            stored = self.indexed_paths()
             for rel in rel_paths:
-                path = self.vault_root / rel
-                if not path_passes(rel, self.config.index) or not path.is_file():
-                    skipped += 1
-                    continue
-                result = asyncio.run(self._store.add(path))
-                indexed += result.files_indexed
-                skipped += result.files_skipped
-        return SyncStats(indexed=indexed, skipped=skipped, deleted=0)
+                root = self.vault_root / rel
+                present = sorted(root.rglob("*.md")) if root.is_dir() else [root] if root.is_file() else []
+                keep = {str(path.relative_to(self.vault_root)) for path in present}
+                keep = {path for path in keep if path_passes(path, self.config.index)}
+                for path in sorted(keep):
+                    result = asyncio.run(self._store.add(self.vault_root / path))
+                    indexed += result.files_indexed
+                    skipped += result.files_skipped
+                for path in stored:
+                    if (path == rel or path.startswith(f"{rel.rstrip('/')}/")) and path not in keep:
+                        deleted += asyncio.run(self._store.remove(self.vault_root / path))
+        return SyncStats(indexed=indexed, skipped=skipped, deleted=deleted)
 
     def sync(self) -> SyncStats:
         """Incremental re-index. Same as full_reindex without force."""

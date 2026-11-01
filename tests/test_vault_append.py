@@ -22,7 +22,11 @@ def test_append_without_obsidian(tmp_path, monkeypatch, inline, separator):
         result = await create_server(tmp_path).call_tool(
             "vault_append", {"path": "note.md", "content": content, "inline": inline}
         )
-        assert result[1] == {"path": "note.md", "status": "appended"}
+        assert result[1] == {
+            "path": "note.md",
+            "status": "appended",
+            "index": "deferred to next sync: reindex: deferred (index not built yet)",
+        }
 
     asyncio.run(exercise())
     assert note.read_bytes() == original + separator + content.encode()

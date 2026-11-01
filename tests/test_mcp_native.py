@@ -4,11 +4,15 @@ import asyncio
 import json
 import sys
 import threading
+from functools import partial
 
 import pytest
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
+from lib.vault_index.config import VaultIndexConfig
+from lib.vault_index.indexer import Indexer, default_cache_dir
+from lib.vault_index.mcp_index import refresh_index
 from lib.vault_index.mcp_native import register_native_tools
 
 
@@ -83,7 +87,8 @@ else:
     monkeypatch.setenv("FAKE_ROOT", str(vault))
     monkeypatch.setenv("FAKE_STATE", str(state))
     server = FastMCP("native-test")
-    register_native_tools(server, vault, threading.Lock())
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path / "cache"))
+    register_native_tools(server, vault, threading.Lock(), partial(refresh_index, vault))
     return server, vault, state
 
 
@@ -273,3 +278,34 @@ def test_invalid_native_properties_rejected(native_server):
     state.write_text(json.dumps({"metadata": []}))
     with pytest.raises(ToolError, match="JSON object"):
         call(server, "vault_frontmatter", {"path": "folder/note.md"})
+
+
+def indexed_paths(vault):
+    instance = Indexer(vault, default_cache_dir(vault), VaultIndexConfig())
+    try:
+        return sorted(instance.indexed_paths())
+    finally:
+        asyncio.run(instance._store.close())
+
+
+def test_mutations_keep_the_index_consistent(native_server, fake_ollama):
+    server, vault, _ = native_server
+    instance = Indexer(vault, default_cache_dir(vault), VaultIndexConfig())
+    instance.full_reindex()
+    asyncio.run(instance._store.close())
+    fake_ollama.texts.clear()
+
+    appended = call(server, "vault_append", {"path": "folder/note.md", "content": "Bromeliads"})
+    assert appended["index"] == "updated"
+    assert any("Bromeliads" in text for text in fake_ollama.texts)
+    moved = call(server, "vault_move", {"from_path": "folder/note.md", "to_path": "new/moved.md"})
+    assert moved["index"] == "updated"
+    assert indexed_paths(vault) == ["new/moved.md"]
+    assert call(server, "vault_delete", {"path": "new/moved.md"})["index"] == "updated"
+    assert indexed_paths(vault) == []
+
+
+def test_mutations_without_an_index_defer_to_next_sync(native_server):
+    server, _, _ = native_server
+    result = call(server, "vault_append", {"path": "folder/note.md", "content": "Next"})
+    assert result["index"] == "deferred to next sync: reindex: deferred (index not built yet)"

@@ -46,7 +46,8 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   unless `inline=True`; backslash escapes remain literal. Empty content is
   rejected. Existing bytes and access ownership are preserved through the
   verified writer. Hidden paths, `_sources`, dependency directories, sync
-  conflicts, and symlinks are rejected, as for app tool paths.
+  conflicts, and symlinks are rejected, as for app tool paths. Returns an
+  `index` result; see [indexing after writes](#indexing-after-writes).
 - `download_file(path)` delivers original bytes as an embedded MCP binary
   resource, with filename, MIME type, byte count, and SHA-256 in structured
   metadata. Files above 6 MiB are rejected before encoding; the file reader
@@ -130,13 +131,16 @@ deployment-specific wrappers, longer deadlines, or increased CPU limits.
 
 ### Indexing after writes
 
-`vault_write` and `vault_patch` index the changed note with
+`vault_write`, `vault_patch`, `vault_append`, `vault_delete`, and `vault_move`
+update the index for the paths they change with
 `obsidian-knowledge reindex --path`, bounded by the search deadline plus a
-ten-second cleanup allowance. Their `index` field is `updated`, or
+ten-second cleanup allowance. Deleting removes the note's index entries; moving
+removes the old path's entries and indexes the new path, reusing cached
+embeddings. Their `index` field is `updated`, or
 `deferred to next sync: REASON` when the index is not built yet, the embedder
 is unavailable, the index lock is busy, or the deadline expires. Deferral never
-fails the write. Appends, frontmatter edits, moves, and deletes do not index.
-Use `vault_search_update()` or the existing
+fails the mutation. Frontmatter edits, and other notes whose links Obsidian
+rewrites during a move, are not indexed. Use `vault_search_update()` or the existing
 `obsidian-knowledge reindex --vault /absolute/path/to/vault` workflow after
 those changes. See [CLI reference](CLI.md) for indexing, embeddings, and search
 timeout configuration.
@@ -160,12 +164,12 @@ CLI or app is unavailable. The original tools above remain usable without the ap
   truncation, including native search's file limit.
 - `vault_info()` returns native information about the fixed vault.
 - `vault_delete(path)` uses Obsidian's trash behavior. The adapter exposes no
-  permanent-delete option.
+  permanent-delete option. Returns an `index` result.
 - `vault_move(from_path, to_path, dry_run=False)` delegates moving and link
   updates to Obsidian. Link updates follow the app's automatic-update setting.
   An existing destination is rejected. `dry_run=True` checks the source through
   native file info and reports the destination without moving; it does not
-  simulate link rewrites.
+  simulate link rewrites. A completed move returns an `index` result.
 
 App tool paths reject hidden paths, `_sources`, dependency directories,
 sync conflicts, and symlinks. Folder filters use the same confinement rules.

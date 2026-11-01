@@ -179,7 +179,7 @@ def search_ttl(seconds: int | None, *, label: str = "search"):
     watchdog = threading.Thread(target=_watchdog, name="search-ttl-watchdog", daemon=True)
     watchdog.start()
     kill_after = seconds + _HARD_TIMEOUT_GRACE_SECONDS + _KILL_GRACE_SECONDS
-    killer = subprocess.Popen(  # noqa: S603 -- fixed script run by this interpreter
+    killer = subprocess.Popen(
         [sys.executable, "-I", "-S", "-c", _KILLER, str(os.getpid()), str(kill_after), label],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,

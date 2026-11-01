@@ -27,9 +27,15 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from lib.vault_index.background_reindex import index_command
 from lib.vault_index.cli import positive_int, resolve_vault, search_ttl_seconds
-from lib.vault_index.mcp_index import IndexStatus, IndexUpdate, parse_index_update, read_index_status
+from lib.vault_index.mcp_index import (
+    IndexStatus,
+    IndexUpdate,
+    parse_index_update,
+    read_index_status,
+    refresh_index,
+    run_index_command,
+)
 from lib.vault_index.mcp_native import register_native_tools, run_vault_mutation
 from lib.vault_index.mcp_recovery import RECOVERY_TIMEOUT_SECONDS, IndexRecovery
 from lib.vault_index.models import SearchReport
@@ -61,27 +67,6 @@ class BearerAuth(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-async def run_index_command(
-    command: list[str], operation: str, *, deadline_seconds: int | float | None = None
-) -> tuple[bytes, bytes]:
-    """Run one CLI operation with a deadline and reap its process on cancellation."""
-    process = await asyncio.create_subprocess_exec(
-        *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=deadline_seconds if deadline_seconds is not None else search_ttl_seconds() + 10,
-        )
-    finally:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
-    if process.returncode:
-        raise ValueError(stderr.decode(errors="replace").strip() or f"vault {operation} failed")
-    return stdout, stderr
-
-
 async def rebuild_index(vault: Path) -> None:
     """Run recovery with its own deadline instead of the query deadline."""
     await run_index_command(
@@ -98,19 +83,6 @@ async def rebuild_index(vault: Path) -> None:
         "background index repair",
         deadline_seconds=RECOVERY_TIMEOUT_SECONDS + 10,
     )
-
-
-async def refresh_written_file(vault: Path, target: Path) -> str:
-    """Index one mutated note within the search deadline; failures defer to the next sync."""
-    deadline = search_ttl_seconds()
-    command = index_command(
-        vault, "--path", target.relative_to(vault).as_posix(), "--timeout-seconds", str(deadline)
-    )
-    try:
-        await run_index_command(command, "index update", deadline_seconds=deadline + 10)
-    except (ValueError, TimeoutError) as exc:
-        return f"deferred to next sync: {exc}"
-    return "updated"
 
 
 def create_server(
@@ -192,7 +164,7 @@ def create_server(
         return {
             "path": target.relative_to(vault).as_posix(),
             "status": "wrote and verified",
-            "index": await refresh_written_file(vault, target),
+            "index": await refresh_index(vault, [target.relative_to(vault).as_posix()]),
         }
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
@@ -211,7 +183,7 @@ def create_server(
         return {
             "path": target.relative_to(vault).as_posix(),
             "status": "patched and verified",
-            "index": await refresh_written_file(vault, target),
+            "index": await refresh_index(vault, [target.relative_to(vault).as_posix()]),
         }
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
@@ -284,7 +256,7 @@ def create_server(
             ],
         )
 
-    register_native_tools(server, vault, file_lock)
+    register_native_tools(server, vault, file_lock, partial(refresh_index, vault))
     return server
 
 

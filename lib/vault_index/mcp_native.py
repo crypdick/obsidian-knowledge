@@ -6,7 +6,7 @@ import asyncio
 import json
 import re
 from _thread import LockType
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -121,8 +121,13 @@ def _recent_report(vault: Path, value: object, limit: int) -> dict[str, Any]:
     return {"notes": notes, "has_more": has_more}
 
 
-def register_native_tools(server: FastMCP, vault: Path, file_lock: LockType) -> None:
-    """Register confined append and six app-backed operations against one vault."""
+def register_native_tools(
+    server: FastMCP, vault: Path, file_lock: LockType, refresh: Callable[[list[str]], Awaitable[str]]
+) -> None:
+    """Register confined append and six app-backed operations against one vault.
+
+    ``refresh`` updates index entries for mutated vault-relative paths.
+    """
     # NOTE: docs/MCP.md, App-backed tools, documents native contracts and discovery bounds.
     native = NativeObsidian(vault)
 
@@ -147,7 +152,7 @@ def register_native_tools(server: FastMCP, vault: Path, file_lock: LockType) -> 
             file_lock,
             lambda: append_vault_file(vault, Path(path), content, inline=inline),
         )
-        return {"path": path, "status": "appended"}
+        return {"path": path, "status": "appended", "index": await refresh([path])}
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
     async def vault_frontmatter(path: str, updates: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -209,7 +214,7 @@ def register_native_tools(server: FastMCP, vault: Path, file_lock: LockType) -> 
         """Use Obsidian's default trash behavior; permanent deletion is unavailable."""
         path = _path(vault, path)
         await run("delete", f"path={path}")
-        return {"path": path, "status": "trashed"}
+        return {"path": path, "status": "trashed", "index": await refresh([path])}
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
     async def vault_move(from_path: str, to_path: str, dry_run: bool = False) -> dict[str, Any]:
@@ -226,4 +231,10 @@ def register_native_tools(server: FastMCP, vault: Path, file_lock: LockType) -> 
                 "source_info": await run("file", f"path={source}"),
             }
         await run("move", f"path={source}", f"to={destination}")
-        return {"from_path": source, "to_path": destination, "dry_run": False, "status": "moved"}
+        return {
+            "from_path": source,
+            "to_path": destination,
+            "dry_run": False,
+            "status": "moved",
+            "index": await refresh([source, destination]),
+        }

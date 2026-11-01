@@ -41,7 +41,12 @@ def test_base_exceptions_still_exit_hard(monkeypatch):
 
     exits: list[int] = []
     monkeypatch.setattr(cli.os, "_exit", exits.append)
-    for raised, code in [(SystemExit(2), 2), (SystemExit(None), 0), (SystemExit("usage"), 1), (KeyboardInterrupt(), 130)]:
+    for raised, code in [
+        (SystemExit(2), 2),
+        (SystemExit(None), 0),
+        (SystemExit("usage"), 1),
+        (KeyboardInterrupt(), 130),
+    ]:
         monkeypatch.setattr(cli, "main", lambda raised=raised: (_ for _ in ()).throw(raised))
         cli.cli_main()
         assert exits[-1] == code
