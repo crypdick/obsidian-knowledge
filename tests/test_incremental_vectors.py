@@ -313,7 +313,7 @@ def test_upgrade_resumes_rebuild_started_by_previous_release(tmp_path, fake_olla
         close(instance)
 
 
-def test_reindex_path_defers_until_vectors_ready_and_skips_missing_files(tmp_path, fake_ollama, cache_root):
+def test_reindex_path_defers_until_vectors_ready_and_ignores_unknown_files(tmp_path, fake_ollama, cache_root):
     vault = make_vault(tmp_path)
     cache = default_cache_dir(vault)
     offline = Indexer(vault, cache, CONFIG, vector_enabled=False)
@@ -327,7 +327,7 @@ def test_reindex_path_defers_until_vectors_ready_and_skips_missing_files(tmp_pat
     build_index(vault, cache)
     result = run_cli("reindex", "--path", "wiki/missing.md", "--vault", vault)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "Indexed: 0, Skipped: 1, Deleted: 0\n"
+    assert result.stdout == "Indexed: 0, Skipped: 0, Deleted: 0\n"
 
 
 def test_index_without_vector_table_is_not_ready(tmp_path, fake_ollama):
@@ -372,3 +372,42 @@ def test_model_change_during_offline_sync_still_rebuilds_vectors(tmp_path, monke
     finally:
         close(restored)
     assert report.mode == "hybrid"
+
+
+def indexed(vault: Path) -> list[str]:
+    instance = Indexer(vault, default_cache_dir(vault), CONFIG)
+    try:
+        return sorted(instance.indexed_paths())
+    finally:
+        close(instance)
+
+
+def test_reindex_path_removes_deleted_and_renames_moved_notes(tmp_path, fake_ollama, cache_root):
+    vault = make_vault(tmp_path)
+    build_index(vault, default_cache_dir(vault))
+    fake_ollama.texts.clear()
+
+    (vault / "wiki/note0.md").unlink()
+    (vault / "archive").mkdir()
+    (vault / "wiki/note1.md").rename(vault / "archive/moved.md")
+    result = run_cli(
+        "reindex",
+        "--path",
+        "wiki/note0.md",
+        "--path",
+        "wiki/note1.md",
+        "--path",
+        "archive/moved.md",
+        "--vault",
+        vault,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "Indexed: 1, Skipped: 0, Deleted: 2\n"
+    assert indexed(vault) == ["archive/moved.md", "wiki/note2.md"]
+    assert fake_ollama.texts == [], "a moved note reuses its cached embeddings"
+
+    (vault / "wiki").rename(vault / "notes")
+    result = run_cli("reindex", "--path", "wiki", "--path", "notes", "--vault", vault)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "Indexed: 1, Skipped: 0, Deleted: 1\n"
+    assert indexed(vault) == ["archive/moved.md", "notes/note2.md"]

@@ -709,6 +709,34 @@ class MemWeave:
         logger.info("add: done — %d chunks created", index_result.chunks_created)
         return index_result
 
+    async def remove(self, path: str | Path) -> bool:
+        """Remove one file's chunks, vectors, FTS rows and file record.
+
+        Returns whether the file was indexed. The file need not exist on disk.
+        """
+        await self._ensure_db()
+        assert self._store is not None and self._db is not None
+        workspace = Path(self.config.workspace_dir)
+        abs_path = Path(path) if Path(path).is_absolute() else workspace / path
+        rel = relative_path(abs_path, workspace)
+        if await self._store.get_file(rel) is None:
+            return False
+        try:
+            if self._vector_available and await (
+                await self._db.execute("SELECT 1 FROM sqlite_master WHERE name = 'chunks_vec'")
+            ).fetchone():
+                await self._db.execute(
+                    "DELETE FROM chunks_vec WHERE id IN (SELECT id FROM chunks WHERE path = ?)", [rel]
+                )
+            await self._store.delete_chunks_by_path(rel)
+            await self._store.delete_fts_by_path(rel)
+            await self._store.delete_file(rel)
+            await self._store.commit()
+        except BaseException:
+            await self._store.rollback()
+            raise
+        return True
+
     async def _run_sync(self, *, force: bool = False, progress_callback: Callable[[int, int], None] | None = None) -> IndexResult:
         """Full sync: discover all files, re-index changed ones, prune stale."""
         assert self._store is not None

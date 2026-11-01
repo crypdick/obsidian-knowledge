@@ -117,6 +117,22 @@ class _WriterConfig(BaseModel):
 # Lets the clean SIGALRM/unwind path win when it can; the watchdog only fires
 # when the work is wedged in a C call the signal cannot interrupt.
 _HARD_TIMEOUT_GRACE_SECONDS = 5
+# NOTE: docs/CLI.md "Reindex deadlines" documents both grace periods.
+# A separate process SIGKILLs this one if even the watchdog thread cannot run,
+# e.g. a C extension blocking while it holds the GIL. It stops polling once its
+# parent exits, so it never signals a reused PID.
+_KILL_GRACE_SECONDS = 5
+_KILLER = (
+    "import os, sys, time\n"
+    "pid, label = int(sys.argv[1]), sys.argv[3]\n"
+    "deadline = time.monotonic() + float(sys.argv[2])\n"
+    "while os.getppid() == pid:\n"
+    "    if time.monotonic() >= deadline:\n"
+    "        sys.stderr.write(f'{label}: killed after {sys.argv[2]}s; the process could not exit itself\\n')\n"
+    "        os.kill(pid, 9)\n"
+    "        break\n"
+    "    time.sleep(0.2)\n"
+)
 SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
 
 
@@ -136,11 +152,13 @@ def search_ttl(seconds: int | None, *, label: str = "search"):
        read inside an embedding HTTP request), because the pending signal is
        only serviced once control returns to the interpreter.
     2. A daemon watchdog thread force-exits the process a few seconds past the
-       deadline if the clean path did not unwind.  This guarantees the process
-       dies regardless of where it is stuck, which is what prevents orphaned
+       deadline if the clean path did not unwind.  This prevents orphaned
        reindex processes from piling up (observed: 255 stuck processes
        accumulating from the hourly cron because a C-level SSL read swallowed
        the SIGALRM and ``--timeout-seconds`` silently never fired).
+    3. A watchdog thread still needs the GIL. A tiny separate process SIGKILLs
+       this one a few seconds later, so a C call blocking while holding the GIL
+       cannot keep the index lock past its deadline.
     """
     if not seconds or seconds <= 0:
         yield
@@ -161,6 +179,12 @@ def search_ttl(seconds: int | None, *, label: str = "search"):
 
     watchdog = threading.Thread(target=_watchdog, name="search-ttl-watchdog", daemon=True)
     watchdog.start()
+    kill_after = seconds + _HARD_TIMEOUT_GRACE_SECONDS + _KILL_GRACE_SECONDS
+    killer = subprocess.Popen(
+        [sys.executable, "-I", "-S", "-c", _KILLER, str(os.getpid()), str(kill_after), label],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+    )
 
     use_alarm = hasattr(signal, "SIGALRM")
     previous_handler = None
@@ -179,6 +203,8 @@ def search_ttl(seconds: int | None, *, label: str = "search"):
         yield
     finally:
         cancel.set()
+        killer.kill()
+        killer.wait()
         if use_alarm:  # pragma: no branch  # generator-exit arc is not executable
             signal.alarm(0)
             signal.signal(signal.SIGALRM, previous_handler)
@@ -626,6 +652,10 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
             print(f"# vault-index: {cause}; started background reindex (log: {log})", file=sys.stderr)
         else:
             print(f"# vault-index: {cause}; a reindex is already running", file=sys.stderr)
+    if result.outside_digest_matches:
+        count = result.outside_digest_matches
+        noun = "note" if count == 1 else "notes"
+        print(f"# {count} matching {noun} outside the default digest; rerun with --all", file=sys.stderr)
     if args.cmd == "search" and getattr(args, "json", False):
         print(result.model_dump_json())
     elif args.cmd == "remember":
@@ -904,15 +934,24 @@ def _exit_hard(code: int) -> None:
     whether the CLI is invoked via `python -m lib.vault_index.cli` or via
     the `obsidian-knowledge` entry point.
     """
-    sys.stdout.flush()
-    sys.stderr.flush()
+    # A vanished reader makes flushing raise BrokenPipeError. Escaping here
+    # would fall into normal interpreter shutdown, which waits forever on the
+    # same dependency threads, after the command deadline was already disarmed.
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(OSError, ValueError):
+            stream.flush()
     os._exit(code)
 
 
 def cli_main() -> None:
     """Console-script entry point. See [project.scripts] in pyproject.toml."""
+    code = 1
     try:
         code = main()
+    except SystemExit as exc:  # argparse and parser.error must still exit hard
+        code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+    except KeyboardInterrupt:
+        code = 130
     except SearchTimeoutError as exc:
         print(f"obsidian-knowledge: timed out ({exc})", file=sys.stderr)
         code = 124
@@ -920,9 +959,11 @@ def cli_main() -> None:
         print(f"obsidian-knowledge: {exc}", file=sys.stderr)
         code = 2
     except Exception:  # allow: exception-handling  (CLI must bypass dependency shutdown hangs)
-        traceback.print_exc()
+        with contextlib.suppress(OSError):
+            traceback.print_exc()
         code = 1
-    _exit_hard(code)
+    finally:
+        _exit_hard(code)
 
 
 if __name__ == "__main__":

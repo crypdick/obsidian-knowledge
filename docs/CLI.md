@@ -36,7 +36,7 @@ Use these commands to configure, search, and maintain the vault:
 | `init-vault-index` | Create the shared `config.yaml` preferences and its parent directory, or append search defaults to an existing mapping. An existing `vault_index` section is left unchanged. |
 | `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
 | `write PATH [--replace]` | Read stdin, apply opt-in [configured creation defaults](configuration.md#note-creation) to new Markdown files, then atomically write and verify bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Then [indexes the written note](#index-on-write). |
-| `reindex [--force] [--path PATH] [--timeout-seconds N]` | Show an in-place progress bar on interactive stderr, index changed files and remove stale index entries. Files indexed while embeddings were unavailable get vectors without rebuilding the rest. Embeddings for small notes are batched across files; see [indexing progress](#indexing-progress). `--force` reprocesses unchanged files too. `--path` (repeatable) indexes only the named vault-relative files and exits 3 when the index is not ready, the embedder is unavailable, or another index operation holds the lock. Does not delete vault notes. |
+| `reindex [--force] [--path PATH] [--timeout-seconds N]` | Show an in-place progress bar on interactive stderr, index changed files and remove stale index entries. Files indexed while embeddings were unavailable get vectors without rebuilding the rest. Embeddings for small notes are batched across files; see [indexing progress](#indexing-progress). `--force` reprocesses unchanged files too. `--path` (repeatable) updates only the named vault-relative files or folders: notes present are indexed, and entries at or under a path that no longer exists (or is now excluded) are removed, so passing both the old and new path records a move without re-embedding. It exits 3 when the index is not ready, the embedder is unavailable, or another index operation holds the lock. Does not delete vault notes. |
 | `search QUERY [--top-k N] [--all] [--json]` | Print ranked paths and snippets, or a JSON search report. `--all` bypasses the digest filter, not the indexing exclusions. |
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
 | `papercut DESCRIPTION` | Append avoidable or fixable workflow friction to the repository's vault log, or the global log if no repository is identified. |
@@ -87,7 +87,8 @@ Successful searches write one JSON object to stdout:
       "weight_applied": 1.5,
       "snippet": "Purple orchids grow in the greenhouse."
     }
-  ]
+  ],
+  "outside_digest_matches": 0
 }
 ```
 
@@ -102,6 +103,11 @@ Hits use the same filters, weights, snippets, and ordering as text output.
 `score` is a ranking value, not a confidence percentage; scores from different
 retrieval modes are not directly comparable. A successful search with no matches
 returns `"hits": []` and still includes the retrieval mode and reason.
+When keyword retrieval finds no notes in the default digest but other indexed
+notes match, `outside_digest_matches` counts them (up to 50) and stderr suggests
+rerunning with `--all`. This happens, for example, while a first build or
+rebuild has not yet reached digest notes. It is `0` otherwise, including for
+hybrid retrieval and `--all` searches.
 
 Warnings and background reindex notices go to stderr. Failed searches exit nonzero and
 do not emit a success object. Timeout and busy exit codes are described below.
@@ -216,7 +222,11 @@ and prints `index: not updated (...); the next sync will index PATH` to stderr.
 
 `reindex` has no deadline unless you pass `--timeout-seconds`. Always pass it
 for scheduled jobs. Zero or negative deadline values disable the deadline.
-A hard watchdog allows five extra seconds to terminate stuck native calls.
+A hard watchdog allows five extra seconds to terminate stuck native calls and
+exits with code 124. If native code blocks while holding Python's interpreter
+lock, a separate helper process kills the command with SIGKILL five seconds
+after that, so a stuck `reindex` cannot keep the index lock. These deadlines
+cover `search`, `remember`, `doctor`, `setup`, and `reindex --timeout-seconds`.
 
 For model, cache, and sandbox settings, see [configuration](configuration.md).
 Use `OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG` to select an alternate registry YAML file.

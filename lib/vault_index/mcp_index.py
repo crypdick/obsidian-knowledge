@@ -1,7 +1,8 @@
-"""Read-only persisted index health and CLI update result parsing for MCP."""
+"""MCP index health, CLI index commands, and their result parsing."""
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import re
@@ -11,7 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from lib.vault_index.cli import default_cache_dir_for_vault
+from lib.vault_index.background_reindex import index_command
+from lib.vault_index.cli import default_cache_dir_for_vault, search_ttl_seconds
 from lib.vault_index.index_state import rebuild_pending
 from lib.vault_index.indexer import (
     DEFAULT_CHUNK_OVERLAP,
@@ -101,3 +103,40 @@ def parse_index_update(stdout: bytes, stderr: bytes) -> IndexUpdate:
     if match is None:
         raise ValueError("unexpected reindex output")
     return IndexUpdate(status="updated", indexed=int(match[1]), skipped=int(match[2]), deleted=int(match[3]))
+
+
+async def run_index_command(
+    command: list[str], operation: str, *, deadline_seconds: int | float | None = None
+) -> tuple[bytes, bytes]:
+    """Run one CLI operation with a deadline and reap its process on cancellation."""
+    process = await asyncio.create_subprocess_exec(
+        *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=deadline_seconds if deadline_seconds is not None else search_ttl_seconds() + 10,
+        )
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    if process.returncode:
+        raise ValueError(stderr.decode(errors="replace").strip() or f"vault {operation} failed")
+    return stdout, stderr
+
+
+async def refresh_index(vault: Path, rel_paths: list[str]) -> str:
+    """Update index entries for mutated paths within the search deadline.
+
+    Removed or moved-away paths lose their entries. Failures defer to the next sync.
+    """
+    # NOTE: docs/MCP.md "Indexing after writes" documents this deadline and result.
+    deadline = search_ttl_seconds()
+    arguments = [argument for path in rel_paths for argument in ("--path", path)]
+    command = index_command(vault, *arguments, "--timeout-seconds", str(deadline))
+    try:
+        await run_index_command(command, "index update", deadline_seconds=deadline + 10)
+    except (ValueError, TimeoutError) as exc:
+        return f"deferred to next sync: {exc}"
+    return "updated"

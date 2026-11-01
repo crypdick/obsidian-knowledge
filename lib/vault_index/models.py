@@ -34,3 +34,6 @@ class SearchReport(BaseModel):
     mode: Literal["keyword", "hybrid"]
     degraded_reason: str | None
     hits: list[Hit]
+    # Keyword results only: matching indexed notes hidden by the digest filter
+    # when it left no hits, e.g. while a rebuild has not reached digest notes.
+    outside_digest_matches: int = 0
