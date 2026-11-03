@@ -410,8 +410,13 @@ class Indexer:
 
     def indexed_paths(self) -> list[str]:
         """All currently-indexed paths, relative to vault_root."""
-        files = asyncio.run(self._store.files())
-        return [self._abs_to_rel(f.path) for f in files]
+        database = self.cache_dir / "index.sqlite"
+        if not database.exists():
+            return []
+        # MemWeave.files() loads and decodes every chunk's JSON embedding to
+        # count chunks. Path-only refresh bookkeeping needs only the files table.
+        with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
+            return [self._abs_to_rel(path) for (path,) in connection.execute("SELECT path FROM files")]
 
     def _allowed_vault_files(self) -> list[str]:
         """Return absolute paths of all vault .md files passing index filters, digest first."""
