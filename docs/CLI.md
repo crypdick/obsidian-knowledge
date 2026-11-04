@@ -143,6 +143,47 @@ normally starts at login. For startup at boot, enable lingering with
 `sudo loginctl enable-linger "$USER"`. Running `ollama serve` alone does not
 install or enable a service.
 
+Give the Ollama service a stable working directory. A deleted or detached
+working directory can make its model runner abort with
+`cannot get current path: No such file or directory`, while the HTTP server
+stays alive and returns HTTP 500 from `/api/embed`. Restarting recovers the
+process but does not prevent recurrence.
+
+For a Linux user service, run `systemctl --user edit ollama` and add:
+
+```ini
+[Service]
+WorkingDirectory=/
+```
+
+Then apply the override:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart ollama
+systemctl --user show ollama -p WorkingDirectory
+```
+
+The last command should report `WorkingDirectory=/`. For a system service,
+use `sudo systemctl` in place of `systemctl --user`. This setting requires no
+username or installation path. Other process managers and manual launchers
+should likewise start Ollama from a directory that remains mounted and exists
+for the process lifetime; on Unix, `(cd / && exec ollama serve)` does this.
+[systemd's execution documentation](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#WorkingDirectory=)
+describes working-directory defaults and overrides.
+
+Verify model execution, rather than only HTTP availability or model listing:
+
+```bash
+curl --fail-with-body http://127.0.0.1:11434/api/embed \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"bge-m3","input":["embedding health check"]}'
+```
+
+Use your configured endpoint and model if they differ. A healthy response
+contains a nonempty `embeddings` array. Inspect the response body and service
+logs for other failures; a stable working directory does not fix every HTTP 500.
+
 If an encrypted home directory holds the service unit or its required executable,
 model, or credentials, don't enable lingering. The user manager can start before
 Pluggable Authentication Modules mount the home directory and omit the
