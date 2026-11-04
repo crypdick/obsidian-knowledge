@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml>=6.0"]
+# ///
 """
 SessionStart hook: the vault doctor.
 
@@ -35,8 +39,7 @@ from hookslib.patterns import (
     parse_frontmatter,
 )
 from hookslib.stop_hook import session_debounce
-from hookslib.vault_config import load_vault_roots
-from hookslib.vault_policy import find_containing_vault
+from hookslib.vault_config import load_vault_roots, matching_vault_root
 
 SKIP_DIRS = {".obsidian", ".config", ".git", ".trash", ".claude", "_sources"}
 
@@ -149,7 +152,7 @@ def main() -> None:
     if not isinstance(payload, dict):
         payload = {}
 
-    vault_root = find_containing_vault(os.getcwd(), load_vault_roots())
+    vault_root = matching_vault_root(os.getcwd(), load_vault_roots())
     if not vault_root:
         sys.exit(0)
 

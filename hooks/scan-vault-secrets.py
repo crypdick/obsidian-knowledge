@@ -105,8 +105,7 @@ from pydantic import BaseModel
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hookslib.secret_alerts import ALERTED_KEY, baseline_lock, record_alerts, sync_needs_attention
 from hookslib.stop_hook import emit_block, in_cooldown, read_input
-from hookslib.vault_config import is_in_vault, load_vault_roots
-from hookslib.vault_policy import find_containing_vault
+from hookslib.vault_config import is_in_vault, load_vault_roots, matching_vault_root
 
 # detect_secrets is imported lazily inside run_scan() so this module
 # can be imported in environments that don't have it installed (e.g.
@@ -502,7 +501,7 @@ def main(argv: list[str] | None = None) -> None:
         if in_cooldown(payload, marker_basename="secrets-scan"):
             sys.exit(0)
 
-    vault_root = find_containing_vault(os.getcwd(), load_vault_roots())
+    vault_root = matching_vault_root(os.getcwd(), load_vault_roots())
     if not vault_root:
         if args.manual:
             print("cwd not inside any configured vault.", file=sys.stderr)

@@ -217,7 +217,7 @@ def test_policy_change_rescans_unchanged_files_and_preserves_audits(tmp_path, sc
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(scanner, "is_in_vault", lambda _: True)
     monkeypatch.setattr(scanner, "load_vault_roots", lambda: [str(tmp_path)])
-    monkeypatch.setattr(scanner, "find_containing_vault", lambda *_: str(tmp_path))
+    monkeypatch.setattr(scanner, "matching_vault_root", lambda *_: str(tmp_path))
     with pytest.raises(SystemExit) as stopped:
         scanner.main(["--manual", "--full"] if full else ["--manual"])
     assert stopped.value.code == 0
