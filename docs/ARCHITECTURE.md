@@ -83,6 +83,10 @@ Runtime requirements:
   shell commands directly; the provider owns no harness or approval adapter.
 - Hooks must not crash the host. Broad catches at entrypoint boundaries are
   deliberate and marked `# allow: exception-handling`.
+- Launch Claude Code Python hooks with `uv run --script` and declare every
+  third-party import, including those reached through `hookslib`, in the
+  script's PEP 723 block. The host's `python3` has no project dependencies.
+  `tests/test_hook_launcher.py` enforces both.
 - Keep the Codex distribution generated. The `codex-plugin-sync` check detects drift.
 - Store caches outside the vault, keyed by vault path, to avoid sync conflicts
   and collisions between vaults.

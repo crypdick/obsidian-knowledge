@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/capture-session.py"
+            "command": "uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/capture-session.py"
           },
           {
             "type": "command",
@@ -26,7 +26,7 @@
           },
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/nudge-index-sync.py"
+            "command": "uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/nudge-index-sync.py"
           }
         ]
       }
@@ -37,11 +37,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/recall-init.py"
+            "command": "uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/recall-init.py"
           },
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/doctor.py"
+            "command": "uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/doctor.py"
           }
         ]
       }
@@ -52,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/reflect-nudge.py"
+            "command": "uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/reflect-nudge.py"
           }
         ]
       }

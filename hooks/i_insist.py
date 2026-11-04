@@ -21,8 +21,8 @@ from hookslib.patterns import (
     parse_frontmatter,
 )
 from hookslib.shell_guard import destructive_vault_ops, enters_protected_directory, write_targets
-from hookslib.vault_config import load_vault_roots
-from hookslib.vault_policy import find_containing_vault, load_vault_policy
+from hookslib.vault_config import load_vault_roots, matching_vault_root
+from hookslib.vault_policy import load_vault_policy
 
 
 def absolute_path(value: str) -> str:
@@ -67,7 +67,7 @@ MESSAGES = {
 
 
 def readonly(path: str, roots: list[str]) -> bool:
-    root = find_containing_vault(path, roots)
+    root = matching_vault_root(path, roots)
     if root is None:
         return False
     policy = load_vault_policy()
@@ -127,7 +127,7 @@ def file_blocks(name: str, change: Change, roots: list[str]) -> bool:
         return agent_memory(change.path)
     if name == "decision-records":
         return decision_record(change.path)
-    root = find_containing_vault(change.path, roots)
+    root = matching_vault_root(change.path, roots)
     if root is None:
         return False
     if name == "protected-dirs":

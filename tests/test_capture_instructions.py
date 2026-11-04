@@ -75,7 +75,7 @@ def test_manifests_register_one_capture_hook() -> None:
     ]
 
     assert codex_commands == ["obsidian-knowledge _hook stop --kind capture-session --agent codex"]
-    assert claude_commands == ["python3 ${CLAUDE_PLUGIN_ROOT}/hooks/capture-session.py"]
+    assert claude_commands == ["uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/capture-session.py"]
 
 
 @pytest.mark.parametrize("manifest", ["hooks/codex-hooks.json", ".claude-plugin/plugin.json"])

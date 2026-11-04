@@ -11,8 +11,7 @@ from collections.abc import Callable
 from itertools import chain, takewhile
 from pathlib import Path
 
-from .vault_config import is_in_vault, load_vault_roots
-from .vault_policy import find_containing_vault
+from .vault_config import is_in_vault, load_vault_roots, matching_vault_root
 
 VAULT_ROOTS = load_vault_roots()
 
@@ -185,7 +184,7 @@ def _obsidian_knowledge_write_target(executable: str, args: list[str], cwd: str)
     vault = (
         str((Path(cwd) / Path(explicit_vault).expanduser()).resolve())
         if explicit_vault
-        else find_containing_vault(cwd, VAULT_ROOTS)
+        else matching_vault_root(cwd, VAULT_ROOTS)
     )
     if vault is None and VAULT_ROOTS:
         vault = VAULT_ROOTS[0]

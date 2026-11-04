@@ -239,7 +239,7 @@ def test_scan_handles_vault_registry_changing_during_startup(
     monkeypatch.setattr(hook_module, "read_input", dict)
     monkeypatch.setattr(hook_module, "in_cooldown", lambda payload, marker_basename: False)
     monkeypatch.setattr(hook_module, "load_vault_roots", list)
-    monkeypatch.setattr(hook_module, "find_containing_vault", lambda cwd, roots: None)
+    monkeypatch.setattr(hook_module, "matching_vault_root", lambda cwd, roots: None)
     with pytest.raises(SystemExit) as stopped:
         hook_module.main(["--manual"] if manual else [])
     assert stopped.value.code == (1 if manual else 0)
@@ -249,7 +249,7 @@ def test_scan_handles_vault_registry_changing_during_startup(
 
 def _stub_main_scan(hook_module, monkeypatch, tmp_path, *, count=0, leaked=0):
     monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: True)
-    monkeypatch.setattr(hook_module, "find_containing_vault", lambda cwd, roots: str(tmp_path))
+    monkeypatch.setattr(hook_module, "matching_vault_root", lambda cwd, roots: str(tmp_path))
     monkeypatch.setattr(hook_module, "load_vault_roots", lambda: [str(tmp_path)])
     monkeypatch.setattr(hook_module, "find_files", lambda root, since_mtime=0: ["note.md"])
     monkeypatch.setattr(hook_module, "scan_policy_is_current", lambda path: False)
@@ -304,7 +304,7 @@ def test_incremental_scan_uses_baseline_mtime(tmp_path, hook_module, monkeypatch
     baseline = tmp_path / hook_module.BASELINE_FILENAME
     baseline.write_text(f'{{"vault_filter_revision": {hook_module.SCAN_POLICY_VERSION}}}')
     monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: True)
-    monkeypatch.setattr(hook_module, "find_containing_vault", lambda cwd, roots: str(tmp_path))
+    monkeypatch.setattr(hook_module, "matching_vault_root", lambda cwd, roots: str(tmp_path))
     monkeypatch.setattr(hook_module, "load_vault_roots", lambda: [str(tmp_path)])
     calls = []
 
@@ -333,7 +333,7 @@ WEAK = 'password = "synthetic-weak-password"\n'  # pragma: allowlist secret
 def _vault(hook_module, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: True)
-    monkeypatch.setattr(hook_module, "find_containing_vault", lambda cwd, roots: str(tmp_path))
+    monkeypatch.setattr(hook_module, "matching_vault_root", lambda cwd, roots: str(tmp_path))
     monkeypatch.setattr(hook_module, "load_vault_roots", lambda: [str(tmp_path)])
     monkeypatch.setattr(hook_module, "read_input", dict)
     monkeypatch.setattr(hook_module, "in_cooldown", lambda payload, marker_basename: False)

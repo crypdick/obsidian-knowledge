@@ -190,7 +190,7 @@ def test_doctor_accepts_invalid_or_non_mapping_payload(subprocess_vault):
 def test_doctor_prints_backend_warning_without_vault_findings(doctor, monkeypatch, capsys):
     monkeypatch.setattr(doctor["main"].__globals__["sys"], "stdin", io.StringIO("{}"))
     monkeypatch.setitem(doctor["main"].__globals__, "load_vault_roots", lambda: ["/vault"])
-    monkeypatch.setitem(doctor["main"].__globals__, "find_containing_vault", lambda cwd, roots: "/vault")
+    monkeypatch.setitem(doctor["main"].__globals__, "matching_vault_root", lambda cwd, roots: "/vault")
     monkeypatch.setitem(doctor["main"].__globals__, "session_debounce", lambda payload, name: False)
     monkeypatch.setitem(doctor["main"].__globals__, "count_needs_attention", lambda root: 0)
     monkeypatch.setitem(

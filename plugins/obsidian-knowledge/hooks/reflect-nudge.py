@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 """PostToolUse hook (matcher: Bash): continuous reflection nudge.
 
 Fires every 100 bash invocations within a session. State lives at
