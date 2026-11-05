@@ -15,11 +15,10 @@ import pytest
 from scripts.prepare_release import prepare_version, release_state
 
 
-def test_manual_package_bump_passes_checkout_checks_and_syncs_release(tmp_path: Path):
+def test_manual_package_bump_passes_checkout_checks_and_syncs_release(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("UV_CACHE_DIR", str(tmp_path / "uv-cache"))
     root = Path(__file__).resolve().parents[1]
     for name in (
-        "pyproject.toml",
-        "uv.lock",
         ".claude-plugin/plugin.json",
         ".claude-plugin/marketplace.json",
         ".codex-plugin/plugin.json",
@@ -34,14 +33,20 @@ def test_manual_package_bump_passes_checkout_checks_and_syncs_release(tmp_path: 
         destination = tmp_path / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(root / name, destination)
-    published = tomllib.loads((tmp_path / "pyproject.toml").read_text())["project"]["version"]
-    subprocess.run(
+    published = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    # Dependency resolution is unrelated to the package/manifest boundary.
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "obsidian-knowledge"\nversion = "{published}"\n'
+        'requires-python = ">=3.12"\ndependencies = []\n'
+    )
+    versioned = subprocess.run(
         ["uv", "version", "99.0.0", "--no-sync", "--offline"],
         cwd=tmp_path,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
+    assert versioned.returncode == 0, versioned.stdout + versioned.stderr
     assert tomllib.loads((tmp_path / "pyproject.toml").read_text())["project"]["version"] == "99.0.0"
     locked = tomllib.loads((tmp_path / "uv.lock").read_text())
     assert (
