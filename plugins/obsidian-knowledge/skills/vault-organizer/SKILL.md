@@ -52,6 +52,9 @@ Triage findings within the requested scope:
   notes by meaning. Follow [note locations](lib/note-types.md).
 - `STACKED_FRONTMATTER`: use `obsidian-knowledge garden frontmatter --apply NOTE_PATH`.
   `NEEDS_MERGE` requires [manual frontmatter repair](lib/stacked-frontmatter.md).
+- `ILLEGAL_FILENAME`: review the path and offending characters against configured
+  `illegal_filename_chars`. Checks cover visible files, attachments, and folders.
+  Rename through Obsidian to preserve internal links; the audit does not rename.
 
 Rename ambiguous files using [rename guidance](lib/rename-files.md).
 Use Obsidian move and rename commands with automatic internal-link updates.

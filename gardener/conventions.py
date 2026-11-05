@@ -1,4 +1,4 @@
-"""Shared write-time convention checks over visible vault Markdown."""
+"""Shared filename policy and Markdown checks over visible vault paths."""
 
 from __future__ import annotations
 
@@ -11,18 +11,28 @@ from hookslib.patterns import (
     is_in_dated_folder,
     parse_frontmatter,
 )
+from hookslib.vault_policy import load_vault_policy
 
-from gardener.io import iter_markdown
+from gardener.io import iter_paths
 
 
 def sweep(vault_root: Path) -> list[str]:
     issues: list[str] = []
-    for md in iter_markdown(vault_root):
-        rel = md.relative_to(vault_root)
+    policy = load_vault_policy()
+    for path in iter_paths(vault_root):
+        rel = path.relative_to(vault_root)
         rel_str = str(rel)
 
+        # NOTE: docs/CLI.md, Vault maintenance, documents filename scope and policy.
+        illegal = "".join(char for char in policy.illegal_filename_chars if char in path.name)
+        if illegal:
+            issues.append(f"ILLEGAL_FILENAME\t{rel_str}\tchars={illegal!r}")
+
+        if not path.is_file() or path.suffix != ".md":
+            continue
+
         if is_in_dated_folder(rel_str):
-            basename = md.name
+            basename = path.name
             is_journal = rel_str.startswith("Journal/")
             if (
                 basename != "index.md"
@@ -32,7 +42,7 @@ def sweep(vault_root: Path) -> list[str]:
                 issues.append(f"UNDATED_FILE\t{rel_str}")
 
         try:
-            content = md.read_text(encoding="utf-8", errors="replace")
+            content = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
 
