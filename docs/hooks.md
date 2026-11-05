@@ -135,6 +135,10 @@ decisions. Both Claude and Codex use the skill's
 It replaces the standalone `/scan-secrets` command. The scanner requires uv,
 which installs its dependencies automatically.
 
+Baseline updates stage a hidden sibling file before atomic replacement. Keeping
+the temporary file beside the baseline preserves same-filesystem replacement;
+its dot-prefixed name keeps it out of Obsidian and note-creation watchers.
+
 The Stop hook alerts once per finding. It records each file with unaudited
 findings as a checkbox under `## Secret scan findings` in
 `Utility/obsidian-knowledge/needs-attention.md` and removes the entry once every

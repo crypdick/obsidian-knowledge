@@ -327,8 +327,9 @@ def _save_if_changed(result_sc, baseline_path: Path, ds_baseline) -> None:
     def _normalize(d: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in d.items() if k not in volatile_keys}
 
+    # NOTE: docs/hooks.md, Secret scanning: keep atomic staging hidden from vault watchers.
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".baseline", delete=False, dir=baseline_path.parent
+        mode="w", prefix=".secrets-scan-", suffix=".baseline", delete=False, dir=baseline_path.parent
     ) as tmp:
         tmp_path = Path(tmp.name)
     try:

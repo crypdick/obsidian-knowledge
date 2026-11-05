@@ -146,6 +146,31 @@ def test_saved_baseline_stays_current_for_legacy_hooks(tmp_path, hook_module):
     assert json.loads(baseline.read_text())["vault_scan_policy"] == 1
 
 
+def test_baseline_staging_never_creates_visible_vault_entries(tmp_path, hook_module, monkeypatch):
+    from detect_secrets.core import baseline as ds_baseline
+
+    note = tmp_path / "note.md"
+    note.write_text("plain\n")
+    baseline = tmp_path / ".secrets.baseline"
+    save = ds_baseline.save_to_file
+    staged = []
+
+    def capture(collection, filename):
+        target = Path(filename)
+        staged.append(target)
+        assert target.parent == baseline.parent
+        assert target.name.startswith(".")
+        assert sorted(path.name for path in tmp_path.iterdir() if not path.name.startswith(".")) == [
+            "note.md"
+        ]
+        save(collection, filename)
+
+    monkeypatch.setattr(ds_baseline, "save_to_file", capture)
+    hook_module.run_scan(baseline, str(tmp_path), ["note.md"], ["note.md"])
+    assert staged and all(not path.exists() for path in staged)
+    assert hook_module.scan_policy_is_current(baseline)
+
+
 def test_find_files_filters_noise_and_honors_mtime(tmp_path, hook_module, monkeypatch):
     (tmp_path / "new.md").write_text("new")
     (tmp_path / "old.md").write_text("old")
