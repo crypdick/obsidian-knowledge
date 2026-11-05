@@ -309,11 +309,18 @@ operations, or `obsidian-knowledge garden OPERATION --help` for their arguments.
 
 | Operation | Behavior |
 | --- | --- |
-| `audit` | Report structure, index, stacked-frontmatter, and convention findings. Structural checks use configured managed zones; content checks cover visible vault Markdown. Findings do not change files or cause a nonzero exit. |
+| `audit` | Report structure, index, filename, stacked-frontmatter, and convention findings. Structural checks use configured managed zones; filename checks cover visible vault files and folders; content checks cover visible vault Markdown. Findings do not change files or cause a nonzero exit. |
 | `links [--format tsv\|json] [--include-stubs] [--apply]` | Read unresolved-link JSON from stdin. Filter intentional stubs and unmanaged sources; classify recoveries. Apply only unique recoveries; report ambiguous and fuzzy candidates for review. |
 | `index PATH [--apply]` | Read reviewed JSON entries from stdin and render an index section. Preserve unrelated sections and prose; require a vault-relative `index.md` path. |
 | `questions [--report] [--timestamp ISO_TIME] [--apply]` | Scan managed Markdown for question callouts. Default output is TSV; `--report` previews the standard Markdown report. `--apply` writes `Utility/obsidian-knowledge/reports/open-questions.md`. |
 | `frontmatter PATH... [--apply]` | Preview removal of stray stacked frontmatter markers. Real second YAML blocks require a manual merge and return nonzero. Paths must be vault-relative Markdown files. |
+
+Filename checks reuse `illegal_filename_chars` from shared preferences, also
+used by the write-time guard. `ILLEGAL_FILENAME` findings include the
+vault-relative path and offending characters. They cover attachments and folder
+names as well as notes, and are disabled when the character list is absent or
+empty. They retain the maintenance exclusions below. The audit never renames
+paths; use Obsidian's rename/move commands to preserve internal links.
 
 Index coverage checks recognize existing vault-root targets first, then paths
 relative to the source folder and its ancestors, nearest first. A nearer
