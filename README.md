@@ -98,6 +98,14 @@ The CLI has no file watcher. For scheduled indexing and other settings, see
 Read the [design conventions](https://github.com/crypdick/obsidian-knowledge/blob/main/CONVENTIONS.md),
 [architecture](docs/ARCHITECTURE.md), and [quality checks](docs/QUALITY.md).
 
+`pyproject.toml` owns the release version. Ordinary commits need no version edit;
+after CI passes on `main`, release automation chooses the next available patch
+version and publishes to PyPI. To choose a manual version, run
+`uv version --bump minor` (or `major` or `patch`) and commit `pyproject.toml` and
+`uv.lock`. CI preserves versions above the published version and synchronizes
+plugin manifests and the packaged Codex copy. Generated manifests must agree
+with each other; they can lag an intentional package bump until release runs.
+
 ## License
 
 MIT
