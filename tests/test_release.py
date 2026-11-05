@@ -3,13 +3,86 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
 import pytest
 
 from scripts.prepare_release import prepare_version, release_state
+
+
+def test_manual_package_bump_passes_checkout_checks_and_syncs_release(tmp_path: Path):
+    root = Path(__file__).resolve().parents[1]
+    for name in (
+        "pyproject.toml",
+        "uv.lock",
+        ".claude-plugin/plugin.json",
+        ".claude-plugin/marketplace.json",
+        ".codex-plugin/plugin.json",
+        "plugins/obsidian-knowledge/.codex-plugin/plugin.json",
+        "plugins/obsidian-knowledge/skills/obsidian-knowledge/SKILL.md",
+        "plugins/obsidian-knowledge/hooks/hooks.json",
+        "skills/obsidian-knowledge/SKILL.md",
+        "hooks/codex-hooks.json",
+        "scripts/sync_codex_plugin.py",
+        "tests/test_cli.py",
+    ):
+        destination = tmp_path / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(root / name, destination)
+    published = tomllib.loads((tmp_path / "pyproject.toml").read_text())["project"]["version"]
+    subprocess.run(
+        ["uv", "version", "99.0.0", "--no-sync", "--offline"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert tomllib.loads((tmp_path / "pyproject.toml").read_text())["project"]["version"] == "99.0.0"
+    locked = tomllib.loads((tmp_path / "uv.lock").read_text())
+    assert (
+        next(item["version"] for item in locked["package"] if item["name"] == "obsidian-knowledge")
+        == "99.0.0"
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--noconftest",
+            "-o",
+            "addopts=",
+            "tests/test_cli.py",
+            "-k",
+            "test_codex_marketplace_points_to_packaged_plugin or test_claude_marketplace_uses_string_local_source",
+        ],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(root)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    assert prepare_version(tmp_path, [published]) == "99.0.0"
+    for name in (".codex-plugin/plugin.json", ".claude-plugin/plugin.json"):
+        assert json.loads((tmp_path / name).read_text())["version"] == "99.0.0"
+    marketplace = json.loads((tmp_path / ".claude-plugin/marketplace.json").read_text())
+    assert marketplace["plugins"][0]["version"] == "99.0.0"
+    subprocess.run(
+        [sys.executable, "scripts/sync_codex_plugin.py"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    packaged = json.loads((tmp_path / "plugins/obsidian-knowledge/.codex-plugin/plugin.json").read_text())
+    assert packaged["version"].split("+", 1)[0] == "99.0.0"
 
 
 @pytest.mark.parametrize(

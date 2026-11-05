@@ -5,7 +5,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -413,13 +412,14 @@ def test_codex_marketplace_points_to_packaged_plugin():
     plugin_root = root / "plugins" / "obsidian-knowledge"
 
     manifest = json.loads((plugin_root / ".codex-plugin" / "plugin.json").read_text())
-    package = tomllib.loads((root / "pyproject.toml").read_text())["project"]
+    source = json.loads((root / ".codex-plugin" / "plugin.json").read_text())
 
     assert manifest["name"] == "obsidian-knowledge"
     # Local Codex development uses a +codex.<timestamp> cache-buster so the
     # marketplace treats a rebuilt plugin as new without changing its release
-    # version. The prefix must still match the Python distribution exactly.
-    assert manifest["version"].split("+", 1)[0] == package["version"]
+    # version. The prefix must match the generated source manifest; CI copies
+    # the authoritative package version during release preparation.
+    assert manifest["version"].split("+", 1)[0] == source["version"]
     assert "hooks" not in manifest
     assert (plugin_root / "skills" / "obsidian-knowledge" / "SKILL.md").exists()
     assert (plugin_root / "hooks" / "hooks.json").exists()
@@ -440,8 +440,10 @@ def test_claude_marketplace_uses_string_local_source():
     plugin = marketplace["plugins"][0]
 
     assert plugin["source"] == "./"
-    package = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())["project"]
-    assert plugin["version"] == package["version"]
+    manifest = json.loads((Path(__file__).parents[1] / ".claude-plugin" / "plugin.json").read_text())
+    codex = json.loads((Path(__file__).parents[1] / ".codex-plugin" / "plugin.json").read_text())
+    assert plugin["version"] == manifest["version"]
+    assert manifest["version"] == codex["version"]
 
 
 # ---------------------------------------------------------------------------
