@@ -26,6 +26,7 @@ from vault_preferences import load_preferences, preferences_path
 
 from lib.vault_index.models import Hit, IndexBusyError
 from lib.vault_index.registration import existing_vault, read_registry, register_vault
+from lib.vault_index.search_budget import command_deadline
 from lib.vault_index.vault_files import read_vault_file, write_vault_file
 
 
@@ -846,7 +847,8 @@ def run_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
             repository=args.repository,
         )
     elif args.cmd in {"doctor", "search", "remember"}:  # pragma: no branch  # exhaustive parser
-        with search_ttl(search_ttl_seconds(), label=args.cmd):
+        ttl = search_ttl_seconds()
+        with search_ttl(ttl, label=args.cmd), command_deadline(ttl):
             return run_retrieval_command(args)
 
     return 0

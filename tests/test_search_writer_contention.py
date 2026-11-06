@@ -168,3 +168,31 @@ def test_hybrid_snapshot_survives_writer_commit(vector_vault):
             await store.close()
 
     asyncio.run(exercise())
+
+
+def test_sql_uses_callers_deadline_and_next_search_clears_it(vector_vault):
+    import time
+
+    from obsidian_knowledge_vendor.memweave import SearchError
+
+    vault, cache, _endpoint = vector_vault
+    store = Indexer(vault, cache, VaultIndexConfig(), skip_probe=True)._store
+
+    class SlowQuery:
+        async def search(self, db, *args, **kwargs):
+            await db.execute(
+                "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100000000) "
+                "SELECT sum(x) FROM n"
+            )
+            return []
+
+    async def exercise():
+        store.register_strategy("slow", SlowQuery())
+        try:
+            with pytest.raises(SearchError, match="interrupted"):
+                await store.search("greenhouse", strategy="slow", deadline=time.monotonic() + 0.05)
+            assert await store.search("greenhouse", min_score=0.0)
+        finally:
+            await store.close()
+
+    asyncio.run(exercise())

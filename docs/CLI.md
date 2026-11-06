@@ -210,9 +210,15 @@ process Documents or Full Disk Access, restart it, and retry.
 
 `search`, `remember`, and `doctor` retain a 30-second whole-command deadline,
 configurable with `OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`. Semantic retrieval
-gets at most five seconds (half the command budget if shorter); slow embeddings
-fall back to committed keyword results. SQLite semantic statements have a
-four-second progress deadline. Search opens an existing database read-only and
+gets `5 + 0.1 × top_k` seconds, using the requested result count before candidate
+expansion. This linear allowance starts at semantic retrieval and shares one
+absolute deadline across embedding and SQL. It is capped by remaining command
+time, reserving two seconds for fallback/response (half the remaining time when
+less than four seconds remain). Initialization time therefore reduces available
+query time. Slow retrieval falls back to committed keyword results.
+The coefficients round up observed cold-query overhead (4.7 seconds) and the
+observed 10-to-50-result increase (about 0.1 seconds/result); they are
+conservative allowances, not a claim that runtime scales exactly linearly. Search opens an existing database read-only and
 never runs migrations, scans the vault, or launches repair work. Candidate pools
 are capped at sqlite-vec's 4096 ceiling rather than reverting to exhaustive
 JSON-vector retrieval for large requests. Results may contain fewer than the
