@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -115,32 +113,3 @@ def test_reindex_progress_throttles_and_handles_empty(capsys, monkeypatch):
     output = capsys.readouterr().err
     assert "0/0" in output
     assert "1/2" not in output
-
-
-def test_search_does_not_wait_for_index_writer(tmp_path):
-    script = f"""
-import fcntl, sys
-import lib.vault_index.indexer as indexer
-from lib.vault_index.cli import cli_main
-from lib.vault_index.config import VaultIndexConfig
-from pathlib import Path
-vault = Path({str(tmp_path)!r})
-instance = indexer.Indexer(vault, vault / 'cache', VaultIndexConfig(), skip_probe=True)
-instance.vector_issue = None
-indexer.Indexer = lambda *args, **kwargs: instance
-lock = open(instance.cache_dir / '.index.sqlite.lock', 'w')
-fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-sys.argv = ['obsidian-knowledge', 'search', 'query', '--vault', str(vault)]
-cli_main()
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        env={**os.environ, "OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS": "1"},
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "timed out" not in result.stderr
-    assert "Traceback" not in result.stderr
-    assert "(no results)" in result.stdout

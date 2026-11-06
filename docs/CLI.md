@@ -218,8 +218,9 @@ are capped at sqlite-vec's 4096 ceiling rather than reverting to exhaustive
 JSON-vector retrieval for large requests. Results may contain fewer than the
 requested number of hits.
 
-An active writer yields keyword results with `index update in progress`, not a
-wait for indexing. Missing/stale vectors report `vector index requires reindex`.
+Hybrid searches read the last committed SQLite snapshot while indexing proceeds;
+they do not acquire the application writer lock. Keyword and vector retrieval
+share one read transaction. Missing/stale vectors report `vector index requires reindex`.
 Legacy `--no-rebuild` and `--no-wait` remain accepted; all searches now avoid
 rebuilding and waiting. Real SQLite failures still surface as errors.
 

@@ -496,25 +496,24 @@ class Indexer:
     def _retrieve(self, query: str, candidate_count: int):
         try:
             # NOTE: docs/CLI.md "Search health and network access" documents
-            # bounded semantic retrieval and keyword fallback during contention.
-            with index_lock(self.cache_dir, exclusive=False, blocking=False):
+            # bounded semantic retrieval over committed read-only snapshots.
+            try:
+                command_budget = int(os.environ.get("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "30"))
+            except ValueError:
+                command_budget = 30
+            semantic_budget = min(5.0, command_budget / 2) if command_budget > 0 else 5.0
+
+            async def bounded_search():
                 try:
-                    command_budget = int(os.environ.get("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "30"))
-                except ValueError:
-                    command_budget = 30
-                semantic_budget = min(5.0, command_budget / 2) if command_budget > 0 else 5.0
+                    await self._store.close()
+                    return await asyncio.wait_for(
+                        self._store.search(query, max_results=candidate_count, min_score=0.0),
+                        timeout=semantic_budget,
+                    )
+                finally:
+                    await self._store.close()
 
-                async def bounded_search():
-                    try:
-                        await self._store.close()
-                        return await asyncio.wait_for(
-                            self._store.search(query, max_results=candidate_count, min_score=0.0),
-                            timeout=semantic_budget,
-                        )
-                    finally:
-                        await self._store.close()
-
-                return asyncio.run(bounded_search())
+            return asyncio.run(bounded_search())
         except (sqlite3.OperationalError, memweave.StorageError) as exc:
             if "database is locked" in str(exc).lower():
                 raise IndexBusyError(f"vault index is busy: {exc}") from exc

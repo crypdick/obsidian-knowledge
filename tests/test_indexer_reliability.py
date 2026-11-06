@@ -295,18 +295,6 @@ def vector_indexer(tmp_path) -> indexer.Indexer:
     return instance
 
 
-def test_vector_search_does_not_wait_for_writer(tmp_path):
-    instance = vector_indexer(tmp_path)
-    try:
-        with (instance.cache_dir / ".index.sqlite.lock").open("w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            report = instance.search_report("query")
-            assert report.mode == "keyword"
-            assert report.degraded_reason == "index update in progress"
-    finally:
-        close(instance)
-
-
 @pytest.mark.parametrize(
     ("error", "expected_error"),
     [
