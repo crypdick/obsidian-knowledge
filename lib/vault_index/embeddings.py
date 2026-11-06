@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import errno
+import json
+import urllib.error
+import urllib.request
 from typing import Annotated
 
 import httpx
@@ -14,6 +18,7 @@ from obsidian_knowledge_vendor.memweave.embedding.vectors import normalize_embed
 from obsidian_knowledge_vendor.memweave.exceptions import EmbeddingError
 
 DEFAULT_EMBEDDING_API_BASE = "http://127.0.0.1:11434"
+PROBE_TIMEOUT_S = 1.5
 RETRY_DELAYS = (0.5, 2.0)
 RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
 
@@ -140,3 +145,42 @@ def make_embedding_provider(config: EmbeddingConfig, *, enabled: bool) -> Embedd
     # Keep fallback errors from writing LiteLLM's support banner into CLI JSON.
     litellm.suppress_debug_info = True
     return LiteLLMEmbeddingProvider(config)
+
+
+def ollama_probe(api_base: str, model: str) -> tuple[bool, str]:
+    """Check Ollama is up and the model is pulled. Returns (ok, message).
+
+    Strips the LiteLLM ``ollama/`` prefix from ``model`` before comparison
+    against Ollama's tag list. Tags appear as e.g. ``bge-m3:latest``; we
+    match on the bare name (everything before ``:``).
+    """
+    if not api_base.startswith("http"):
+        return False, f"api_base not http(s): {api_base}"
+    bare = model.split("/", 1)[1] if "/" in model else model
+    bare_name = bare.split(":", 1)[0]
+    url = api_base.rstrip("/") + "/api/tags"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=PROBE_TIMEOUT_S) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+        if isinstance(reason, OSError) and reason.errno in {errno.EPERM, errno.EACCES}:
+            return False, (
+                f"Ollama access denied at {api_base}: {exc}. "
+                "Sandbox or OS permissions blocked the connection; this does not show that Ollama is stopped. "
+                "Retry with approved network access to this endpoint"
+            )
+        return False, (
+            f"Ollama unreachable at {api_base}: {exc}. "
+            "Check the configured endpoint and Ollama service from a process with network access"
+        )
+    except json.JSONDecodeError as exc:
+        return False, f"Ollama returned non-JSON: {exc}"
+    tags = [t.get("name", "") for t in data.get("models", [])]
+    if not any(name.split(":", 1)[0] == bare_name for name in tags):
+        return False, (
+            f"model '{bare_name}' not pulled (have: {tags or 'none'}); "
+            f"run `ollama pull {bare}` against {api_base}"
+        )
+    return True, f"ok: {bare_name} via {api_base}"
