@@ -36,9 +36,11 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   positive. `all_paths` bypasses the digest filter, retaining index exclusions.
   An empty keyword result reports `outside_digest_matches`, the number of other
   indexed notes that match; retry with `all_paths=True` to see them.
-  Queries never launch repairs or wait for indexing. Missing vectors, slow
-  semantic retrieval, and writer contention return committed keyword results
-  with an explicit degraded reason. Run the separate [index worker](CLI.md#settled-file-indexing-worker).
+  Queries never launch repairs or wait for indexing. Missing vectors or slow
+  semantic retrieval return committed keyword results with an explicit degraded
+  reason. Active indexing does not disable hybrid retrieval: searches use the
+  last committed SQLite snapshot without acquiring the application writer lock.
+  Run the separate [index worker](CLI.md#settled-file-indexing-worker).
 - `vault_read(path)` returns UTF-8 file content.
 - `vault_append(path, content, inline=False)` atomically appends literal UTF-8
   content to an existing file without a running app. Adds one leading newline
