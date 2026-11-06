@@ -27,7 +27,7 @@ class ListingReport(BaseModel):
     next_offset: int | None
 
 
-def _visible_name(name: str) -> bool:
+def visible_name(name: str) -> bool:
     return (
         not name.startswith(".")
         and name not in {"node_modules", "_sources"}
@@ -38,7 +38,7 @@ def _visible_name(name: str) -> bool:
 def _entries(directory: Path, vault: Path, remaining_depth: int) -> Iterator[ListingEntry]:
     # Sorting retains one directory at a time; pagination never materializes the whole vault.
     for child in sorted(directory.iterdir()):
-        if not _visible_name(child.name):
+        if not visible_name(child.name):
             continue
         info = child.lstat()
         is_directory = stat.S_ISDIR(info.st_mode)
@@ -87,7 +87,7 @@ def list_vault_files(
         raise ValueError(f"vault is not a directory: {vault}")
     if relative_path.is_absolute():
         raise ValueError(f"path must be vault-relative: {relative_path}")
-    if any(not _visible_name(part) for part in relative_path.parts):
+    if any(not visible_name(part) for part in relative_path.parts):
         raise ValueError(f"not a visible vault path: {relative_path}")
     directory = vault
     for part in relative_path.parts:

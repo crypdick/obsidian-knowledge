@@ -288,7 +288,7 @@ def indexed_paths(vault):
         asyncio.run(instance._store.close())
 
 
-def test_mutations_keep_the_index_consistent(native_server, fake_ollama):
+def test_mutations_keep_the_index_consistent(native_server, fake_ollama, drain_index):
     server, vault, _ = native_server
     instance = Indexer(vault, default_cache_dir(vault), VaultIndexConfig())
     instance.full_reindex()
@@ -296,16 +296,20 @@ def test_mutations_keep_the_index_consistent(native_server, fake_ollama):
     fake_ollama.texts.clear()
 
     appended = call(server, "vault_append", {"path": "folder/note.md", "content": "Bromeliads"})
-    assert appended["index"] == "updated"
+    assert appended["index"] == "queued"
+    assert fake_ollama.texts == []
+    asyncio.run(drain_index(vault))
     assert any("Bromeliads" in text for text in fake_ollama.texts)
     moved = call(server, "vault_move", {"from_path": "folder/note.md", "to_path": "new/moved.md"})
-    assert moved["index"] == "updated"
+    assert moved["index"] == "queued"
+    asyncio.run(drain_index(vault))
     assert indexed_paths(vault) == ["new/moved.md"]
-    assert call(server, "vault_delete", {"path": "new/moved.md"})["index"] == "updated"
+    assert call(server, "vault_delete", {"path": "new/moved.md"})["index"] == "queued"
+    asyncio.run(drain_index(vault))
     assert indexed_paths(vault) == []
 
 
 def test_mutations_without_an_index_defer_to_next_sync(native_server):
     server, _, _ = native_server
     result = call(server, "vault_append", {"path": "folder/note.md", "content": "Next"})
-    assert result["index"] == "deferred to next sync: reindex: deferred (index not built yet)"
+    assert result["index"] == "queued"

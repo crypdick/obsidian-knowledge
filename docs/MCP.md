@@ -36,12 +36,9 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   positive. `all_paths` bypasses the digest filter, retaining index exclusions.
   An empty keyword result reports `outside_digest_matches`, the number of other
   indexed notes that match; retry with `all_paths=True` to see them.
-  Queries do not wait for vector rebuilds. If the index is new, the embedder
-  has changed, a rebuild was interrupted, or vector tables are unavailable, search returns
-  keyword hits and requests one background repair. While it runs the reason
-  is `vector index rebuilding`. Repeated queries share the same worker;
-  failures or lock contention can be retried by a search after 60 seconds.
-  `vault_search_update` remains available for an explicit refresh.
+  Queries never launch repairs or wait for indexing. Missing vectors, slow
+  semantic retrieval, and writer contention return committed keyword results
+  with an explicit degraded reason. Run the separate [index worker](CLI.md#settled-file-indexing-worker).
 - `vault_read(path)` returns UTF-8 file content.
 - `vault_append(path, content, inline=False)` atomically appends literal UTF-8
   content to an existing file without a running app. Adds one leading newline
@@ -92,10 +89,9 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   schema and embedding settings only. Endpoint availability and file freshness
   remain unknown. Missing or unreadable indexes report a reason without creating
   or repairing the index.
-- `vault_search_update()` runs incremental indexing using the existing CLI and
-  fixed vault. Returns `status="updated"` with `indexed`, `skipped`, and `deleted`
-  counts, or `status="busy"` with null counts when another process holds the
-  index lock. Refresh after writes or patches when searches need current content.
+- `vault_search_update()` durably queues reconciliation of the fixed vault.
+  Returns `status="queued"` with null counts. Repeated requests coalesce;
+  completion depends on the separate worker and per-file quiet periods.
 
 Paths are relative to the server's fixed vault. Absolute paths and symlink or
 parent-directory escapes are rejected. These tools share the CLI's file
@@ -107,45 +103,20 @@ while its write thread is still running. Patch and append baseline checks detect
 before replacement but cannot guarantee atomic comparison and replacement
 against external editors or sync processes.
 
-Search and refresh use the existing CLI in subprocesses, preserving its
-configuration, cache, filtering, and semantic-ranking fallback. Searches,
-refreshes, and status calls serialize. Each active subprocess uses the configured
-search deadline (`OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`) plus a ten-second
-cleanup allowance; refresh also passes that deadline to the CLI. Cancellation
-or timeout kills and reaps the subprocess. File operations remain available
-during indexing. Queue waiting is outside the active-operation deadline.
-
-MCP search selects `--no-rebuild --no-wait`: an active vector-index writer
-returns an actionable busy tool error asking the caller to retry after indexing
-completes, rather than spending the search deadline waiting on its lock. It
-does not return empty success or silently change to keyword ranking because of
-contention. Existing keyword-only/degraded searches can still read committed
-FTS data. Ordinary CLI searches keep their deadline-bounded wait behavior;
-slow query embedding and SQL remain bounded by the whole-command deadline.
-
-Automatic repair has its own 1800-second CLI deadline plus a ten-second cleanup
-allowance. A cancelled search does not cancel the repair; server shutdown does.
-With memweave's resumable rebuild support, later attempts retain completed files
-and vectors instead of starting over. Ollama batches that exceed the configured
-request timeout are split into smaller batches, preserving order and avoiding
-repeated attempts at the same oversized batch. These behaviors do not require
-deployment-specific wrappers, longer deadlines, or increased CPU limits.
+Search uses a bounded CLI subprocess and read-only SQLite connections. Cancellation
+kills and reaps the subprocess. Refresh and writes enqueue durable work instead
+of launching indexing subprocesses. Searches still serialize within one server;
+queue waiting is outside the active request deadline.
 
 ### Indexing after writes
 
 `vault_write`, `vault_patch`, `vault_append`, `vault_delete`, and `vault_move`
-update the index for the paths they change with
-`obsidian-knowledge reindex --path`, bounded by the search deadline plus a
-ten-second cleanup allowance. Deleting removes the note's index entries; moving
-removes the old path's entries and indexes the new path, reusing cached
-embeddings. Their `index` field is `updated`, or
-`deferred to next sync: REASON` when the index is not built yet, the embedder
-is unavailable, the index lock is busy, or the deadline expires. Deferral never
-fails the mutation. Frontmatter edits, and other notes whose links Obsidian
-rewrites during a move, are not indexed. Use `vault_search_update()` or the existing
-`obsidian-knowledge reindex --vault /absolute/path/to/vault` workflow after
-those changes. See [CLI reference](CLI.md) for indexing, embeddings, and search
-timeout configuration.
+return `index="queued"` after notifying the worker. Notification failure returns
+`deferred to next scan: REASON` without failing the completed mutation. Renames
+queue both paths; deletion removes old entries after processing. Watchers and
+periodic reconciliation discover app changes and rewritten backlinks. See
+[settled-file indexing](CLI.md#settled-file-indexing-worker) for deployment,
+quiet periods, cancellation, rebuild generations, and retry behavior.
 
 ## App-backed tools
 

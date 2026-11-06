@@ -28,8 +28,8 @@ import LiteLLM.
 and adds missing creation metadata before a new note's atomic write, without
 running Templater or changing existing notes.
 `vault_listing.py` provides bounded directory discovery. `mcp_index.py` reads
-persisted index status without rebuilding and parses CLI refresh results.
-`mcp_server.py` exposes these operations and bounded CLI search and refresh
+persisted index status without rebuilding and queues maintenance notifications.
+`mcp_server.py` exposes these operations and bounded CLI search
 subprocesses over Streamable HTTP. `mcp_native.py` registers confined filesystem append and app-backed tools and
 shares mutation serialization with existing file writes. `obsidian_cli.py` runs
 the official CLI with fixed vault selection, filesystem identity checks, bounded
@@ -38,16 +38,18 @@ these tools require a live app. Importing `lib` enables beartype runtime checks.
 
 `vector_search.py` registers a memweave hybrid strategy using sqlite-vec's native
 nearest-neighbor query. Memweave normalizes embeddings, so L2 candidate ordering
-matches cosine ordering; the strategy keeps the original cosine scores and
-keyword merge. Model and source filters apply before candidate selection. Pools
-above sqlite-vec's 4096-candidate ceiling retain memweave's exhaustive search.
+matches cosine ordering; the strategy derives cosine scores from L2 distance
+without fetching vectors a second time and retains the keyword merge. Model and source filters apply before candidate selection. Pools
+are capped at sqlite-vec's 4096-candidate ceiling; large requests never switch
+back to exhaustive JSON-vector retrieval.
 Schema initialization adds a covering `(model, source, id)` chunk index to both
 new and existing caches. This keeps candidate eligibility off the large chunk
 text/JSON-embedding table without changing ranking, filters, or embedding policy;
 no re-embedding is required.
 `index_lock.py` owns the existing shared-reader/exclusive-writer file lock.
-CLI retrieval normally waits within its deadline; MCP requests nonblocking
-reader access and reports contention without reading partial vector generations.
+Queries request nonblocking reader access and use committed keyword results
+during contention. Rebuild generations are published separately; query connections
+never create schema or run maintenance.
 
 The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
 module, `hooks/vault_preferences.py` as `vault_preferences`, and
@@ -123,3 +125,12 @@ not install or overwrite the separately distributed `memweave` package. Runtime
 requirements are declared directly in the application metadata so registry
 installations do not need a Git checkout. Upstream code retains its own tests and
 style; application quality tools exclude the bundled source.
+
+## Index worker ownership
+
+`index_worker.py` owns watcher events and periodic reconciliation; `dirty_paths.py`
+coalesces durable revisions and quiet deadlines. One worker indexes settled files,
+cancels superseded work, and retains failures for retry. Queries never schedule
+maintenance. `index_generations.py` publishes rebuilds with an atomic pointer;
+existing readers retain their chosen generation. See
+[CLI operations](CLI.md#settled-file-indexing-worker).

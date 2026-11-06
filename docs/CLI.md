@@ -36,7 +36,8 @@ Use these commands to configure, search, and maintain the vault:
 | `init-vault-index` | Create the shared `config.yaml` preferences and its parent directory, or append search defaults to an existing mapping. An existing `vault_index` section is left unchanged. |
 | `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
 | `write PATH [--replace]` | Read stdin, apply opt-in [configured creation defaults](configuration.md#note-creation) to new Markdown files, then atomically write and verify bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Then [indexes the written note](#index-on-write). |
-| `reindex [--force] [--path PATH] [--timeout-seconds N]` | Show an in-place progress bar on interactive stderr, index changed files and remove stale index entries. Files indexed while embeddings were unavailable get vectors without rebuilding the rest. Embeddings for small notes are batched across files; see [indexing progress](#indexing-progress). `--force` reprocesses unchanged files too. `--path` (repeatable) updates only the named vault-relative files or folders: notes present are indexed, and entries at or under a path that no longer exists (or is now excluded) are removed, so passing both the old and new path records a move without re-embedding. It exits 3 when the index is not ready, the embedder is unavailable, or another index operation holds the lock. Does not delete vault notes. |
+| `reindex [--force] [--path PATH] [--timeout-seconds N]` | Queue coalesced work when the worker runs (`--force` requests a new generation). Otherwise, show an in-place progress bar on interactive stderr, index changed files and remove stale index entries. Files indexed while embeddings were unavailable get vectors without rebuilding the rest. Embeddings for small notes are batched across files; see [indexing progress](#indexing-progress). `--force` reprocesses unchanged files too. `--path` (repeatable) updates only the named vault-relative files or folders: notes present are indexed, and entries at or under a path that no longer exists (or is now excluded) are removed, so passing both the old and new path records a move without re-embedding. It exits 3 when the index is not ready, the embedder is unavailable, or another index operation holds the lock. Does not delete vault notes. |
+| `index-worker [--quiet-seconds N] [--scan-seconds N]` | Watch edits, coalesce work, cancel superseded indexing, and reconcile periodically. Defaults: 30 and 3600 seconds. |
 | `search QUERY [--top-k N] [--all] [--json]` | Print ranked paths and snippets, or a JSON search report. `--all` bypasses the digest filter, not the indexing exclusions. |
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
 | `papercut DESCRIPTION` | Append avoidable or fixable workflow friction to the repository's vault log, or the global log if no repository is identified. |
@@ -49,7 +50,7 @@ command arguments. Replace `N` with a numeric value. Square brackets mark
 optional arguments; omit the brackets when running a command.
 
 `--top-k` must be positive. `read` does not load the embedding stack; `write`
-loads it only in a child process after the write succeeds.
+does not request embeddings after a write.
 For literal Markdown containing backticks, dollar signs, or wikilinks, use a
 quoted heredoc delimiter:
 
@@ -207,33 +208,63 @@ This entry reloads user units after login and starts only `ollama.service`.
 If note reads fail with `Operation not permitted` on macOS, grant the parent
 process Documents or Full Disk Access, restart it, and retry.
 
-`search`, `remember`, and `doctor` have a 30-second deadline covering initialization
-and retrieval. Override it with `OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`.
-Search embeds only the query. It never embeds vault content, so a slow or
-CPU-only embedder cannot push a search past its deadline.
-Vector searches normally wait for an active index writer within that deadline.
-Keyword search can read committed SQLite data while indexing continues. If lock waiting exhausts the deadline,
-the command reports a timeout and exits with code 124. Database contention that
-persists after SQLite's own wait reports a busy error with code 2; it does not
-appear as an empty result set.
-For callers that cannot wait for an index writer, `search --no-rebuild --no-wait`
-returns an actionable busy error with code 2 instead. It does not switch a
-hybrid query to keyword ranking because of contention. `--no-wait` requires
-`--no-rebuild`. The default CLI behavior still waits, and the whole-command
-deadline still bounds slow embedding or retrieval when the index is available.
+`search`, `remember`, and `doctor` retain a 30-second whole-command deadline,
+configurable with `OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS`. Semantic retrieval
+gets at most five seconds (half the command budget if shorter); slow embeddings
+fall back to committed keyword results. SQLite semantic statements have a
+four-second progress deadline. Search opens an existing database read-only and
+never runs migrations, scans the vault, or launches repair work. Candidate pools
+are capped at sqlite-vec's 4096 ceiling rather than reverting to exhaustive
+JSON-vector retrieval for large requests. Results may contain fewer than the
+requested number of hits.
 
-When vectors are missing or stale, search returns keyword hits immediately and
-starts one detached `reindex` with a 1800-second deadline. Its output goes to
-`background-reindex.log` in the vault's [cache directory](configuration.md#cache-location).
-If another index operation holds the lock, search assumes it is that reindex
-and does not start a second one. Stderr names the cause, for example
-`index not built yet` on a new host, `vectors missing after keyword-only sync`,
-or `embedder changed (was ..., now ...)`. JSON output reports
-`vector index rebuilding` as the degraded reason. A deadline or interruption
-keeps completed work, so a later search resumes rather than restarts.
-`search --no-rebuild` starts nothing and reports `vector index requires reindex`
-or `vector index unavailable`; MCP searches use it because the MCP server owns
-its own repair worker.
+An active writer yields keyword results with `index update in progress`, not a
+wait for indexing. Missing/stale vectors report `vector index requires reindex`.
+Legacy `--no-rebuild` and `--no-wait` remain accepted; all searches now avoid
+rebuilding and waiting. Real SQLite failures still surface as errors.
+
+### Settled-file indexing worker
+
+Run one supervised worker per vault/cache, alongside the MCP query service:
+
+```bash
+obsidian-knowledge index-worker --vault /absolute/path/to/vault --quiet-seconds 30 --scan-seconds 3600
+```
+
+Replace the old hourly reindex shell loop with this command. The worker uses the
+already-installed `watchfiles` package and reconciles at startup and every hour.
+All instances must use the same vault mount path and cache root: cache identity
+includes the absolute vault path. A lifetime lock excludes a second worker.
+
+File events and tool writes feed a durable set of dirty paths. Repeated edits
+reset a per-file quiet period; unchanged scans do not. Oldest eligible files run
+first. An edit during indexing cancels obsolete work and restarts that file's
+cooldown while quiet files proceed. Content is checked before commit. Cancelling
+HTTP cannot guarantee Ollama stops computation already in flight; completed
+embedding batches remain reusable. Failed files remain pending with a 60-second
+retry delay. Offline embeddings do not mark work complete. Discovery excludes
+hidden directories, `_sources`, dependencies, sync conflicts, and external symlinks.
+
+`reindex` requests received while the worker runs coalesce into pending work;
+`--force` requests an unpublished replacement generation. Without a worker,
+`reindex` retains synchronous maintenance behavior. MCP refresh always queues
+reconciliation and requires the worker to make progress.
+
+First builds and embedding-setting changes use a separate generation. Readers
+continue using the old generation until pending work completes, then publication
+atomically switches `current-generation`. Interrupted builds resume using
+`building-generation.json`. Actively edited or failing files can delay this
+switch; the previous index remains available. Normal file updates use short
+SQLite WAL transactions. Previous generations are retained for rollback and
+existing readers; remove obsolete generations only during stopped-service
+maintenance. The queue and generations live outside the vault.
+
+The worker warms Ollama with an empty `/api/embed` request at startup and every
+five minutes, with a separate 120-second timeout and a 60-second retry on HTTP
+failure. Embedding requests retain the model for one hour. This keeps model
+loading independent of short query deadlines; no note text is embedded by the
+warmup request. Other embedding providers do not receive Ollama warmups.
+
 ### Indexing progress
 
 Indexing commits embeddings in batches sized to take about five seconds each,
@@ -252,12 +283,11 @@ cached embeddings make returning to a previous model cheap.
 
 ### Index on write
 
-After `write` verifies the new bytes, it indexes that one note in a child
-process, bounded by the search deadline. Unchanged content is skipped and
-unchanged chunks reuse cached embeddings, so only new or edited chunks are
-embedded. If the index is not built yet, the embedder is unavailable, another
-index operation holds the lock, or the deadline expires, `write` still exits 0
-and prints `index: not updated (...); the next sync will index PATH` to stderr.
+After `write` verifies new bytes, it queues the path without embedding anything.
+Repeated saves coalesce. If notification fails, the write remains successful and
+stderr reports the failure; periodic reconciliation discovers the content.
+Search results retain the previous version until indexing succeeds. The worker
+must be running for notifications to make progress.
 
 ### Reindex deadlines
 

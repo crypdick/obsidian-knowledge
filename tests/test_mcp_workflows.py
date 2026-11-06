@@ -27,7 +27,7 @@ def test_patch_and_listing_tools(tmp_path):
         assert patched[1] == {
             "path": "note.md",
             "status": "patched and verified",
-            "index": "deferred to next sync: reindex: deferred (index not built yet)",
+            "index": "queued",
         }
         assert (tmp_path / "note.md").read_bytes() == original.replace(b"Old paragraph", b"New paragraph")
         listed = await server.call_tool("vault_list", {})
@@ -44,8 +44,7 @@ def test_patch_and_listing_tools(tmp_path):
     asyncio.run(exercise())
 
 
-def test_index_update_makes_new_note_searchable(tmp_path, monkeypatch):
-    monkeypatch.setenv("MEMWEAVE_EMBEDDING_API_BASE", "offline")
+def test_index_update_makes_new_note_searchable(tmp_path, monkeypatch, fake_ollama, drain_index):
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path / "cache"))
 
     async def exercise():
@@ -56,27 +55,27 @@ def test_index_update_makes_new_note_searchable(tmp_path, monkeypatch):
             "vault_write", {"path": "wiki/orchid.md", "content": "# Orchid\nPurple greenhouse orchids"}
         )
         updated = await server.call_tool("vault_search_update", {})
-        assert updated[1]["status"] == "updated"
-        assert updated[1]["indexed"] == 1
+        assert updated[1]["status"] == "queued"
+        assert updated[1]["indexed"] is None
+        await drain_index(tmp_path)
         after = await server.call_tool("vault_search_status", {})
         assert after[1]["index_exists"] is True
         assert after[1]["indexed_files"] == 1
-        assert after[1]["vector_index_ready"] is False
+        assert after[1]["vector_index_ready"] is True
         hits = await server.call_tool("vault_search", {"query": "greenhouse", "all_paths": True})
         assert hits[1]["hits"][0]["path"] == "wiki/orchid.md"
         await server.call_tool(
             "vault_patch", {"path": "wiki/orchid.md", "old_str": "greenhouse", "new_str": "conservatory"}
         )
         await server.call_tool("vault_search_update", {})
+        await drain_index(tmp_path)
         hits = await server.call_tool("vault_search", {"query": "conservatory", "all_paths": True})
         assert hits[1]["hits"][0]["path"] == "wiki/orchid.md"
 
     asyncio.run(exercise())
 
 
-@pytest.mark.parametrize(
-    "operation,arguments", [("vault_search", {"query": "orchid"}), ("vault_search_update", {})]
-)
+@pytest.mark.parametrize("operation,arguments", [("vault_search", {"query": "orchid"})])
 def test_empty_subprocess_error(tmp_path, monkeypatch, operation, arguments):
     from lib.vault_index import mcp_server
 

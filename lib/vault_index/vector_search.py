@@ -8,7 +8,7 @@ import struct
 import aiosqlite
 
 from obsidian_knowledge_vendor.memweave import HybridConfig
-from obsidian_knowledge_vendor.memweave.search.hybrid import HybridSearch, merge_hybrid_results
+from obsidian_knowledge_vendor.memweave.search.hybrid import merge_hybrid_results
 from obsidian_knowledge_vendor.memweave.search.keyword import KeywordSearch
 from obsidian_knowledge_vendor.memweave.search.strategy import RawSearchRow
 
@@ -39,29 +39,27 @@ class IndexedHybridSearch:
                 return await keyword.search(db, query, None, model, limit, source_filter=source_filter)
             raise ValueError("VectorSearch requires a query_vec (got None)")
 
-        # NOTE: docs/ARCHITECTURE.md documents normalization and the k ceiling.
-        # Match HybridSearch's backend pool. sqlite-vec caps native k at 4096;
-        # unusually large requests retain memweave's exhaustive behavior.
-        fallback = HybridSearch(vector_weight=self.config.vector_weight, text_weight=self.config.text_weight)
-        pool = limit * fallback.candidate_multiplier
-        if pool > 4096:
-            return await fallback.search(db, query, query_vec, model, limit, source_filter=source_filter)
+        # NOTE: docs/ARCHITECTURE.md documents the bounded candidate pool.
+        # Never fall back to exhaustive Python/JSON vector retrieval. MemWeave
+        # already expands candidates before invoking this strategy.
+        pool = min(4096, limit * self.config.candidate_multiplier)
 
         blob = struct.pack(f"<{len(query_vec)}f", *query_vec)
-        params: list[object] = [blob, pool, model, source_filter or None, source_filter or None, blob]
+        params: list[object] = [blob, pool, model, source_filter or None, source_filter or None]
         # memweave normalizes stored and query vectors: L2 and cosine rank
-        # identically. Compute original cosine scores on the bounded pool.
+        # identically. For unit vectors cosine = 1 - L2²/2; do not fetch each
+        # selected vector again merely to recompute that score.
         # Filter inside KNN so other models/sources cannot exhaust its pool.
         sql = """
             WITH nearest AS MATERIALIZED (
-                SELECT id, embedding, distance FROM chunks_vec
+                SELECT id, distance FROM chunks_vec
                 WHERE embedding MATCH ? AND k = ?
                   AND id IN (
                       SELECT id FROM chunks WHERE model = ? AND (? IS NULL OR source = ?)
                   )
             )
             SELECT c.id, c.path, c.source, c.start_line, c.end_line, c.text,
-                   1 - vec_distance_cosine(n.embedding, ?) AS score
+                   1 - n.distance * n.distance / 2.0 AS score
             FROM nearest n JOIN chunks c ON c.id = n.id
             ORDER BY score DESC
         """

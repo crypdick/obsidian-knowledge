@@ -44,14 +44,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import errno
 import hashlib
-import json
 import os
 import re
 import sqlite3
-import urllib.error
-import urllib.request
 from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass
@@ -63,11 +59,14 @@ import platformdirs
 
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE, make_embedding_provider
+from lib.vault_index.embeddings import ollama_probe as _ollama_probe
 from lib.vault_index.filters import path_passes
+from lib.vault_index.index_generations import active_cache
 from lib.vault_index.index_lock import index_lock
 from lib.vault_index.index_state import indexed_file_count, rebuild_pending, vector_table_exists
 from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
 from lib.vault_index.snippets import with_snippets
+from lib.vault_index.vault_listing import visible_name
 from lib.vault_index.vector_search import IndexedHybridSearch
 from obsidian_knowledge_vendor import memweave
 
@@ -78,7 +77,6 @@ os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 DEFAULT_EMBEDDING_MODEL = "ollama/bge-m3"
 DEFAULT_CHUNK_TOKENS = 320
 DEFAULT_CHUNK_OVERLAP = 64
-PROBE_TIMEOUT_S = 1.5
 FINGERPRINT_FILENAME = "embedder-fingerprint.txt"
 APP_NAME = "obsidian-knowledge"
 CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
@@ -110,45 +108,6 @@ def default_cache_dir(vault_root: Path) -> Path:
     digest = hashlib.sha256(abs_path.encode()).hexdigest()[:8]
     safe_name = re.sub(r"[^a-zA-Z0-9._-]", "-", vault_root.resolve().name) or "vault"
     return _cache_base_dir() / f"{safe_name}-{digest}"
-
-
-def _ollama_probe(api_base: str, model: str) -> tuple[bool, str]:
-    """Check Ollama is up and the model is pulled. Returns (ok, message).
-
-    Strips the LiteLLM ``ollama/`` prefix from ``model`` before comparison
-    against Ollama's tag list. Tags appear as e.g. ``bge-m3:latest``; we
-    match on the bare name (everything before ``:``).
-    """
-    if not api_base.startswith("http"):
-        return False, f"api_base not http(s): {api_base}"
-    bare = model.split("/", 1)[1] if "/" in model else model
-    bare_name = bare.split(":", 1)[0]
-    url = api_base.rstrip("/") + "/api/tags"
-    try:
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=PROBE_TIMEOUT_S) as resp:
-            data = json.loads(resp.read())
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
-        if isinstance(reason, OSError) and reason.errno in {errno.EPERM, errno.EACCES}:
-            return False, (
-                f"Ollama access denied at {api_base}: {exc}. "
-                "Sandbox or OS permissions blocked the connection; this does not show that Ollama is stopped. "
-                "Retry with approved network access to this endpoint"
-            )
-        return False, (
-            f"Ollama unreachable at {api_base}: {exc}. "
-            "Check the configured endpoint and Ollama service from a process with network access"
-        )
-    except json.JSONDecodeError as exc:
-        return False, f"Ollama returned non-JSON: {exc}"
-    tags = [t.get("name", "") for t in data.get("models", [])]
-    if not any(name.split(":", 1)[0] == bare_name for name in tags):
-        return False, (
-            f"model '{bare_name}' not pulled (have: {tags or 'none'}); "
-            f"run `ollama pull {bare}` against {api_base}"
-        )
-    return True, f"ok: {bare_name} via {api_base}"
 
 
 @dataclass
@@ -190,6 +149,7 @@ class Indexer:
         skip_probe: bool = False,
     ):
         self.vault_root = vault_root
+        cache_dir = active_cache(cache_dir)
         self.cache_dir = cache_dir
         self.config = config
         self._vector_enabled_requested = vector_enabled
@@ -210,7 +170,7 @@ class Indexer:
                 self._vector_enabled = False
 
         # Why persisted vectors cannot serve searches yet, or None when ready.
-        # Search never repairs this inline; callers start a background reindex.
+        # Search never repairs this inline; the independent worker owns updates.
         self.vector_issue = self._vector_issue() if self._vector_enabled else None
 
         # Start with an empty-extra_paths store for read-only queries.
@@ -492,6 +452,25 @@ class Indexer:
                         deleted += asyncio.run(self._store.remove(self.vault_root / path))
         return SyncStats(indexed=indexed, skipped=skipped, deleted=deleted)
 
+    async def index_settled_path(self, relative: str) -> None:
+        """Commit one settled file, rolling back interrupted or superseded work."""
+        path = self.vault_root / relative
+        if not path.resolve().is_relative_to(self.vault_root.resolve()):
+            raise ValueError("index path escapes vault")
+        try:
+            with index_lock(self.cache_dir, exclusive=True, blocking=False):
+                if (
+                    path.is_file()
+                    and all(visible_name(part) for part in Path(relative).parts)
+                    and path_passes(relative, self.config.index)
+                ):
+                    await self._store.add(path, force=True)
+                else:
+                    await self._store.remove(path)
+                self._write_fingerprint(indexed=1)
+        finally:
+            await self._store.close()
+
     def sync(self) -> SyncStats:
         """Incremental re-index. Same as full_reindex without force."""
         return self.full_reindex(force=False)
@@ -513,6 +492,33 @@ class Indexer:
             override_digest_filter=override_digest_filter,
             wait_for_writer=wait_for_writer,
         ).hits
+
+    def _retrieve(self, query: str, candidate_count: int):
+        try:
+            # NOTE: docs/CLI.md "Search health and network access" documents
+            # bounded semantic retrieval and keyword fallback during contention.
+            with index_lock(self.cache_dir, exclusive=False, blocking=False):
+                try:
+                    command_budget = int(os.environ.get("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "30"))
+                except ValueError:
+                    command_budget = 30
+                semantic_budget = min(5.0, command_budget / 2) if command_budget > 0 else 5.0
+
+                async def bounded_search():
+                    try:
+                        await self._store.close()
+                        return await asyncio.wait_for(
+                            self._store.search(query, max_results=candidate_count, min_score=0.0),
+                            timeout=semantic_budget,
+                        )
+                    finally:
+                        await self._store.close()
+
+                return asyncio.run(bounded_search())
+        except (sqlite3.OperationalError, memweave.StorageError) as exc:
+            if "database is locked" in str(exc).lower():
+                raise IndexBusyError(f"vault index is busy: {exc}") from exc
+            raise
 
     def search_report(
         self,
@@ -566,19 +572,14 @@ class Indexer:
         if self.vector_issue is not None:
             return keyword_report("vector index requires reindex")
 
-        def retrieve():
-            try:
-                # NOTE: docs/CLI.md "Search health and network access" documents
-                # waiting within the whole-command search deadline.
-                with index_lock(self.cache_dir, exclusive=False, blocking=wait_for_writer):
-                    return asyncio.run(self._store.search(query, max_results=candidate_count, min_score=0.0))
-            except (sqlite3.OperationalError, memweave.StorageError) as exc:
-                if "database is locked" in str(exc).lower():
-                    raise IndexBusyError(f"vault index is busy: {exc}") from exc
-                raise
-
         try:
-            raw = retrieve()
+            raw = self._retrieve(query, candidate_count)
+        except IndexBusyError:
+            return keyword_report("index update in progress")
+        except TimeoutError as exc:
+            if type(exc) is not TimeoutError:
+                raise
+            return keyword_report("semantic search exceeded its budget")
         except memweave.SearchError as exc:
             # bge-m3 can return input-specific NaN embeddings on CUDA. Prefer
             # FTS over a CPU retry that reloads Ollama's 1.2 GB model runner.
@@ -586,6 +587,8 @@ class Indexer:
             # https://github.com/ollama/ollama/issues/16625
             if "query_vec (got None)" in str(exc):
                 return keyword_report("query embedding unavailable")
+            if "interrupted" in str(exc):
+                return keyword_report("semantic SQL exceeded its budget")
             if "chunks_vec" in str(exc):
                 return keyword_report("vector index unavailable")
             raise

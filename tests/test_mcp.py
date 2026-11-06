@@ -211,9 +211,7 @@ def test_invalid_port(monkeypatch):
     assert error.value.code == 2
 
 
-@pytest.mark.parametrize(
-    "operation,arguments", [("vault_search", {"query": "orchid"}), ("vault_search_update", {})]
-)
+@pytest.mark.parametrize("operation,arguments", [("vault_search", {"query": "orchid"})])
 @pytest.mark.parametrize("outcome", ["timeout", "cancel", "failure"])
 def test_search_failure_and_process_cleanup(tmp_path, monkeypatch, outcome, operation, arguments):
     class Process:

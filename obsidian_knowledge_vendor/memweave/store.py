@@ -206,7 +206,7 @@ class MemWeave:
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    async def _ensure_db(self) -> None:
+    async def _ensure_db(self, *, read_only: bool = False) -> None:
         """Open the database and run schema migrations if not already done.
 
         Idempotent — subsequent calls return immediately.
@@ -224,10 +224,13 @@ class MemWeave:
         db_path = self.config.resolved_db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._db = await aiosqlite.connect(str(db_path))
+        target = db_path.resolve().as_uri() + "?mode=ro" if read_only else str(db_path)
+        self._db = await aiosqlite.connect(target, uri=read_only)
         self._db.row_factory = aiosqlite.Row
 
-        await ensure_schema(self._db)
+        if not read_only:
+            await self._db.execute("PRAGMA journal_mode=WAL")
+            await ensure_schema(self._db)
 
         # Try to load sqlite-vec for ANN vector search.
         # enable_load_extension(True) must be called before load_extension()
@@ -253,7 +256,12 @@ class MemWeave:
                 self._vector_available = False
 
         self._store = SQLiteStore(self._db)
-        await self._startup_dirty_check()
+        if read_only:
+            deadline = time.monotonic() + 4
+            await self._db.set_progress_handler(lambda: time.monotonic() >= deadline, 1000)
+            await self._db.execute("BEGIN")
+        else:
+            await self._startup_dirty_check()
 
     async def _startup_dirty_check(self) -> None:
         """Set _dirty=False if the files table matches what's currently on disk.
@@ -441,7 +449,7 @@ class MemWeave:
         Raises:
             SearchError: On database or embedding failures.
         """
-        await self._ensure_db()
+        await self._ensure_db(read_only=True)
         assert self._store is not None
 
         p = self.config.progress
@@ -682,7 +690,10 @@ class MemWeave:
         logger.info("add: indexing %s (force=%s)", abs_path, force)
         start = time.monotonic()
         try:
+            before = build_file_entry(abs_path)["hash"]
             result = await self._index_file(abs_path, workspace, force=force)
+            if build_file_entry(abs_path)["hash"] != before:
+                raise OSError(f"File changed during indexing: {abs_path}")
             await self._store.commit()
         except BaseException:
             await self._store.rollback()

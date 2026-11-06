@@ -88,7 +88,8 @@ def test_existing_cache_schema_adds_covering_eligibility_index_without_rebuild(t
     asyncio.run(reopen())
 
 
-def test_populated_cache_search_uses_native_vector_search(tmp_path, monkeypatch):
+@pytest.mark.parametrize("top_k", [1, 100, 1000])
+def test_populated_cache_search_uses_native_vector_search(tmp_path, monkeypatch, top_k):
     from obsidian_knowledge_vendor.memweave.search.hybrid import HybridSearch
 
     cache = tmp_path / "cache"
@@ -104,7 +105,7 @@ def test_populated_cache_search_uses_native_vector_search(tmp_path, monkeypatch)
     instance._store.embedding_provider.embed_query = embed_query
     monkeypatch.setattr(HybridSearch, "search", exhaustive)
     try:
-        report = instance.search_report("no-keyword-match", top_k=1)
+        report = instance.search_report("no-keyword-match", top_k=top_k)
         assert report.mode == "hybrid"
         assert report.hits[0].path == "note-0.md"
         assert report.hits[0].score == pytest.approx(70.0)
@@ -181,7 +182,8 @@ def test_native_search_matches_exhaustive_scores_and_filters(tmp_path, source_fi
             args = (connection, "CardDAV", [1.0, *([0.0] * 1023)], "ollama/bge-m3", 1)
             expected = await HybridSearch().search(*args, source_filter=source_filter)
             actual = await IndexedHybridSearch(HybridConfig()).search(*args, source_filter=source_filter)
-            assert actual == expected
+            assert [row.chunk_id for row in actual] == [row.chunk_id for row in expected]
+            assert [row.score for row in actual] == pytest.approx([row.score for row in expected], abs=1e-6)
             if source_filter in {None, "sessions"}:
                 assert actual[0].chunk_id == "29"
                 assert actual[0].vector_score == pytest.approx(0.6)
@@ -211,7 +213,10 @@ def test_missing_embedding_and_large_request_keep_existing_behavior(tmp_path, li
             with pytest.raises(ValueError, match=r"query_vec.*None"):
                 await strategy.search(connection, "CardDAV", None, "ollama/bge-m3", limit)
             args = (connection, "CardDAV", [1.0, *([0.0] * 1023)], "ollama/bge-m3", limit)
-            assert await strategy.search(*args) == await HybridSearch().search(*args)
+            actual = await strategy.search(*args)
+            expected = await HybridSearch().search(*args)
+            assert [row.chunk_id for row in actual] == [row.chunk_id for row in expected]
+            assert [row.score for row in actual] == pytest.approx([row.score for row in expected], abs=1e-6)
 
     asyncio.run(retrieve())
 

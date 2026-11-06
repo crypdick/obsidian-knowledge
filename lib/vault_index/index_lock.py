@@ -15,9 +15,9 @@ def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
 
     memweave uses one SQLite DB per vault cache. Reindex/sync are writers and
     must be exclusive; search is a reader and takes a shared lock so writers do
-    not collide with an in-flight query. Scheduled indexing skips contention;
-    CLI searches normally wait within their deadline; MCP searches request a
-    nonblocking shared lock and report busy. See docs/MCP.md's search contract.
+    not collide with an in-flight hybrid query. Searches request a nonblocking
+    shared lock and use committed FTS results during contention. The worker
+    publishes rebuild generations separately. See docs/MCP.md's search contract.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     lock_path = cache_dir / ".index.sqlite.lock"

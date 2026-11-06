@@ -19,3 +19,9 @@ adaptation. Copy no bytecode or caches. Update the recorded commit, synchronize
 the runtime requirements in pyproject.toml with the fork's pyproject.toml, and
 run the library tests plus the application's full checks and isolated wheel
 installation check. Fork changes remain reviewable in the source repository.
+
+Application adaptations also include read-only search connections (no schema
+writes or startup scan), WAL writer connections, a semantic SQL progress budget,
+and a content-identity check before committing single-file updates. Preserve
+these when refreshing the vendored source; worker and search regressions cover
+their externally observable behavior.
