@@ -48,6 +48,7 @@ import hashlib
 import os
 import re
 import sqlite3
+import time
 from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass
@@ -65,6 +66,7 @@ from lib.vault_index.index_generations import active_cache
 from lib.vault_index.index_lock import index_lock
 from lib.vault_index.index_state import indexed_file_count, rebuild_pending, vector_table_exists
 from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
+from lib.vault_index.search_budget import semantic_deadline
 from lib.vault_index.snippets import with_snippets
 from lib.vault_index.vault_listing import visible_name
 from lib.vault_index.vector_search import IndexedHybridSearch
@@ -493,22 +495,20 @@ class Indexer:
             wait_for_writer=wait_for_writer,
         ).hits
 
-    def _retrieve(self, query: str, candidate_count: int):
+    def _retrieve(self, query: str, candidate_count: int, top_k: int):
         try:
             # NOTE: docs/CLI.md "Search health and network access" documents
             # bounded semantic retrieval over committed read-only snapshots.
-            try:
-                command_budget = int(os.environ.get("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "30"))
-            except ValueError:
-                command_budget = 30
-            semantic_budget = min(5.0, command_budget / 2) if command_budget > 0 else 5.0
+            deadline = semantic_deadline(top_k)
 
             async def bounded_search():
                 try:
                     await self._store.close()
                     return await asyncio.wait_for(
-                        self._store.search(query, max_results=candidate_count, min_score=0.0),
-                        timeout=semantic_budget,
+                        self._store.search(
+                            query, max_results=candidate_count, min_score=0.0, deadline=deadline
+                        ),
+                        timeout=max(0.0, deadline - time.monotonic()),
                     )
                 finally:
                     await self._store.close()
@@ -572,7 +572,7 @@ class Indexer:
             return keyword_report("vector index requires reindex")
 
         try:
-            raw = self._retrieve(query, candidate_count)
+            raw = self._retrieve(query, candidate_count, effective_top_k)
         except IndexBusyError:
             return keyword_report("index update in progress")
         except TimeoutError as exc:

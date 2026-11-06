@@ -257,8 +257,6 @@ class MemWeave:
 
         self._store = SQLiteStore(self._db)
         if read_only:
-            deadline = time.monotonic() + 4
-            await self._db.set_progress_handler(lambda: time.monotonic() >= deadline, 1000)
             await self._db.execute("BEGIN")
         else:
             await self._startup_dirty_check()
@@ -397,6 +395,7 @@ class MemWeave:
         min_score: float | None = None,
         strategy: str | None = None,
         source_filter: str | None = None,
+        deadline: float | None = None,
         **kwargs: Any,
     ) -> list[SearchResult]:
         """Search the memory store for chunks relevant to ``query``.
@@ -426,6 +425,9 @@ class MemWeave:
                            ``"sessions"`` (session transcripts), or a custom
                            subdirectory name.  ``None`` searches all sources.
 
+            deadline:      Absolute monotonic deadline shared with the caller
+                           across embedding and SQL; None disables SQL interruption.
+
         Keyword args (forwarded to post-processors via ``**kwargs``):
             mmr_lambda (float):
                 Per-call lambda override for ``MMRReranker``.
@@ -451,6 +453,10 @@ class MemWeave:
         """
         await self._ensure_db(read_only=True)
         assert self._store is not None
+        assert self._db is not None
+        await self._db.set_progress_handler(
+            (lambda: time.monotonic() >= deadline) if deadline is not None else None, 1000
+        )
 
         p = self.config.progress
         effective_strategy = strategy or self.config.query.strategy

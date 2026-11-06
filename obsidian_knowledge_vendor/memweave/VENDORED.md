@@ -25,3 +25,7 @@ writes or startup scan), WAL writer connections, a semantic SQL progress budget,
 and a content-identity check before committing single-file updates. Preserve
 these when refreshing the vendored source; worker and search regressions cover
 their externally observable behavior.
+
+Search accepts an optional absolute monotonic deadline; the caller shares it across
+embedding and SQLite progress interruption. Read-only initialization no longer
+starts an independent fixed SQL timer.

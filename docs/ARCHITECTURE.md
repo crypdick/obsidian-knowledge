@@ -46,6 +46,8 @@ Schema initialization adds a covering `(model, source, id)` chunk index to both
 new and existing caches. This keeps candidate eligibility off the large chunk
 text/JSON-embedding table without changing ranking, filters, or embedding policy;
 no re-embedding is required.
+`search_budget.py` carries the command deadline and computes a result-scaled
+semantic deadline shared by embedding waits and SQLite progress interruption.
 `index_lock.py` coordinates writers and maintenance. Read-only queries bypass
 this application lock and use one SQLite WAL snapshot for keyword and vector
 retrieval, including during index updates. Rebuild generations are published
