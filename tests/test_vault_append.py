@@ -25,7 +25,7 @@ def test_append_without_obsidian(tmp_path, monkeypatch, inline, separator):
         assert result[1] == {
             "path": "note.md",
             "status": "appended",
-            "index": "deferred to next sync: reindex: deferred (index not built yet)",
+            "index": "queued",
         }
 
     asyncio.run(exercise())

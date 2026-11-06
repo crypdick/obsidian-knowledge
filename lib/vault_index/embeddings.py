@@ -45,6 +45,18 @@ class OllamaEmbeddingProvider:
         self.config = config
         self._batch_size = config.batch_size
 
+    # NOTE: docs/CLI.md "Settled-file indexing worker" documents model residency.
+    async def warm_up(self) -> None:
+        """Load the model independently of query deadlines, without embedding text."""
+        headers = {"Authorization": f"Bearer {self.config.api_key}"} if self.config.api_key else {}
+        url = (self.config.api_base or DEFAULT_EMBEDDING_API_BASE).rstrip("/") + "/api/embed"
+        async with httpx.AsyncClient(timeout=120, headers=headers) as client:
+            response = await client.post(
+                url,
+                json={"model": self.config.model.removeprefix("ollama/"), "input": [], "keep_alive": "1h"},
+            )
+            response.raise_for_status()
+
     async def embed_query(self, text: str) -> list[float]:
         if not text.strip():
             raise EmbeddingError("embed_query received empty text")
@@ -75,7 +87,12 @@ class OllamaEmbeddingProvider:
         while True:
             try:
                 response = await client.post(
-                    url, json={"model": self.config.model.removeprefix("ollama/"), "input": batch}
+                    url,
+                    json={
+                        "model": self.config.model.removeprefix("ollama/"),
+                        "input": batch,
+                        "keep_alive": "1h",
+                    },
                 )
                 response.raise_for_status()
             except httpx.HTTPError as exc:

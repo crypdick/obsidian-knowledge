@@ -80,27 +80,15 @@ def test_first_search_embeds_nothing_and_reports_first_init(tmp_path, fake_ollam
     assert fake_ollama.texts == []
 
 
-def test_cli_search_starts_background_reindex_then_serves_hybrid(tmp_path, fake_ollama, cache_root):
+def test_cli_search_leaves_indexing_to_worker(tmp_path, fake_ollama, cache_root, drain_index):
     vault = make_vault(tmp_path)
     result = run_cli("search", "orchid", "--json", "--vault", vault)
     assert result.returncode == 0, result.stderr
-    report = json.loads(result.stdout)
-    assert report["mode"] == "keyword"
-    assert report["degraded_reason"] == "vector index rebuilding"
-    assert "embedder changed" not in result.stderr
-    assert "index not built yet" in result.stderr
-    assert "started background reindex" in result.stderr
-
-    cache = default_cache_dir(vault)
-    deadline = time.monotonic() + 20
-    while not (cache / "embedder-fingerprint.txt").exists():
-        assert time.monotonic() < deadline, (cache / "background-reindex.log").read_text()
-        time.sleep(0.1)
-    with (cache / ".index.sqlite.lock").open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)  # wait for the background writer to exit
-
+    assert json.loads(result.stdout)["degraded_reason"] == "vector index requires reindex"
+    assert fake_ollama.texts == []
+    assert not (default_cache_dir(vault) / "background-reindex.log").exists()
+    asyncio.run(drain_index(vault))
     result = run_cli("search", "orchid", "--json", "--vault", vault)
-    assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["mode"] == "hybrid"
 
 
@@ -112,8 +100,8 @@ def test_cli_search_does_not_start_second_reindex_while_writer_runs(tmp_path, fa
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         result = run_cli("search", "orchid", "--json", "--vault", vault)
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["degraded_reason"] == "vector index rebuilding"
-    assert "already running" in result.stderr
+    assert json.loads(result.stdout)["degraded_reason"] == "vector index requires reindex"
+    assert "already running" not in result.stderr
     assert not (cache / "background-reindex.log").exists()
 
 
@@ -223,7 +211,7 @@ def test_offline_sync_backfills_only_missing_vectors(tmp_path, monkeypatch, fake
         close(changed)
 
 
-def test_write_indexes_only_the_written_note(tmp_path, fake_ollama, cache_root):
+def test_write_indexes_only_the_written_note(tmp_path, fake_ollama, cache_root, drain_index):
     vault = make_vault(tmp_path)
     cache = default_cache_dir(vault)
     build_index(vault, cache)
@@ -233,6 +221,8 @@ def test_write_indexes_only_the_written_note(tmp_path, fake_ollama, cache_root):
     result = run_cli("write", "wiki/fresh.md", "--vault", vault, stdin=note)
     assert result.returncode == 0, result.stderr
     assert "Wrote and verified" in result.stdout
+    assert fake_ollama.texts == []
+    asyncio.run(drain_index(vault))
     assert len(fake_ollama.texts) == 1
     assert "Pelargonium" in fake_ollama.texts[0]
 
@@ -272,12 +262,12 @@ def test_write_succeeds_and_defers_indexing_when_index_unavailable(
         lock.close()
     assert result.returncode == 0, result.stderr
     assert "Wrote and verified" in result.stdout
-    assert "next sync" in result.stderr
+    assert "next sync" not in result.stderr
     assert time.monotonic() - started < 15
     assert (vault / "wiki/fresh.md").read_text() == "# Fresh\n\nCuttings.\n"
 
 
-def test_mcp_write_indexes_written_note(tmp_path, fake_ollama, cache_root):
+def test_mcp_write_indexes_written_note(tmp_path, fake_ollama, cache_root, drain_index):
     vault = make_vault(tmp_path)
     build_index(vault, default_cache_dir(vault))
     fake_ollama.texts.clear()
@@ -289,7 +279,9 @@ def test_mcp_write_indexes_written_note(tmp_path, fake_ollama, cache_root):
         )
         return result[1]
 
-    assert asyncio.run(exercise())["index"] == "updated"
+    assert asyncio.run(exercise())["index"] == "queued"
+    assert fake_ollama.texts == []
+    asyncio.run(drain_index(vault))
     assert len(fake_ollama.texts) == 1
     assert "Aloe" in fake_ollama.texts[0]
 
@@ -352,7 +344,7 @@ def test_write_survives_a_wedged_index_process(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(cli.subprocess, "run", wedged)
     cli.index_written_file(tmp_path, "wiki/note.md")
-    assert "the next sync will index wiki/note.md" in capsys.readouterr().err
+    assert capsys.readouterr().err == ""
 
 
 def test_model_change_during_offline_sync_still_rebuilds_vectors(tmp_path, monkeypatch, fake_ollama):

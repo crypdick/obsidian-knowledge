@@ -173,3 +173,26 @@ def fake_ollama(monkeypatch):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+@pytest.fixture
+def drain_index():
+    """Run settled work deterministically without a daemon or real cooldown."""
+    from lib.vault_index.index_worker import IndexWorker
+
+    async def drain(vault):
+        worker = IndexWorker(vault, quiet_seconds=0)
+        await worker.scan()
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from lib.vault_index import dirty_paths
+
+        clock = SimpleNamespace(time=lambda: time.time() + 31)
+        with patch.object(dirty_paths, "time", clock):
+            for _ in range(100):
+                if not await worker.process_next():
+                    return
+        pytest.fail("index worker did not drain")
+
+    return drain

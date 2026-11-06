@@ -52,8 +52,8 @@ def test_provider_batches_normalizes_and_forwards_configuration(http_client):
     )
     assert asyncio.run(provider.embed_batch(["one", "two", "three"])) == [[0.6, 0.8]] * 3
     assert [json.loads(request.content) for request in requests] == [
-        {"model": "bge-m3:latest", "input": ["one", "two"]},
-        {"model": "bge-m3:latest", "input": ["three"]},
+        {"model": "bge-m3:latest", "input": ["one", "two"], "keep_alive": "1h"},
+        {"model": "bge-m3:latest", "input": ["three"], "keep_alive": "1h"},
     ]
     assert all(str(request.url) == "http://private-ollama:11434/api/embed" for request in requests)
     assert all(request.headers["authorization"] == "Bearer synthetic-token" for request in requests)
@@ -240,3 +240,16 @@ print(json.dumps({'indexed': stats.indexed, 'mode': report.mode,
     assert report["paths"] == ["note.md"]
     assert len(report["requests"]) == 2
     assert report["litellm_loaded"] is False
+
+
+def test_warmup_loads_model_without_embedding_text(http_client):
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={"embeddings": []})
+
+    http_client(respond)
+    provider = OllamaEmbeddingProvider(EmbeddingConfig(model="ollama/bge-m3"))
+    asyncio.run(provider.warm_up())
+    assert requests == [{"model": "bge-m3", "input": [], "keep_alive": "1h"}]

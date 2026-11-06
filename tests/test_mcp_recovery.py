@@ -1,63 +1,12 @@
-"""Automatic repair is independent of searches and reaped during shutdown."""
+"""Search requests never launch or own indexing jobs."""
 
 import asyncio
 import json
-import sys
-from functools import partial
-from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
-from lib.vault_index.mcp_recovery import IndexRecovery
-from lib.vault_index.mcp_server import create_http_app, create_server, rebuild_index, run_index_command
-from lib.vault_index.models import SearchReport
-
-
-def test_recovery_coalesces_requests_and_cancels_at_shutdown():
-    async def exercise():
-        started = asyncio.Event()
-        cancelled = asyncio.Event()
-
-        async def rebuild():
-            started.set()
-            try:
-                await asyncio.Event().wait()
-            finally:
-                cancelled.set()
-
-        recovery = IndexRecovery(rebuild)
-        recovery.request()
-        first = recovery.task
-        await started.wait()
-        recovery.request()
-        assert recovery.task is first
-        await recovery.close()
-        assert cancelled.is_set()
-        recovery.request()
-        assert recovery.task is first  # shutdown/retry cooldown
-
-    asyncio.run(exercise())
-
-
-@pytest.mark.parametrize("error", [ValueError("failed"), OSError("unavailable"), TimeoutError()])
-def test_recovery_failure_is_reported_and_can_be_retried(error, caplog):
-    async def exercise():
-        rebuild = AsyncMock(side_effect=error)
-        recovery = IndexRecovery(rebuild)
-        recovery.request()
-        await recovery.task
-        recovery.request()
-        assert rebuild.await_count == 1
-        recovery.retry_at = 0
-        rebuild.side_effect = None
-        recovery.request()
-        await recovery.task
-        assert rebuild.await_count == 2
-        await recovery.close()
-
-    asyncio.run(exercise())
-    assert "Background vector index repair failed" in caplog.text
+from lib.vault_index.mcp_server import create_http_app, create_server
 
 
 @pytest.mark.parametrize("reason", ["vector index requires reindex", "vector index unavailable", "offline"])
@@ -73,46 +22,13 @@ def test_mcp_search_starts_independent_background_repair(tmp_path, monkeypatch, 
     monkeypatch.setattr("lib.vault_index.mcp_server.run_index_command", run)
 
     async def exercise():
-        recovery = IndexRecovery(partial(rebuild_index, tmp_path))
-        server = create_server(tmp_path, recovery=recovery)
-        try:
-            result = await server.call_tool("vault_search", {"query": "orchid"})
-            assert result[1]["mode"] == "keyword"
-            expected = reason if reason == "offline" else "vector index rebuilding"
-            assert result[1]["degraded_reason"] == expected
-            await asyncio.sleep(0)
-        finally:
-            await recovery.close()
-        if reason == "offline":
-            assert len(calls) == 1
-        else:
-            assert len(calls) == 2
-            assert calls[1][1] == "background index repair"
-            assert calls[1][2]["deadline_seconds"] == 1810
-            assert "1800" in calls[1][0]
-
-    asyncio.run(exercise())
-
-
-def test_close_before_any_recovery_is_safe():
-    asyncio.run(IndexRecovery(AsyncMock()).close())
-
-
-def test_background_deadline_accepts_integer_seconds_with_real_subprocess():
-    result = asyncio.run(
-        run_index_command([sys.executable, "-c", "print('ready')"], "repair", deadline_seconds=5)
-    )
-    assert result == (b"ready\n", b"")
-
-
-def test_search_during_retry_cooldown_keeps_original_degraded_reason():
-    async def exercise():
-        recovery = IndexRecovery(AsyncMock())
-        report = SearchReport(mode="keyword", degraded_reason="vector index requires reindex", hits=[])
-        assert recovery.repair_if_needed(report).degraded_reason == "vector index rebuilding"
-        await recovery.task
-        assert recovery.repair_if_needed(report) is report
-        await recovery.close()
+        server = create_server(tmp_path)
+        result = await server.call_tool("vault_search", {"query": "orchid"})
+        assert result[1]["mode"] == "keyword"
+        expected = reason
+        assert result[1]["degraded_reason"] == expected
+        await asyncio.sleep(0)
+        assert len(calls) == 1
 
     asyncio.run(exercise())
 
@@ -150,11 +66,10 @@ def test_stateless_http_requests_do_not_cancel_or_duplicate_repair(tmp_path, mon
                     )
                     assert (
                         response.json()["result"]["structuredContent"]["degraded_reason"]
-                        == "vector index rebuilding"
+                        == "vector index requires reindex"
                     )
-                    await asyncio.wait_for(started.wait(), 1)
                     assert not cancelled.is_set()
-        assert len(jobs) == 1
-        assert cancelled.is_set()
+        assert jobs == []
+        assert not cancelled.is_set()
 
     asyncio.run(exercise())

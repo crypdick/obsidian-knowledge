@@ -117,7 +117,7 @@ def test_reindex_progress_throttles_and_handles_empty(capsys, monkeypatch):
     assert "1/2" not in output
 
 
-def test_search_deadline_interrupts_index_lock_wait(tmp_path):
+def test_search_does_not_wait_for_index_writer(tmp_path):
     script = f"""
 import fcntl, sys
 import lib.vault_index.indexer as indexer
@@ -140,7 +140,7 @@ cli_main()
         text=True,
         timeout=15,
     )
-    assert result.returncode == 124, result.stderr
-    assert "timed out" in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert "timed out" not in result.stderr
     assert "Traceback" not in result.stderr
-    assert "(no results)" not in result.stdout
+    assert "(no results)" in result.stdout

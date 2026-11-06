@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import fcntl
+import json
 import subprocess
 import sys
 
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
 
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.indexer import Indexer, default_cache_dir
@@ -49,10 +49,11 @@ def test_cli_no_wait_reports_held_writer_without_empty_results(vector_vault):
             timeout=15,
             check=False,
         )
-    assert result.returncode == 2
-    assert "another operation holds the index lock; retry after it completes" in result.stderr
+    assert result.returncode == 0
+    report = json.loads(result.stdout)
+    assert report["mode"] == "keyword"
+    assert report["hits"][0]["path"] == "wiki/orchid.md"
     assert "timed out" not in result.stderr
-    assert result.stdout == ""
     assert endpoint.requests == 0
 
 
@@ -63,10 +64,11 @@ def test_mcp_held_writer_reports_busy_then_hybrid_after_release(vector_vault):
         server = create_server(vault)
         with (cache / ".index.sqlite.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with pytest.raises(
-                ToolError, match="another operation holds the index lock; retry after it completes"
-            ):
-                await asyncio.wait_for(server.call_tool("vault_search", {"query": "greenhouse"}), timeout=15)
+            result = await asyncio.wait_for(
+                server.call_tool("vault_search", {"query": "greenhouse"}), timeout=15
+            )
+            assert result[1]["mode"] == "keyword"
+            assert result[1]["hits"][0]["path"] == "wiki/orchid.md"
             assert endpoint.requests == 0
         result = await server.call_tool("vault_search", {"query": "greenhouse", "top_k": 1})
         assert result[1]["mode"] == "hybrid"
@@ -100,9 +102,11 @@ def test_no_wait_still_bounds_slow_query_embedding(vector_vault, monkeypatch):
         check=False,
     )
     assert endpoint.requests == 1
-    assert result.returncode == 124
-    assert "search exceeded 4s TTL" in result.stderr
-    assert result.stdout == ""
+    assert result.returncode == 0
+    report = json.loads(result.stdout)
+    assert report["mode"] == "keyword"
+    assert report["hits"][0]["path"] == "wiki/orchid.md"
+    assert "budget" in report["degraded_reason"]
 
 
 def test_no_wait_requires_no_rebuild(tmp_path):

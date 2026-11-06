@@ -64,10 +64,12 @@ import platformdirs
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE, make_embedding_provider
 from lib.vault_index.filters import path_passes
+from lib.vault_index.index_generations import active_cache
 from lib.vault_index.index_lock import index_lock
 from lib.vault_index.index_state import indexed_file_count, rebuild_pending, vector_table_exists
 from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
 from lib.vault_index.snippets import with_snippets
+from lib.vault_index.vault_listing import visible_name
 from lib.vault_index.vector_search import IndexedHybridSearch
 from obsidian_knowledge_vendor import memweave
 
@@ -190,6 +192,7 @@ class Indexer:
         skip_probe: bool = False,
     ):
         self.vault_root = vault_root
+        cache_dir = active_cache(cache_dir)
         self.cache_dir = cache_dir
         self.config = config
         self._vector_enabled_requested = vector_enabled
@@ -492,6 +495,25 @@ class Indexer:
                         deleted += asyncio.run(self._store.remove(self.vault_root / path))
         return SyncStats(indexed=indexed, skipped=skipped, deleted=deleted)
 
+    async def index_settled_path(self, relative: str) -> None:
+        """Commit one settled file, rolling back interrupted or superseded work."""
+        path = self.vault_root / relative
+        if not path.resolve().is_relative_to(self.vault_root.resolve()):
+            raise ValueError("index path escapes vault")
+        try:
+            with index_lock(self.cache_dir, exclusive=True, blocking=False):
+                if (
+                    path.is_file()
+                    and all(visible_name(part) for part in Path(relative).parts)
+                    and path_passes(relative, self.config.index)
+                ):
+                    await self._store.add(path, force=True)
+                else:
+                    await self._store.remove(path)
+                self._write_fingerprint(indexed=1)
+        finally:
+            await self._store.close()
+
     def sync(self) -> SyncStats:
         """Incremental re-index. Same as full_reindex without force."""
         return self.full_reindex(force=False)
@@ -513,6 +535,33 @@ class Indexer:
             override_digest_filter=override_digest_filter,
             wait_for_writer=wait_for_writer,
         ).hits
+
+    def _retrieve(self, query: str, candidate_count: int):
+        try:
+            # NOTE: docs/CLI.md "Search health and network access" documents
+            # bounded semantic retrieval and keyword fallback during contention.
+            with index_lock(self.cache_dir, exclusive=False, blocking=False):
+                try:
+                    command_budget = int(os.environ.get("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "30"))
+                except ValueError:
+                    command_budget = 30
+                semantic_budget = min(5.0, command_budget / 2) if command_budget > 0 else 5.0
+
+                async def bounded_search():
+                    try:
+                        await self._store.close()
+                        return await asyncio.wait_for(
+                            self._store.search(query, max_results=candidate_count, min_score=0.0),
+                            timeout=semantic_budget,
+                        )
+                    finally:
+                        await self._store.close()
+
+                return asyncio.run(bounded_search())
+        except (sqlite3.OperationalError, memweave.StorageError) as exc:
+            if "database is locked" in str(exc).lower():
+                raise IndexBusyError(f"vault index is busy: {exc}") from exc
+            raise
 
     def search_report(
         self,
@@ -566,19 +615,14 @@ class Indexer:
         if self.vector_issue is not None:
             return keyword_report("vector index requires reindex")
 
-        def retrieve():
-            try:
-                # NOTE: docs/CLI.md "Search health and network access" documents
-                # waiting within the whole-command search deadline.
-                with index_lock(self.cache_dir, exclusive=False, blocking=wait_for_writer):
-                    return asyncio.run(self._store.search(query, max_results=candidate_count, min_score=0.0))
-            except (sqlite3.OperationalError, memweave.StorageError) as exc:
-                if "database is locked" in str(exc).lower():
-                    raise IndexBusyError(f"vault index is busy: {exc}") from exc
-                raise
-
         try:
-            raw = retrieve()
+            raw = self._retrieve(query, candidate_count)
+        except IndexBusyError:
+            return keyword_report("index update in progress")
+        except TimeoutError as exc:
+            if type(exc) is not TimeoutError:
+                raise
+            return keyword_report("semantic search exceeded its budget")
         except memweave.SearchError as exc:
             # bge-m3 can return input-specific NaN embeddings on CUDA. Prefer
             # FTS over a CPU retry that reloads Ollama's 1.2 GB model runner.
@@ -586,6 +630,8 @@ class Indexer:
             # https://github.com/ollama/ollama/issues/16625
             if "query_vec (got None)" in str(exc):
                 return keyword_report("query embedding unavailable")
+            if "interrupted" in str(exc):
+                return keyword_report("semantic SQL exceeded its budget")
             if "chunks_vec" in str(exc):
                 return keyword_report("vector index unavailable")
             raise

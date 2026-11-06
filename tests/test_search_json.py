@@ -51,10 +51,6 @@ def test_no_rebuild_search_serves_keywords_from_stale_vector_index(
     keyword_index._vector_enabled = True
     keyword_index.vector_issue = "index rebuild incomplete"
 
-    def unexpected_rebuild(*args, **kwargs):
-        pytest.fail("--no-rebuild must not start a reindex")
-
-    monkeypatch.setattr(cli, "start_background_reindex", unexpected_rebuild)
     monkeypatch.setattr(indexer, "Indexer", lambda **kwargs: keyword_index)
     arguments = [
         "obsidian-knowledge",

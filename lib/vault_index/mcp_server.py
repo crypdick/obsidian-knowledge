@@ -12,7 +12,6 @@ import os
 import secrets
 import sys
 import threading
-from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
 from typing import Annotated
@@ -27,17 +26,15 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from lib.vault_index.cli import positive_int, resolve_vault, search_ttl_seconds
+from lib.vault_index.cli import positive_int, resolve_vault
 from lib.vault_index.mcp_index import (
     IndexStatus,
     IndexUpdate,
-    parse_index_update,
     read_index_status,
     refresh_index,
     run_index_command,
 )
 from lib.vault_index.mcp_native import register_native_tools, run_vault_mutation
-from lib.vault_index.mcp_recovery import RECOVERY_TIMEOUT_SECONDS, IndexRecovery
 from lib.vault_index.models import SearchReport
 from lib.vault_index.vault_files import patch_vault_file, read_vault_file, write_vault_file
 from lib.vault_index.vault_listing import ListingReport, list_vault_files
@@ -67,38 +64,17 @@ class BearerAuth(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-async def rebuild_index(vault: Path) -> None:
-    """Run recovery with its own deadline instead of the query deadline."""
-    await run_index_command(
-        [
-            sys.executable,
-            "-m",
-            "lib.vault_index.cli",
-            "reindex",
-            "--vault",
-            str(vault),
-            "--timeout-seconds",
-            str(RECOVERY_TIMEOUT_SECONDS),
-        ],
-        "background index repair",
-        deadline_seconds=RECOVERY_TIMEOUT_SECONDS + 10,
-    )
-
-
 def create_server(
     vault: Path,
     *,
     host: str = "127.0.0.1",
     port: int = 8000,
     allowed_hosts: list[str] | None = None,
-    recovery: IndexRecovery | None = None,
 ) -> FastMCP:
     """Create a server bound to one existing vault; clients cannot select roots."""
     vault = vault.expanduser().resolve(strict=True)
     if not vault.is_dir():
         raise ValueError("vault must be a directory")
-
-    recovery = recovery or IndexRecovery(partial(rebuild_index, vault))
 
     # NOTE: docs/MCP.md documents transport defaults and tool contracts.
     server = FastMCP(
@@ -145,7 +121,7 @@ def create_server(
         async with search_lock:
             stdout, _ = await run_index_command(command, "search")
         report = SearchReport.model_validate(json.loads(stdout))
-        return recovery.repair_if_needed(report)
+        return report
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_read(path: str) -> str:
@@ -215,20 +191,11 @@ def create_server(
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=False))
     async def vault_search_update() -> IndexUpdate:
-        """Incrementally refresh the search index; report busy when another process holds the index lock."""
-        command = [
-            sys.executable,
-            "-m",
-            "lib.vault_index.cli",
-            "reindex",
-            "--vault",
-            str(vault),
-            "--timeout-seconds",
-            str(search_ttl_seconds()),
-        ]
-        async with search_lock:
-            stdout, stderr = await run_index_command(command, "index update")
-        return parse_index_update(stdout, stderr)
+        """Queue reconciliation; repeated requests coalesce in the indexing worker."""
+        from lib.vault_index.index_worker import request_scan
+
+        await asyncio.to_thread(request_scan, vault)
+        return IndexUpdate(status="queued")
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
     async def download_file(path: str) -> Annotated[CallToolResult, DownloadMetadata]:
@@ -263,23 +230,8 @@ def create_server(
 def create_http_app(
     vault: Path, *, host: str = "127.0.0.1", port: int = 8000, allowed_hosts: list[str] | None = None
 ):
-    """Own recovery at HTTP service lifetime, not stateless MCP request lifetime."""
-    vault = vault.expanduser().resolve(strict=True)
-    recovery = IndexRecovery(partial(rebuild_index, vault))
-    server = create_server(vault, host=host, port=port, allowed_hosts=allowed_hosts, recovery=recovery)
-    app = server.streamable_http_app()
-    original_lifespan = app.router.lifespan_context
-
-    @asynccontextmanager
-    async def lifespan(application):
-        async with original_lifespan(application) as state:
-            try:
-                yield state
-            finally:
-                await recovery.close()
-
-    app.router.lifespan_context = lifespan
-    return app
+    """Create the query service; indexing belongs to the separate worker."""
+    return create_server(vault, host=host, port=port, allowed_hosts=allowed_hosts).streamable_http_app()
 
 
 def main() -> None:

@@ -12,8 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from lib.vault_index.background_reindex import index_command
 from lib.vault_index.cli import default_cache_dir_for_vault, search_ttl_seconds
+from lib.vault_index.index_generations import active_cache
 from lib.vault_index.index_state import rebuild_pending
 from lib.vault_index.indexer import (
     DEFAULT_CHUNK_OVERLAP,
@@ -33,7 +33,7 @@ class IndexStatus(BaseModel):
 
 
 class IndexUpdate(BaseModel):
-    status: Literal["updated", "busy"]
+    status: Literal["updated", "busy", "queued"]
     indexed: int | None = None
     skipped: int | None = None
     deleted: int | None = None
@@ -45,7 +45,7 @@ def read_index_status(vault: Path) -> IndexStatus:
     File freshness and embedding endpoint availability are unknown: this does
     not walk the vault, probe the network, or trigger index repair.
     """
-    cache = default_cache_dir_for_vault(vault)
+    cache = active_cache(default_cache_dir_for_vault(vault))
     database = cache / "index.sqlite"
     if not database.is_file():
         return IndexStatus(
@@ -127,16 +127,11 @@ async def run_index_command(
 
 
 async def refresh_index(vault: Path, rel_paths: list[str]) -> str:
-    """Update index entries for mutated paths within the search deadline.
+    """Coalesce mutations for the worker; never embed inside a write request."""
+    from lib.vault_index.index_worker import enqueue_paths
 
-    Removed or moved-away paths lose their entries. Failures defer to the next sync.
-    """
-    # NOTE: docs/MCP.md "Indexing after writes" documents this deadline and result.
-    deadline = search_ttl_seconds()
-    arguments = [argument for path in rel_paths for argument in ("--path", path)]
-    command = index_command(vault, *arguments, "--timeout-seconds", str(deadline))
     try:
-        await run_index_command(command, "index update", deadline_seconds=deadline + 10)
-    except (ValueError, TimeoutError) as exc:
-        return f"deferred to next sync: {exc}"
-    return "updated"
+        await asyncio.to_thread(enqueue_paths, vault, rel_paths)
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        return f"deferred to next scan: {exc}"
+    return "queued"

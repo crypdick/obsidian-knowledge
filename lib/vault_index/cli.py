@@ -10,6 +10,7 @@ import hashlib
 import os
 import re
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -23,12 +24,6 @@ import yaml
 from pydantic import BaseModel, Field
 from vault_preferences import load_preferences, preferences_path
 
-from lib.vault_index.background_reindex import (
-    LOG_FILENAME,
-    REINDEX_REASONS,
-    index_command,
-    start_background_reindex,
-)
 from lib.vault_index.models import Hit, IndexBusyError
 from lib.vault_index.registration import existing_vault, read_registry, register_vault
 from lib.vault_index.vault_files import read_vault_file, write_vault_file
@@ -585,31 +580,13 @@ def run_vault_file_command(
 
 
 def index_written_file(vault: Path, rel_path: str) -> None:
-    """Index one written note within the interactive deadline; never fail the write.
+    """Queue a changed note; writes never wait for embedding work."""
+    from lib.vault_index.index_worker import enqueue_paths
 
-    Runs in a child process so a stuck embedder can be killed. Busy locks, an
-    unavailable embedder, or the deadline leave the note for the next sync;
-    embeddings completed before a deadline stay cached.
-    """
-    # NOTE: docs/CLI.md "Index on write" documents this deadline and deferral.
-    deadline = search_ttl_seconds()
-    command = index_command(vault, "--path", rel_path, "--timeout-seconds", str(deadline))
     try:
-        result = subprocess.run(
-            command,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=deadline + _HARD_TIMEOUT_GRACE_SECONDS + 5,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        reason = str(exc)
-    else:
-        if result.returncode == 0:
-            return
-        reason = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "index failed"
-    print(f"index: not updated ({reason}); the next sync will index {rel_path}", file=sys.stderr)
+        enqueue_paths(vault, [rel_path])
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        print(f"index: notification failed ({exc}); next scan will reconcile", file=sys.stderr)
 
 
 def run_retrieval_command(args: argparse.Namespace) -> int:
@@ -644,14 +621,6 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
         override_digest_filter=args.all,
         wait_for_writer=not no_wait,
     )
-    if result.degraded_reason in REINDEX_REASONS and not getattr(args, "no_rebuild", False):
-        cause = idx.vector_issue or result.degraded_reason
-        result = result.model_copy(update={"degraded_reason": "vector index rebuilding"})
-        if start_background_reindex(vault, idx.cache_dir):
-            log = idx.cache_dir / LOG_FILENAME
-            print(f"# vault-index: {cause}; started background reindex (log: {log})", file=sys.stderr)
-        else:
-            print(f"# vault-index: {cause}; a reindex is already running", file=sys.stderr)
     if result.outside_digest_matches:
         count = result.outside_digest_matches
         noun = "note" if count == 1 else "notes"
@@ -739,6 +708,11 @@ def main() -> int:
         help="Abort reindex if it exceeds this many seconds.",
     )
 
+    p_worker = sub.add_parser("index-worker", help="Watch and index settled files; periodically reconcile")
+    p_worker.add_argument("--vault", type=Path, default=None)
+    p_worker.add_argument("--quiet-seconds", type=positive_int, default=30)
+    p_worker.add_argument("--scan-seconds", type=positive_int, default=3600)
+
     p_search = sub.add_parser("search", help="Search the vault index")
     p_search.add_argument("query", help="Free-text query")
     p_search.add_argument("--vault", type=Path, default=None)
@@ -821,6 +795,17 @@ def main() -> int:
     if delegated is not None:
         return delegated
 
+    if args.cmd == "index-worker":
+        import asyncio
+
+        from lib.vault_index.index_worker import IndexWorker
+
+        worker = IndexWorker(
+            resolve_vault(args.vault), quiet_seconds=args.quiet_seconds, scan_seconds=args.scan_seconds
+        )
+        asyncio.run(worker.run())
+        return 0
+
     return run_command(args, parser)
 
 
@@ -852,49 +837,7 @@ def run_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
     elif args.cmd in {"read", "write"}:
         return run_vault_file_command(args, parser)
     elif args.cmd == "reindex":
-        # Bound the ENTIRE reindex, not just full_reindex(): setup steps
-        # (vault resolution, config load, Indexer init / fingerprint check) also
-        # do filesystem reads that can block indefinitely on a contended/stalled
-        # path. A hang there escaped the old full_reindex-only guard and left an
-        # orphaned process (observed via a worker stuck in a bare open() during
-        # Indexer init). The watchdog inside search_ttl force-exits regardless.
-        try:
-            with search_ttl(args.timeout_seconds, label="reindex"):
-                from lib.vault_index.config import load_config
-                from lib.vault_index.indexer import Indexer
-
-                vault = resolve_vault(args.vault)
-                cache = default_cache_dir_for_vault(vault)
-                if args.paths and not (cache / "index.sqlite").exists():
-                    # Building a new index is a full sync's job, not a file update's.
-                    print("reindex: deferred (index not built yet)", file=sys.stderr)
-                    return 3
-                cache.mkdir(parents=True, exist_ok=True)
-                cfg = load_config()
-                idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
-                if args.paths:
-                    return index_selected_paths(idx, args.paths)
-                if sys.stderr.isatty():
-                    progress = ReindexProgress()
-                    try:
-                        stats = idx.full_reindex(force=args.force, progress=progress)
-                    finally:
-                        progress.close()
-                else:
-                    stats = idx.full_reindex(force=args.force)
-        except IndexBusyError:
-            print(
-                "reindex: another index operation is in progress (lock held); exiting cleanly.",
-                file=sys.stderr,
-            )
-            return 0
-        except SearchTimeoutError as exc:
-            print(f"reindex: timed out ({exc})", file=sys.stderr)
-            return 124
-        print(
-            f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}",
-            flush=True,
-        )
+        return run_reindex(args)
     elif args.cmd == "papercut":
         return run_papercut(
             vault=resolve_vault(args.vault),
@@ -907,6 +850,73 @@ def run_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
             return run_retrieval_command(args)
 
     return 0
+
+
+def run_reindex(args: argparse.Namespace) -> int:
+    if queue_running_worker(args):
+        return 0
+    # Bound the ENTIRE reindex, not just full_reindex(): setup steps
+    # (vault resolution, config load, Indexer init / fingerprint check) also
+    # do filesystem reads that can block indefinitely on a contended/stalled
+    # path. A hang there escaped the old full_reindex-only guard and left an
+    # orphaned process (observed via a worker stuck in a bare open() during
+    # Indexer init). The watchdog inside search_ttl force-exits regardless.
+    try:
+        with search_ttl(args.timeout_seconds, label="reindex"):
+            from lib.vault_index.config import load_config
+            from lib.vault_index.indexer import Indexer
+
+            vault = resolve_vault(args.vault)
+            from lib.vault_index.index_generations import active_cache
+
+            cache = active_cache(default_cache_dir_for_vault(vault))
+            if args.paths and not (cache / "index.sqlite").exists():
+                # Building a new index is a full sync's job, not a file update's.
+                print("reindex: deferred (index not built yet)", file=sys.stderr)
+                return 3
+            cache.mkdir(parents=True, exist_ok=True)
+            cfg = load_config()
+            idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
+            if args.paths:
+                return index_selected_paths(idx, args.paths)
+            if sys.stderr.isatty():
+                progress = ReindexProgress()
+                try:
+                    stats = idx.full_reindex(force=args.force, progress=progress)
+                finally:
+                    progress.close()
+            else:
+                stats = idx.full_reindex(force=args.force)
+    except IndexBusyError:
+        print(
+            "reindex: another index operation is in progress (lock held); exiting cleanly.",
+            file=sys.stderr,
+        )
+        return 0
+    except SearchTimeoutError as exc:
+        print(f"reindex: timed out ({exc})", file=sys.stderr)
+        return 124
+    print(
+        f"Indexed: {stats.indexed}, Skipped: {stats.skipped}, Deleted: {stats.deleted}",
+        flush=True,
+    )
+    return 0
+
+
+def queue_running_worker(args: argparse.Namespace) -> bool:
+    from lib.vault_index.index_worker import enqueue_paths, request_scan, worker_running
+
+    vault = resolve_vault(args.vault)
+    if not worker_running(vault):
+        return False
+    if args.force:
+        request_scan(vault, rebuild=True)
+    elif args.paths:
+        enqueue_paths(vault, args.paths)
+    else:
+        request_scan(vault)
+    print("Queued index update")
+    return True
 
 
 def index_selected_paths(idx, paths: list[str]) -> int:

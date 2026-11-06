@@ -11,11 +11,7 @@ import sqlite3
 import subprocess
 import sys
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
-from threading import Event
-from types import SimpleNamespace
 
 import pytest
 
@@ -299,34 +295,15 @@ def vector_indexer(tmp_path) -> indexer.Indexer:
     return instance
 
 
-def test_vector_search_waits_for_writer_then_returns_results(tmp_path):
+def test_vector_search_does_not_wait_for_writer(tmp_path):
     instance = vector_indexer(tmp_path)
-    lock = open(instance.cache_dir / ".index.sqlite.lock", "w")
-    started = Event()
-
-    async def search(*args, **kwargs):
-        return [SimpleNamespace(path=str(tmp_path / "note.md"), score=0.5)]
-
-    instance._store.search = search
-
-    def retrieve():
-        started.set()
-        return instance.search("query")
-
     try:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            try:
-                pending = executor.submit(retrieve)
-                assert started.wait(5)
-                with pytest.raises(FutureTimeoutError):
-                    pending.result(timeout=0.1)
-            finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-            assert pending.result(timeout=5) == [Hit(path="note.md", score=50.0, weight_applied=1.0)]
+        with (instance.cache_dir / ".index.sqlite.lock").open("w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            report = instance.search_report("query")
+            assert report.mode == "keyword"
+            assert report.degraded_reason == "index update in progress"
     finally:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-        lock.close()
         close(instance)
 
 
@@ -346,8 +323,11 @@ def test_vector_search_handles_only_lock_storage_errors(tmp_path, error, expecte
 
     instance._store.search = fail
     try:
-        with pytest.raises(expected_error, match=str(error)):
-            instance.search("query")
+        if expected_error is IndexBusyError:
+            assert instance.search_report("query").degraded_reason == "index update in progress"
+        else:
+            with pytest.raises(expected_error, match=str(error)):
+                instance.search("query")
     finally:
         close(instance)
 
