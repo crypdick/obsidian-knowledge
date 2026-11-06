@@ -1726,7 +1726,7 @@ wheels = [
 
 [[package]]
 name = "obsidian-knowledge"
-version = "3.30.26"
+version = "3.30.27"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
