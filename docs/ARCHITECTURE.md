@@ -46,10 +46,10 @@ Schema initialization adds a covering `(model, source, id)` chunk index to both
 new and existing caches. This keeps candidate eligibility off the large chunk
 text/JSON-embedding table without changing ranking, filters, or embedding policy;
 no re-embedding is required.
-`index_lock.py` owns the existing shared-reader/exclusive-writer file lock.
-Queries request nonblocking reader access and use committed keyword results
-during contention. Rebuild generations are published separately; query connections
-never create schema or run maintenance.
+`index_lock.py` coordinates writers and maintenance. Read-only queries bypass
+this application lock and use one SQLite WAL snapshot for keyword and vector
+retrieval, including during index updates. Rebuild generations are published
+separately; query connections never create schema or run maintenance.
 
 The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
 module, `hooks/vault_preferences.py` as `vault_preferences`, and
