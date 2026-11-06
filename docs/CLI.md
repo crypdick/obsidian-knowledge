@@ -217,7 +217,7 @@ time, reserving two seconds for fallback/response (half the remaining time when
 less than four seconds remain). Initialization time therefore reduces available
 query time. Slow retrieval falls back to committed keyword results.
 The coefficients round up observed cold-query overhead (4.7 seconds) and the
-steepest sampled result-count slope (about 0.1 seconds/result); they are
+observed 10-to-50-result increase (about 0.1 seconds/result); they are
 conservative allowances, not a claim that runtime scales exactly linearly. Search opens an existing database read-only and
 never runs migrations, scans the vault, or launches repair work. Candidate pools
 are capped at sqlite-vec's 4096 ceiling rather than reverting to exhaustive
