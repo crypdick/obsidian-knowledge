@@ -1,8 +1,5 @@
 # Select another vault
 
-Read this reference only when targeting another vault or when Obsidian and
-`obsidian-knowledge` select different vaults.
-
 ## obsidian-knowledge
 
 Routine vault commands, including `garden`, share this selection order:
@@ -35,6 +32,3 @@ obsidian-knowledge garden audit --vault /absolute/path/to/other-vault
 obsidian vault="Other Vault" unresolved verbose format=json | obsidian-knowledge garden links --vault /absolute/path/to/other-vault
 obsidian vault="Other Vault" rename path="old/name.md" name="new-name.md"
 ```
-
-For another vault, add the same selectors to the default-vault examples in the
-organizer's other references.

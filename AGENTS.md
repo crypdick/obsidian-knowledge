@@ -2,40 +2,32 @@
 
 ## Codex plugin maintenance
 
-Use the native Codex plugin marketplace flow to install, refresh, and upgrade
-plugins. Do not edit `~/.codex/plugins/cache` by hand except for emergency
-recovery when a broken hook prevents Codex from running tools.
+Use native Codex marketplace commands, not manual edits to
+`~/.codex/plugins/cache`, except emergency recovery from a hook that prevents
+Codex tools from running.
 
-This repository is a local Codex marketplace. Register it with:
+For local changes, register the permanent control checkout and install:
 
 ```bash
 codex plugin marketplace add "$(pwd)"
-```
-
-For a configured Git marketplace, refresh its published snapshot through Codex:
-
-```bash
-codex plugin marketplace upgrade obsidian-knowledge
 codex plugin add obsidian-knowledge@obsidian-knowledge
-```
-
-For local source changes, register the control checkout path with `marketplace add`
-and then run `codex plugin add obsidian-knowledge@obsidian-knowledge`. A marketplace
-refresh alone does not install the plugin. Never register a temporary worktree that
-you plan to remove after integration.
-
-This plugin's Codex hooks call the installed `obsidian-knowledge` CLI, so keep the uv tool install in sync with the source package:
-
-```bash
 uv tool install --reinstall --python 3.13 "$(pwd)"
 ```
 
-Then restart Codex and use `/plugins` or `/hooks` for install, enablement, and hook trust review. If `obsidian-knowledge _hook ...` fails, fix or reinstall the CLI; do not treat the plugin cache as the source of truth.
+Never register a disposable worktree. For a configured Git marketplace, use
+`codex plugin marketplace upgrade obsidian-knowledge` before `plugin add`.
+Refreshing a marketplace alone does not install the plugin.
 
-## Development quality
+Codex hooks call the installed CLI, so keep it in sync with source. Fix CLI
+hook failures there, not in the plugin cache. Restart Codex after installation
+and review enablement and hook trust through `/plugins` or `/hooks`.
 
-See `CONVENTIONS.md` for design principles, `docs/ARCHITECTURE.md` for import
-boundaries, and `docs/QUALITY.md` for measured quality and maintenance guidance.
-`new-feature merge` runs `uv run prek run --all-files --stage manual` before
-integration. Do not repeat the full gate at commit or after merge. Release CI
-owns package and plugin versions; ordinary commits need no manual version bumps.
+## Development
+
+See `CONVENTIONS.md` for design, `docs/ARCHITECTURE.md` for boundaries and
+worktree setup, and `docs/QUALITY.md` for checks. Edit root hook and skill sources;
+regenerate the Codex copy with `uv run python scripts/sync_codex_plugin.py`.
+
+`new-feature merge` runs the full manual-stage gate before integration; do not
+repeat it at commit or after merge. Release CI owns versions; ordinary commits
+need no version bumps.

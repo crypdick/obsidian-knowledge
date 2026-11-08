@@ -1,63 +1,36 @@
 # Design conventions
 
-Use these principles in code review. Enforce mechanical rules through
-`pyproject.toml`, `prek.toml`, and `scripts/prek_hooks/`.
-For design reviews or convention changes, use the shared `coding-conventions`
-skill and load only the relevant reference. This document owns vault-specific
-choices.
+Keep changes scoped, clear, and easy to maintain. Mechanical rules live in
+`pyproject.toml`, `prek.toml`, and `scripts/prek_hooks/`; this document covers
+judgment and vault-specific design.
 
-## Name modules by their purpose
+## Ownership and composition
 
-Keep shared functions in specifically named owner modules rather than broad
-`utils.py`, `helpers.py`, or `common.py` modules. If only one module uses a
-function, keep it there unless a separate concept warrants its own owner.
+Name modules by purpose, not `utils`, `helpers`, or `common`. Keep single-use
+functions with their caller unless they represent a separate concept.
+Prefer functions and injected strategies for varying behavior; use protocols
+or inheritance when they model a useful interface or genuine subtype.
+Avoid registries and abstractions for simple choices.
 
-## Semantic types for domain concepts
-
-Give commonly confused domain values distinct types, especially absolute and
-vault-relative paths. Apply types at boundaries first:
-
-```python
-from typing import NewType
-
-RelPath = NewType("RelPath", str)
-AbsPath = NewType("AbsPath", str)
-```
-
-Keep ordinary counters, limits, and free text as primitives. Use semantic types
-where a mix-up would be a bug, not for every scalar.
-
-## Parse, don't validate
+## Typed boundaries
 
 Parse configuration, paths, and hook payloads into constrained types at the
-boundary. Pass those values inward instead of repeatedly checking raw mappings.
+boundary rather than repeatedly checking raw mappings. Distinguish domain
+values whose confusion would cause bugs, especially absolute and vault-relative
+paths; ordinary counters and free text need no wrapper.
 
-`NewType` and frozen dataclasses do not validate input. Check values before
-constructing them; use Pydantic for runtime constraints. Add semantic types when
-static checking must distinguish otherwise identical fields.
+`NewType` and frozen dataclasses do not validate input. Validate before
+construction; use Pydantic for runtime constraints.
 
-## Composition over inheritance
+## Contracts and documentation
 
-Prefer small functions and injected strategies for behavior that varies, such
-as filters or memory backends. Use a `Protocol` when a shared interface helps.
-Framework base classes, enums, exceptions, and genuine subtype relationships
-can use inheritance. Do not build a registry for a simple two-case switch.
+Preserve CLI and hook stdout/stderr protocols. Use structured logging:
+`logger.info("message", extra={"key": value})`. Keep suppressions narrow and
+explain non-obvious exceptions. Check shared type and path changes against
+public behavior.
 
-## Keep code and its documentation coupled
-
-When prose repeats a code value, add a `NOTE:` comment at the code site naming
-the document and section. Update both in the same change. Follow existing
-back-pointers when changing defaults, paths, limits, or behavior.
-
-## Review and enforcement
-
-Use `logger.info("message", extra={"key": value})` for structured events.
-CLI and hook stdout/stderr are protocol boundaries; keep lint suppressions
-narrow and explain them. Verify annotation and path changes against public
-behavior tests.
-
-Retain coding preferences when the user intends them to apply to future work.
-Keep judgment-based guidance here. Prefer an existing tool setting or repair an
-existing prek check when reliable detection is possible. Reproduce a missed
-violation before changing its check. A one-task instruction does not establish
-permanent policy.
+Update affected documentation with behavior changes. When prose repeats a code
+value, keep a `NOTE:` back-pointer at its source so future edits find it.
+Keep durable preferences here, not one-task instructions. Automate reliably
+detectable rules with existing tooling; reproduce missed violations before
+changing their checks.

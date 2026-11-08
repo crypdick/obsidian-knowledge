@@ -15,25 +15,26 @@ Open the local URL printed by MkDocs. Changes to documentation reload the previe
 Before submitting a change, run the same strict build as CI:
 
 ```bash
-uv run --only-group docs --locked mkdocs build --strict
+uv run --only-group docs --locked mkdocs build --strict --site-dir "$(mktemp -d)"
 ```
 
-MkDocs writes the generated site to `site/`, which Git ignores. Documentation
+Build outside the checkout so generated files do not enter package checks. Documentation
 dependencies live in the `docs` group in `pyproject.toml` and are pinned in
 `uv.lock`; update both when adding or upgrading a plugin.
 
 ## Where to edit
 
-- The home page includes the repository's `README.md`; edit that file directly.
-- Add focused Markdown pages under `docs/` and order them in the nearest `.pages`
-  file. Use relative Markdown links between site pages.
-- Keep each topic in one canonical place and link to it from other pages.
-- Lead with the reader's task. Keep installation and everyday use in the README;
-  put configuration, troubleshooting, and contributor details on focused pages.
-- Keep prompts limited to decisions, constraints, and commands the agent needs.
-  Avoid repeating procedures in reminders or examples.
-- Historical plans and specs in `docs/superpowers/` are excluded from the site.
-- Link files outside `docs/` using their GitHub URL so links also work on the site.
+The home page includes `README.md`; edit it there. Keep installation and everyday
+use in the README, with focused pages under `docs/` for other tasks. Add pages
+to the nearest `.pages` file. Historical `docs/superpowers/` plans are excluded
+from the site.
+
+Keep one canonical home per topic and link elsewhere. Use relative links within
+the site and GitHub URLs for files outside `docs/`.
+
+Write guidance as concise goals and essential constraints. Include procedures
+only when sequence affects correctness; leave routine choices to judgment.
+Do not repeat procedures in reminders or examples.
 
 ## Publishing
 

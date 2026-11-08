@@ -97,20 +97,15 @@ Runtime requirements:
 
 ## Worktree isolation
 
-Use `new-feature create NAME --no-agent` from the control checkout. Repository
-configuration runs `uv sync --group dev` for each managed worktree; each has its
-own `.venv` and shares the uv package cache. Commit in the feature worktree, then
-run `new-feature merge NAME` and `new-feature teardown NAME` from the control
-checkout.
+For isolated feature work, use `new-feature create NAME --no-agent`, then
+commit in the worktree and integrate with `new-feature merge NAME` and
+`new-feature teardown NAME` from the control checkout. Managed worktrees get
+their own `.venv` through `uv sync --group dev` and share the uv package cache.
 
-Install the Git hook with `uv run prek install` from the control checkout.
-Git worktrees share hooks, so installing from a temporary worktree leaves an
-interpreter path that disappears at teardown. Commits run file checks;
-`new-feature merge` runs the full manual-stage gate once before integration.
-There is no post-merge full gate. Release CI owns version updates, so ordinary
-commits do not bump package, plugin, or skill versions. Repository configuration marks
-generated `coverage.json` as disposable, so differing coverage reports do not
-block worktree transfer or teardown.
+Install Git hooks with `uv run prek install` from the permanent control checkout:
+shared worktree hooks must not reference a disposable interpreter. See
+[quality checks](QUALITY.md) for gate ownership. Release CI owns version updates.
+Generated `coverage.json` is disposable and does not block worktree teardown.
 
 Tests use temporary caches and disable live Ollama probes. For manual indexing
 in concurrent worktrees, set `OBSIDIAN_VAULT_ROOT` and

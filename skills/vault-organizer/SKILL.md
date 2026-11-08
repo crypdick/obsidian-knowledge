@@ -9,26 +9,18 @@ description: >-
 # Vault organizer
 
 Maintain indexes, links, filenames, and note locations. Preserve primary note
-content except for intended link and frontmatter repairs. Use only the sections
-needed for the request; read `lib/` references when their guidance applies.
+content except for intended link and frontmatter repairs. Use relevant `lib/`
+references as needed.
 
 For secret-scan-only requests, go directly to [Secret scans](#secret-scans).
 
 ## Setup
 
-Use the installed `obsidian-knowledge garden` commands. After setup, they use
-the configured default vault without environment variables or flags. All note
-paths are vault-relative.
-
-Trust the configured vault and successful command output. Investigate targeting
-or write problems when errors or results give reason. For another vault or an
-observed target mismatch, read
-[multi-vault selection](lib/multi-vault.md).
-
-Follow the vault's local naming and layout instructions. Commands load
-`~/.config/obsidian-knowledge/config.yaml` themselves. Read
-`Utility/obsidian-knowledge/needs-attention.md` for a general maintenance pass
-or when working on a listed issue.
+Use installed `obsidian-knowledge garden` commands and vault-relative paths.
+Commands select the configured vault and load its zone policy. Follow local
+naming and layout conventions; read `Utility/obsidian-knowledge/needs-attention.md`
+for a general maintenance pass or a listed issue. For another vault or an
+observed target mismatch, see [multi-vault selection](lib/multi-vault.md).
 
 Exclude hidden files, protected sources, and Syncthing sync conflicts from
 maintenance. Handle conflicts separately. Repairs refuse existing published
@@ -44,8 +36,8 @@ obsidian-knowledge garden audit
 Triage findings within the requested scope:
 
 - `MISSING_INDEX`, `NOT_INDEXED`: create or complete indexes using
-  [index conventions](lib/index-format.md). Read children to write useful
-  orientation phrases; a descendant link does not replace a child-index link.
+  [index conventions](lib/index-format.md). Describe children usefully; link
+  child indexes, not just descendants.
 - `EMPTY_FOLDER`: check sync state and local layout. Do not create empty indexes
   or delete folders automatically.
 - `DUMPING_GROUND`: classify misplaced dated, design, diary, and conversation
@@ -113,11 +105,8 @@ which findings are real and authorizes remediation.
 
 ## Finish
 
-Report completed changes and unresolved items. Successful commands need no
-separate readback, checksum comparison, or repeat scan.
+Report completed changes and unresolved items. Successful commands verify their
+writes; no routine readback or repeat scan is needed.
 
-Update unresolved items in `needs-attention.md`. Leave its
-`## Secret scan findings` section to the secret-scan hook. Record consequential structural
-or operational changes in one same-session changelog fragment using
-[state-file conventions](lib/state-files.md). Routine note, index, and link
-edits need no changelog. Do not edit a shared changelog index.
+Use [state-file conventions](lib/state-files.md) for unresolved issues and
+consequential structural or operational changes, not routine note edits.

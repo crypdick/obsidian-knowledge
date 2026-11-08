@@ -1,21 +1,10 @@
 # Index format
 
-## Create a missing index
-
-Create `<folder>/index.md`:
-
-- Use the folder's display name as the heading.
-- Add one entry per child file and subfolder.
-- Omit frontmatter.
-
-Create indexes for nonempty managed folders only. Handle `EMPTY_FOLDER` as
-triage. Respect local layouts that explicitly replace an index with another
-navigation file. Create child indexes before linking them from a
-parent; a link to a descendant note does not index the child folder.
-
-## Entry format
-
-Use this structure for index entries:
+Create `index.md` for nonempty managed folders unless local layout uses another
+navigation file. Use the folder display name as title, omit frontmatter, and
+link each child file and subfolder. Create child indexes before linking them;
+a descendant link does not replace a child-index link. Empty folders need
+triage, not empty indexes.
 
 ```markdown
 # Folder Name
@@ -24,35 +13,14 @@ Use this structure for index entries:
 - [[some-file]] — orientation phrase
 ```
 
-- Put each entry on its own line: a wikilink, an em dash, and a short phrase
-  that helps the reader decide whether to open the note.
-- List subfolders first, then files alphabetically.
-- Add a path prefix to distinguish duplicate `index.md` names, such as
-  `[[systems/index]]` instead of `[[index]]`.
-
-## Sectioned indexes
-
-When folder contents split into distinct groups, use `##` headings:
-
-```markdown
-# Folder Name
-
-## Active
-
-- [[pantry]] — current inventory
-- [[food-diary]] — tracking log
-
-## Reference
-
-- [[reference/index|Reference]] — background protocols and guides
-```
-
-Use sections for two or more distinct groups. Otherwise, use a flat list.
+Give each entry a short description that helps readers choose what to open.
+List subfolders first, then files alphabetically. Use path prefixes to resolve
+ambiguous names, especially `index.md`. Add sections when they improve navigation.
 
 ## Reviewed index editing
 
-Read child notes and choose orientation phrases before editing. The helper
-accepts reviewed entries; it does not infer categories or descriptions:
+Review child content to choose descriptions. The helper accepts reviewed
+entries; it does not infer categories or descriptions:
 
 ```json
 {
@@ -90,7 +58,7 @@ prefix recovery and ambiguity rules.
 
 ## Move files
 
-Always use the Obsidian CLI to move files; never use filesystem `mv`:
+Use Obsidian moves, not filesystem `mv`, so internal links update:
 
 ```bash
 obsidian move path="old/path.md" to="new/folder/file.md" silent
