@@ -146,10 +146,6 @@ namespace_packages = true
 explicit_package_bases = true
 # hookslib lives at hooks/hookslib, so hook scripts import it as `hookslib.*`.
 mypy_path = "hooks"
-# First mypy adoption on an existing codebase: keep the two pragmatic exceptions
-# strictify ships by default so the diff stays focused on real type errors, not
-# annotating every internal helper. Real bugs (arg-type, type-arg, ...) still fail.
-disable_error_code = ["no-untyped-call", "no-untyped-def"]
 
 # memweave and botocore ship without stubs.
 [[tool.mypy.overrides]]

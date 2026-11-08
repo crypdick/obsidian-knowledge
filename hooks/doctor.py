@@ -28,6 +28,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -53,7 +54,7 @@ def count_needs_attention(vault_root: str) -> int:
     return len(re.findall(r"^- \[ \]", content, re.MULTILINE))
 
 
-def iter_vault_md_files(vault_root: str):
+def iter_vault_md_files(vault_root: str) -> Iterator[str]:
     for root, dirs, files in os.walk(vault_root):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
         for name in files:

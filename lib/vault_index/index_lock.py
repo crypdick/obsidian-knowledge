@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+from collections.abc import Iterator
 from pathlib import Path
 
 from lib.vault_index.models import IndexBusyError
 
 
 @contextlib.contextmanager
-def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False):
+def index_lock(cache_dir: Path, *, exclusive: bool, blocking: bool = False) -> Iterator[None]:
     """Hold the per-vault SQLite access lock.
 
     memweave uses one SQLite DB per vault cache. Reindex/sync are writers and

@@ -22,9 +22,11 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import BlobResourceContents, CallToolResult, EmbeddedResource, ToolAnnotations
 from pydantic import AnyUrl, BaseModel, Field
+from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp
 
 from lib.vault_index.cli import positive_int, resolve_vault
 from lib.vault_index.mcp_index import (
@@ -53,7 +55,7 @@ class DownloadMetadata(BaseModel):
 class BearerAuth(BaseHTTPMiddleware):
     """Optional private-server bearer authentication, independent of tunnel auth."""
 
-    def __init__(self, app, token: str):
+    def __init__(self, app: ASGIApp, token: str) -> None:
         super().__init__(app)
         self.authorization = f"Bearer {token}".encode()
 
@@ -229,7 +231,7 @@ def create_server(
 
 def create_http_app(
     vault: Path, *, host: str = "127.0.0.1", port: int = 8000, allowed_hosts: list[str] | None = None
-):
+) -> Starlette:
     """Create the query service; indexing belongs to the separate worker."""
     return create_server(vault, host=host, port=port, allowed_hosts=allowed_hosts).streamable_http_app()
 

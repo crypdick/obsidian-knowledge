@@ -132,3 +132,45 @@ def test_release_retries_reuse_commit_and_stale_runs_skip(tmp_path: Path):
     assert release_state(tmp_path, source) == "retry"
     git("commit", "--allow-empty", "-m", "Next source change")
     assert release_state(tmp_path, source) == "stale"
+
+
+@pytest.mark.parametrize("invalid", ["codex", "claude", "missing", "duplicate"])
+def test_prepare_version_rejects_identity_errors_without_writes(tmp_path: Path, invalid: str):
+    project = tmp_path / "pyproject.toml"
+    project.write_text('[project]\nname = "obsidian-knowledge"\nversion = "1.0.0"\n')
+    paths = [project]
+    for host in ("codex", "claude"):
+        manifest = tmp_path / f".{host}-plugin/plugin.json"
+        manifest.parent.mkdir()
+        manifest.write_text(
+            json.dumps({"name": "other" if host == invalid else "obsidian-knowledge", "version": "1.0.0"})
+        )
+        paths.append(manifest)
+    marketplace = tmp_path / ".claude-plugin/marketplace.json"
+    entry = {"name": "obsidian-knowledge", "version": "1.0.0"}
+    entries = [] if invalid == "missing" else [entry, entry] if invalid == "duplicate" else [entry]
+    marketplace.write_text(json.dumps({"plugins": entries}))
+    paths.append(marketplace)
+    before = {path: path.read_bytes() for path in paths}
+
+    with pytest.raises(ValueError, match="obsidian-knowledge"):
+        prepare_version(tmp_path, ["1.0.0"])
+
+    assert {path: path.read_bytes() for path in paths} == before
+
+
+def test_prepare_version_preserves_other_marketplace_plugins(tmp_path: Path):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "obsidian-knowledge"\nversion = "2.0.0"\n')
+    for host in ("codex", "claude"):
+        manifest = tmp_path / f".{host}-plugin/plugin.json"
+        manifest.parent.mkdir()
+        manifest.write_text(json.dumps({"name": "obsidian-knowledge", "version": "1.0.0"}))
+    marketplace = tmp_path / ".claude-plugin/marketplace.json"
+    other = {"name": "other", "version": "9.0.0"}
+    marketplace.write_text(
+        json.dumps({"plugins": [other, {"name": "obsidian-knowledge", "version": "1.0.0"}]})
+    )
+
+    assert prepare_version(tmp_path, ["1.0.0"]) == "2.0.0"
+    entries = json.loads(marketplace.read_text())["plugins"]
+    assert entries == [other, {"name": "obsidian-knowledge", "version": "2.0.0"}]

@@ -461,13 +461,13 @@ class Indexer:
             wait_for_writer=wait_for_writer,
         ).hits
 
-    def _retrieve(self, query: str, candidate_count: int, top_k: int):
+    def _retrieve(self, query: str, candidate_count: int, top_k: int) -> list[memweave.SearchResult]:
         try:
             # NOTE: docs/CLI.md "Search health and network access" documents
             # bounded semantic retrieval over committed read-only snapshots.
             deadline = semantic_deadline(top_k)
 
-            async def bounded_search():
+            async def bounded_search() -> list[memweave.SearchResult]:
                 try:
                     await self._store.close()
                     return await asyncio.wait_for(
