@@ -8,63 +8,28 @@ description: >-
 
 # Obsidian vault memory
 
-The memory system replaces `MEMORY.md` and serves several goals:
+Save knowledge that helps future work: reusable findings, user preferences,
+research, consequential changes, and actionable tooling friction. Retrieve vault
+knowledge when requested. Don't create notes if they aren't necessary.
 
-1) capture reusable knowledge or rules that benefits future AI agents trying to complete tasks.
-   If you spend effort figuring out how something works, write or update a guide.
-2) storing research findings for topics the user is exploring.
-3) tracking historical changes in case we need to do archeology
-4) capture avoidable or fixable tooling papercuts so future agents can avoid repeated friction.
-5) retrieve existing vault knowledge when requested or when avoiding duplicate capture.
+## Capture goals
 
-Treat notes as fallible context and verify consequential claims against code,
-runtime evidence, or primary sources.
+Decide what merits saving before searching for existing coverage. A reminder
+alone does not warrant a search or note. Update existing coverage where possible.
 
-## Guides benefiting future agents
+Keep guides focused on current state, integrating changes into their prose.
+Link to repository documentation rather than copying it; omit cheaply
+recoverable facts, transient state, and routine test results. Preserve reasoning
+and constraints that affect future decisions without generalizing a one-task
+preference into permanent policy.
 
-Do:
-- ensure that guides reflect current state and is self-consistent
-- integrate edits into note's natural prose rather than appending a transcript
-- clean up notes that are messy or are not complaint with these guidelines
-- capture reasoning for major decisions, user preferences and guidance, important contraints.
-- add related wikilinks
+Notes must be self-contained. Verify consequential claims against code, runtime
+evidence, or primary sources; cite sources, state uncertainty, and date volatile
+technical or product findings. Use related wikilinks without fragmenting a topic
+unnecessarily. For in-depth user research, offer a cited report answering the
+user's questions.
 
-Don't:
-- litter guides with historical trivia. Use changelog for tracking important historical changes.
-- over-generalize user preferences and constraints -- ask for clarification if unsure.
-- document knowledge already captured in repos (always use pointers rather than duplicating content)
-  or cheaply recoverable from the environment.
-- overexplain concepts or document unnecessary details
-- over-capture. Don't document transient state (PIDs, job IDs), test results, etc.
-
-## User research
-
-When a user is researching a topic in-depth, suggest capturing the conversation as a report with citations.
-Ensure that the report captures the answers to all the user's questions.
-
-## Historical changes
-
-Changelogs are an insurance policy to help agents that need to investigate inconsistent state
-or perplexing issues. For example, if we migrate files from one drive to another, but that accidentally
-breaks something and the future agent is trying to investigate why the thing is broken.
-
-It is not meant to exhaustively record every single action we take.
-
-Changelogs keep operational guides focused on the current state and facts without littering them
-with historical trivia that are unnecessary for agents trying to complete a task.
-
-## Rules
-
-- Verify claims before saving them as facts. Cite sources and state your uncertainty.
-- For volatile technical or product facts, include a verification date.
-- Prefer linking to existing notes instead of duplicating content. Split into more notes
-if it makes sense to but don't over-fragment content.
-- Don't create notes if they aren't necessary.
-- Never write to `CLAUDE.md` or `AGENTS.md` without explicit approval (you may suggest
-updates).
-- Notes must be self-contained. They must be understandable without the originating conversation.
-  Avoid local labels such as "category 15" or "scenario 9", or explain their meaning or link to
-  clarifying context.
+Do not edit `CLAUDE.md` or `AGENTS.md` without explicit user authorization.
 
 ## Operational notes
 
@@ -86,11 +51,8 @@ obsidian-knowledge search "concept or phrase"
 obsidian-knowledge read "wiki/path/to/note.md"
 ```
 
-Search when the user requests vault knowledge or when something merits saving
-and you need to find existing coverage. Do not search merely because an answer
-is nontrivial or a capture reminder fires. Read a known note directly; read
-search results before relying on them. Use exact-string tools for literal names
-or phrases.
+Read known notes directly and search results before relying on them. Use
+exact-string tools for literal names or phrases.
 
 ### Filing location
 
@@ -100,13 +62,12 @@ or search only when the destination or applicable convention is unknown.
 | Content | Location and filename |
 | --- | --- |
 | Repo-specific knowledge | `wiki/repos/<owner>/<repo>/` |
-| Deployed state, operations, or runbooks | `wiki/systems/<system>/`, or topic subtree if applicable|
+| Deployed state, operations, or runbooks | `wiki/systems/<system>/`, or topic subtree if applicable |
 | Log of an incident or process | Topic's `diary/YYYY-MM-DD-<slug>.md` |
 | Analysis, comparison, or decision rationale | Topic's `convos/YYYY-MM-DD-<slug>.md` |
 
-
-This list is not exhaustive. You may need to create a new topic subtree under `wiki`. You can propose this
-to the user. For topics spanning domains, choose one primary home and link to the others.
+Create topic subtrees when existing ones do not fit. Choose one primary home
+for cross-domain topics and link from related areas.
 
 ### Write and link notes
 
@@ -155,58 +116,36 @@ inconsistent state. Ordinary note, index, and link edits need no changelog.
 
 Create or reuse one same-session file:
 `obsidian-knowledge write Utility/obsidian-knowledge/changelog/YYYY-MM-DD-HHMMSS-<slug>.md`.
-When the Stop hook supplies a capture key, reuse `*-session-<capture-key>.md`
+When the Stop hook supplies a capture key, reuse `*-session-<capture-key>.md`.
 
-Use terse audit pointers: `YYYY-MM-DD HH:MM — <vault change> [→ [[wikilink]]]`.
-Entries shouldn't be long narratives
-or code blocks; rather, self-contained bread crumbs that give future agents the context they
-need to understand potentially relevant major breaking changes that happened in the past
-
-Pass this path relative to the configured vault root. Do not create or update
-`changelog/index.md`.
-Without a capture key, reuse a fragment already created in this session or
-create a new one. Do not search other sessions' fragments for a match.
+Use short, self-contained audit pointers:
+`YYYY-MM-DD HH:MM — <vault change> [→ [[wikilink]]]`.
+Do not create or update `changelog/index.md`. Without a capture key, reuse this
+session's fragment or create one; do not search other sessions' fragments.
 
 ### Repair encountered instructions
 
-Fix clear, low-risk errors in guidance encountered during the task, such as
-moved paths or commands with verified replacements. Edit the canonical source,
-run the relevant check, and follow its normal edit and install workflow.
-
-Preserve user preferences, policy, safeguards, and approval rules. Report
-ambiguous corrections instead of guessing. Do not start a broader audit or
-reopen a completed capture decision because a hook repeats. Repairs alone do
-not justify a vault note or changelog entry.
+Fix clear, low-risk errors encountered during the task in their canonical
+source, using verified replacements and normal checks and installation.
+Preserve policy and approval boundaries; report ambiguous corrections.
+This does not authorize a broader audit or warrant capture by itself.
 
 ### Log workflow friction
 
-Fix and verify defects you introduce, failed checks of your changes, and bugs
-required to complete the request. Investigate unclear causes before calling
-them unrelated. If blocked, report the unfinished work and exact blocker.
+Fix and verify defects introduced by or required for the task. Report unfinished
+work and blockers; logging is not a substitute for an in-scope fix.
 
-Log unrelated friction only when a future agent can avoid it with a known
-workaround, or the user can fix it in their tools, hooks, repos, config, or
-machine. Then continue the task:
+Log unrelated friction only when a future agent has a known workaround or the
+user can fix it in their tools, hooks, repos, config, or machine:
 
 ```bash
-obsidian-knowledge papercut "obsidian-knowledge search stopped producing output after an automatic index rebuild; interrupted after 2 minutes"
+obsidian-knowledge papercut "<tool or operation>: <symptom or exact error>; <trigger and known workaround>"
 ```
 
-Keep entries brief and self-contained: name the tool or operation, concrete
-symptom or exact error, and relevant trigger. Explain task names or local labels
-only if needed to understand or reproduce the problem; otherwise omit them.
-Include the workaround or fix when known.
-
-Do not log noise unless it recurs or its workaround is non-obvious:
-
-- One-off transient failures: rate limits, flaky network, a retry that worked.
-- Upstream third-party bugs with no local action or workaround.
-- Limits outside the user's control, such as harness URL policy or Claude Code
-  internals.
-- Expected concurrency, such as another session merging a branch.
-
+Keep entries brief and self-contained, then continue the task. Skip routine
+debugging, one-off transient failures, expected concurrency, and upstream or
+harness limits with no local action or workaround, unless recurring.
 The command selects a repository log from Git `origin`, with a global fallback.
-Routine debugging needs no entry; logging does not replace an in-scope fix.
 
 For permission or connection failures, read
 [access-error recovery](references/access-errors.md).

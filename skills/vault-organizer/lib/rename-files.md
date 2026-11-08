@@ -1,32 +1,22 @@
 # Rename ambiguous files
 
-## What counts as ambiguous
+Rename when a descriptive name improves discovery: device-generated names,
+hashes, numeric-only names, generic labels such as `scan`, or duplicate extensions.
+Leave descriptive names, dotfolders, and `.trash/` alone.
 
-Look for device-generated names (`IMG_1234`, `DSC_1234`, `PXL_1234`), hashes,
-numeric-only names, generic labels such as `scan` or `receipt`, and duplicate
-extensions such as `.pdf.pdf`. Skip descriptive names, dotfolders, and `.trash/`.
+Read or view the file and use context or metadata to identify it. Follow local
+naming conventions. Prefer dates from content, then EXIF, filename, or folder;
+omit dates without reliable evidence. For low-confidence cases, record a
+proposed name and reason in `needs-attention.md` rather than guessing.
 
-Renames can include `_sources/` only after explicit human approval. In
-Codex/Claude, use i-insist approval (`I insist`, or an explicitly authorized
-`HUMAN_PERMISSION_GRANTED=1` shell call). Do not modify original file content
-there.
+Use Obsidian so internal links update:
 
-## Procedure
+```bash
+obsidian rename path="old/name.ext" name="new-name.ext"
+```
 
-1. Read or view the file to identify its content. Use folder context, neighboring
-   files, and metadata as supporting evidence. If unreadable, use folder context
-   and lower the confidence.
-2. Correct image orientation when needed with `exiftool -auto-rotate` or
-   `magick mogrify -auto-orient`. For `_sources/`, record the issue in
-   `needs-attention.md` instead of modifying the file.
-3. Choose a descriptive name using the vault's `CLAUDE.md` conventions. Prefer
-   dates from file content, then EXIF metadata, then the filename, then the
-   parent folder. Omit the date when none is reliable.
-4. For a confident match, rename the file:
-
-   ```bash
-   obsidian rename path="old/name.ext" name="new-name.ext"
-   ```
-
-For low-confidence cases, add the proposed name and reasoning to
-`needs-attention.md` instead of renaming. Repair stale links when encountered.
+Renaming `_sources/` requires explicit human approval. In Codex/Claude, use
+i-insist approval (`I insist`, or an explicitly authorized
+`HUMAN_PERMISSION_GRANTED=1` shell call). Do not modify original content there;
+record content problems in `needs-attention.md`. Repair stale links encountered
+within scope.

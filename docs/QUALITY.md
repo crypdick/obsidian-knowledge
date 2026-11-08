@@ -1,95 +1,49 @@
 # Quality checks
 
-Measured on 2026-10-03 with Python 3.14.5. Configuration lives in `pyproject.toml`,
-`prek.toml`, and `scripts/prek_hooks/`. Re-measure when behavior or tooling changes;
-do not treat this snapshot as a live dashboard.
+`pyproject.toml`, `prek.toml`, and `scripts/prek_hooks/` own enforced settings.
+Use checks appropriate to the change; do not duplicate automated gates with
+manual checklists.
 
-## Enforced gates
+## Verification
 
-The repository enforces these checks and settings:
+Use `uv run pytest --no-cov tests/test_relevant_area.py` for targeted tests.
+The full gate runs through `new-feature merge` before integration and in CI:
 
-| Gate | Setting |
-|------|---------|
-| Hooks | Native prek; file checks at commit, full gate at pre-merge and in CI: `uv run prek run --all-files --stage manual` |
-| Ruff | Core lint plus curated async, logging, security, suppression, docstring, and correctness checks; stable formatter |
-| Complexity | Ruff `C901`, ceiling 15; scripts and tests retain their existing exemptions |
-| Types | mypy strict on `lib`, `hooks`, and `gardener`; existing untyped-definition/call exceptions remain |
-| Runtime types | Beartype on `lib.*`; decoration warnings visible; Pydantic owns model fields |
-| Dead code | Vulture, confidence 80 |
-| Dependencies | deptry; host imports, PEP 723 scanner dependencies and embedding compatibility pins documented in config |
-| Package | check-sdist with injected junk; CI builds and smoke-tests a wheel without dev dependencies |
-| Coverage | Branch and subprocess collection; **100% floor**; missing lines in terminal and `coverage.json` |
-| Fast tests | xdist up to four workers, failed-first, 30-second per-test timeout |
-| Hygiene | Native prek built-ins, detect-secrets with reviewed `.secrets.baseline` |
-| Custom checks | Exception handling, 400 logical lines, private first-party test imports, architectural boundaries |
-| Distribution mirror | `scripts/sync_codex_plugin.py --check` |
+```bash
+uv run prek run --all-files --stage manual
+```
 
-## Per-area grades
+Commits run file checks. Do not repeat the full gate at commit or after merge.
+For coverage alone, use `uv run prek run pytest --stage manual`; missing lines
+and branches appear in the terminal and ignored `coverage.json`. Preserve the
+100% statement-and-branch floor rather than lowering it to pass.
 
-Coverage combines statement and branch coverage, including Python subprocesses.
-Coverage grade: A ≥90%, B ≥80%, C ≥70%, D below 70%. Type checks pass with the
-documented exceptions; that does not mean every function is fully annotated. Production
-functions pass the Ruff complexity ceiling. Tests run without an embedding service.
+Tests use temporary caches and a stubbed Ollama probe; they do not validate a
+live embedding service. Use `python scripts/cli_smoke_test.py` when live backend
+validation is relevant. For manual indexing, isolate the vault and cache as
+[described in the architecture](ARCHITECTURE.md#worktree-isolation).
 
-| Area | Coverage | Grade | Type checks, complexity, and test results |
-|------|---------:|:-----:|--------------------------------|
-| Models, config, filters, primer, registration | 100% | A | Typed boundaries, passing core tests |
-| `lib/vault_index/indexer.py` | 100% | A | Offline, vector, SQLite fallback, locking, and recovery paths |
-| `lib/vault_index/cli.py` | 100% | A | Command dispatch, deadlines, error mapping, and subprocess coverage |
-| `lib/vault_index/vault_files.py` | 100% | A | Boundary and atomic-write regressions pass |
-| `hooks/hookslib` | 100% | A | Shared behavior tests; small modules |
-| Hook entrypoints | 100% | A | Subprocess coverage included; neutral checker behavior matrix |
-| Gardener commands | 100% | A | Installed CLI behavior, conservative recovery, scan exclusions, and protected-write regressions |
-| Overall | 100% | A | Every measured statement and branch covered; tests exercise public behavior |
+## Important limits
 
-Use `uv run pytest --no-cov` for targeted tests and `uv run prek run pytest --stage manual`
-for coverage. The latter writes missing lines and branches to `coverage.json`,
-which Git ignores. Keep the floor at 100%; do not lower it to pass a failing
-check.
+- Strict mypy checks retain configured exceptions; passing does not mean every
+  function is annotated. Beartype does not exhaustively validate containers;
+  Pydantic owns model fields.
+- Complexity and file-size limits retain existing exemptions. Split cohesive
+  behavior when changing oversized modules, not as unrelated cleanup.
+- Review broad lint, typing, path, and API changes for adapter compatibility.
+  Do not enable every lint rule, formatter preview, or unsafe automatic fixes.
+- Dependency release delays are not a safety guarantee. Validate configuration
+  with the tool that owns it.
 
-## Tradeoffs and remaining work
+## Documentation and agent guidance
 
-- Split oversized modules when changing cohesive behavior within them; retain
-  existing exemptions until then. Ordinary files have a 400-logical-line limit.
-- Beartype checks do not exhaustively validate every container element.
-- Review broad annotation, pathlib, private-access, and API-style changes against
-  adapter compatibility. Do not enable all lint rules, formatter preview, or
-  unsafe automatic fixes.
-- Tests use local fixtures and a stubbed Ollama probe. Use
-  `python scripts/cli_smoke_test.py` for live backend validation.
-- Validate configuration with the tool that owns it. `exclude-newer = "3 days"`
-  delays fresh dependency releases; it does not guarantee dependency safety.
+Update affected docs with defaults, paths, commands, or behavior changes. Follow
+code's `NOTE:` back-pointers and regenerate the Codex copy after hook or skill
+edits. Keep architectural boundaries documented when they change.
 
-## Documentation gardening
-
-Update affected docs when changing defaults, paths, commands, or hook behavior.
-Follow code's `NOTE:` back-pointers. After hook or skill edits, run
-`uv run python scripts/sync_codex_plugin.py`.
-
-Review architecture after package-boundary changes and periodically compare
-CLI help and defaults with the docs. Update coverage measurements from
-`coverage.json`; keep type-checking limitations explicit.
-
-## Agent context
-
-The session primer supplies vault and memory paths, reliability guidance, and
-native-memory exclusions. Write-only layout, size limits, filing, and changelog
-procedures live in the `obsidian-knowledge` skill's operational notes, read
-before issuing a write command. Papercut entry format is also canonical there.
-
-Capture first decides whether anything merits saving. Only then does it search
-for existing coverage. With no candidate, it stops without vault searches or
-reads. Explicit vault retrieval requests still use search or a direct read.
-Known filing destinations need no discovery reads. Changelogs record
-consequential structural or operational changes rather than routine edits.
-
-The organizer routes task-specific references only when relevant and uses the
-configured default without preflight probes. Commands load zone configuration
-and verify their own writes. Deterministic repairs can apply directly; previews
-are optional. Investigate failures or inconsistent results when observed.
-Alternate-vault selection lives in `skills/vault-organizer/lib/multi-vault.md`.
-
-The shared profile index is capped at 6,000 characters and links to full notes.
-Its contents are vault-owned. Doctor and index-sync reminders emit only when
-findings exist; secret findings have bounded samples. The reflection reminder
-routes papercut formatting to the skill rather than repeating it.
+The session primer owns runtime vault and memory context. The
+[obsidian-knowledge skill](https://github.com/crypdick/obsidian-knowledge/blob/main/skills/obsidian-knowledge/SKILL.md)
+owns capture, filing, memory limits, changelogs, and papercuts. The
+[vault-organizer skill](https://github.com/crypdick/obsidian-knowledge/blob/main/skills/vault-organizer/SKILL.md)
+owns maintenance guidance. Keep reminders focused on routing rather than
+repeating those procedures.

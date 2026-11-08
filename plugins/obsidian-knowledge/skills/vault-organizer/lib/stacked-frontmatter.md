@@ -3,68 +3,17 @@
 Obsidian reads only the first YAML block at the start of a note. Properties in
 a second block appear as body text and are unavailable to plugins.
 
-## Detect
-
-The audit emits one line per file:
-
-```text
-STACKED_FRONTMATTER	<path>
-```
-
-## Fix
-
-For a stray duplicate `---` after the frontmatter, use the gardener command.
-Replace `NOTE_PATH` with the note's filesystem path:
+The audit reports `STACKED_FRONTMATTER`. Preview or remove a stray duplicate
+marker with a vault-relative Markdown path:
 
 ```bash
-# Apply the fix
 obsidian-knowledge garden frontmatter --apply NOTE_PATH
 ```
 
-Omit `--apply` to preview.
-
-The script reports these output codes:
-
-- `WOULD_FIX` or `FIXED`: The script can remove a stray duplicate marker automatically.
-- `NEEDS_MERGE`: The second block contains keys and requires a manual merge.
-  The script exits with code 1.
-
-For `NEEDS_MERGE` cases:
-
-1. Read the note's frontmatter blocks.
-2. Merge the keys into one block. For timestamps, prefer the newer automatically
-   injected values. For other properties, preserve user-set values.
-3. Write the note with one frontmatter block using `obsidian-knowledge write`.
-
-Example before:
-
-```yaml
----
-created: 2026-04-29T13:24
-updated: 2026-04-29T13:27
----
----
-tags:
-dg-publish: false
-aliases:
----
-
-# Title
-```
-
-After:
-
-```yaml
----
-created: 2026-04-29T13:24
-updated: 2026-04-29T13:27
-tags:
-dg-publish: false
-aliases:
----
-
-# Title
-```
+Omit `--apply` to preview. `WOULD_FIX` and `FIXED` identify automatic repairs.
+`NEEDS_MERGE` (exit 1) means the second block contains keys: merge into one YAML
+block with `obsidian-knowledge write`, preserving user-set properties. For
+conflicting timestamps, prefer newer automatically injected values.
 
 ## Prevention for templates
 

@@ -12,34 +12,19 @@ future inconsistent state. Routine note, index, and link edits need no fragment.
 When logging is warranted, create one file for the session and reuse it;
 never append to another session's file.
 
-Name the file `YYYY-MM-DD-HHMMSS-<slug>.md`. Use a descriptive slug, such as
-`2026-05-12-143022-vault-organizer.md`.
-
-Write one short line per significant action. Omit H2 headings, narrative, and
-code blocks.
-
-For session logs, do not create or update `changelog/index.md`. The Utility
-zone is excluded from structural index enforcement. Find session records by
-filename or search; a shared index risks concurrent writes.
+Name the file `YYYY-MM-DD-HHMMSS-<slug>.md`; when the Stop hook supplies a
+capture key, reuse `*-session-<capture-key>.md`. Use short, self-contained lines:
 
 ```text
 YYYY-MM-DD HH:MM — Migrated wiki/old-system/ → wiki/new-system/
-YYYY-MM-DD HH:MM — diary: vault reorg pass → [[wiki/systems/knowledge-base/diary/2026-05-12-reorg]]
 ```
 
-If no consequential change occurred, do not create a file.
+For session logs, do not create or update `changelog/index.md`. The Utility
+zone is excluded from structural index enforcement; a shared index risks
+concurrent writes. No consequential change means no fragment.
 
 ## `needs-attention.md`
 
-Use `- [ ]` entries for issues requiring human judgment. Delete resolved entries.
-
-```markdown
-# Needs attention
-
-- [ ] `file.md:15` — unresolved link to `target.md`. Candidate: `other.md`
-  covers similar topic but not confident it's the intended target
-- [ ] `file.md:30` — unresolved link to `missing.md`, no matching file found
-- [ ] `path/to/IMG_20161222_124409.jpg` — ambiguous filename.
-  Proposed: `2016-12-22-fl-drivers-license-photo.jpg`.
-  Confidence low: name derived primarily from folder context.
-```
+Use `- [ ]` entries with the affected path, issue, and any useful candidate or
+proposed fix. Remove resolved entries. Leave `## Secret scan findings` to the
+scanner.

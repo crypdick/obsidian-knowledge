@@ -6,19 +6,14 @@ The recovery script keeps links from `ai_managed` zones and excludes template pl
 and configured `stub_link_patterns` from `~/.config/obsidian-knowledge/config.yaml`.
 Defaults cover prefixes such as `(PAPER)`, `(BOOK)`, and `@Person`.
 
-Inspect every remaining candidate, in batches if needed. Plain-word links can
-be intentional concept stubs or broken references. Apply these rules:
+Fix remaining links only when the intended existing target is unambiguous.
+Record uncertain candidates or expected missing files in `needs-attention.md`.
+Leave intentional concept stubs intact; remove a missing-file link only when
+established vault practice supports it.
 
-1. **Exact match:** Find the existing file and fix the link.
-2. **Similar match:** Fix the link only when the candidate is unambiguous.
-3. **Ambiguous match:** Add the issue and candidate to `needs-attention.md`.
-4. **Missing file:** For a reference to an expected file, record the missing
-   target. Remove the link only when an established vault precedent supports it.
-5. **Intentional concept stub:** Leave it for future expansion.
-
-Dates, paths, extensions, and missing embeds usually indicate expected files.
-A bare concept such as `[[anxiety]]` might be an intentional stub. When uncertain,
-add the issue to the worklist rather than silently skipping it.
+Dates, paths, extensions, and embeds suggest expected files; a bare concept
+such as `[[anxiety]]` may be an intentional stub. Use context rather than link
+shape alone to decide.
 
 ## Deterministic recovery
 

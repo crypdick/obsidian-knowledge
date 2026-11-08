@@ -102,20 +102,13 @@ Recovery procedures load only when a failure occurs. Codex hooks run from the
 installed CLI package, which does not bundle skills; use the skill path supplied
 by the host rather than resolving this reference beside the hook script.
 
-The capture reminder uses the `obsidian-knowledge` skill for reusable knowledge,
-user research, historical changes, and workflow papercuts. Decide whether
-something merits saving before searching for existing coverage. With no
-candidate, stop without vault searches or reads. Explicit requests to retrieve
-vault knowledge still use search, or a direct read for a known note.
+The capture reminder routes to the `obsidian-knowledge` skill for capture policy
+and operational details. Filing nothing is valid; search for existing coverage
+only after identifying something worth saving. Explicit retrieval requests
+still use search or a direct read.
 
-The primer and reminder defer capture policy to the skill. Read its operational
-notes before issuing a write command; they cover filing, memory layout, and
-changelogs. Known destinations need no index or convention discovery. Changelogs
-record consequential structural or operational changes, not ordinary note,
-index, or link edits.
-The reminder also requests repairs to verified stale instructions encountered
-during the task. It does not request a broader audit. Filing nothing is a valid
-outcome.
+The reminder also requests low-risk repairs to verified stale instructions
+encountered during the task, not a broader audit.
 
 Do not edit a user's `CLAUDE.md` unless they explicitly request it. If they want
 sessions without the plugin to find their memory, they can add:
