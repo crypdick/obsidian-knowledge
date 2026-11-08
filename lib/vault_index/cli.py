@@ -16,8 +16,10 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Annotated
+from types import FrameType
+from typing import Annotated, Any
 
 import platformdirs
 import yaml
@@ -33,7 +35,7 @@ from lib.vault_index.vault_files import read_vault_file, write_vault_file
 class ReindexProgress:
     """Render completed files on a single terminal line."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.last_update = 0.0
         self.shown = False
 
@@ -137,7 +139,7 @@ class SearchTimeoutError(TimeoutError):
 
 
 @contextlib.contextmanager
-def search_ttl(seconds: int | None, *, label: str = "search"):
+def search_ttl(seconds: int | None, *, label: str = "search") -> Iterator[None]:
     """Bound CLI searches so stuck retrieval cannot leave orphaned processes.
 
     Two lines of defense:
@@ -162,7 +164,7 @@ def search_ttl(seconds: int | None, *, label: str = "search"):
 
     cancel = threading.Event()
 
-    def _watchdog():
+    def _watchdog() -> None:
         if not cancel.wait(seconds + _HARD_TIMEOUT_GRACE_SECONDS):
             sys.stderr.write(
                 f"{label}: hard timeout after "
@@ -189,7 +191,7 @@ def search_ttl(seconds: int | None, *, label: str = "search"):
         previous_handler = signal.getsignal(signal.SIGALRM)
         previous_alarm = signal.alarm(0)
 
-        def _raise_timeout(_signum, _frame):
+        def _raise_timeout(_signum: int, _frame: FrameType | None) -> None:
             raise SearchTimeoutError(f"{label} exceeded {seconds}s TTL")
 
         signal.signal(signal.SIGALRM, _raise_timeout)
@@ -312,7 +314,7 @@ def run_search_doctor(
     *,
     vault: Path,
     cache: Path,
-    idx,
+    idx: Any,
     queries: list[str] | tuple[str, ...] = DEFAULT_DOCTOR_QUERIES,
     top_k: int = 3,
     override_digest_filter: bool = True,
@@ -918,7 +920,7 @@ def queue_running_worker(args: argparse.Namespace) -> bool:
     return True
 
 
-def index_selected_paths(idx, paths: list[str]) -> int:
+def index_selected_paths(idx: Any, paths: list[str]) -> int:
     """Index named files now, or exit 3 when indexing must wait for a full sync."""
     try:
         stats = idx.index_paths(paths)

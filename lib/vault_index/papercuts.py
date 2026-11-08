@@ -7,6 +7,7 @@ import fcntl
 import os
 import re
 import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -143,7 +144,7 @@ def _is_safe_repository_component(component: str) -> bool:
 
 
 @contextlib.contextmanager
-def _log_lock(log_path: Path):
+def _log_lock(log_path: Path) -> Iterator[None]:
     """Serialize appends so concurrent agents cannot interleave entries."""
     lock_path = log_path.with_name(f".{log_path.name}.lock")
     with lock_path.open("a", encoding="utf-8") as lock_file:

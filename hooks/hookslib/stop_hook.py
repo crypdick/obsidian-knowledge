@@ -37,7 +37,7 @@ def session_state_key(session_id: str) -> str:
     return hashlib.sha256(session_id.encode()).hexdigest()[:24]
 
 
-def _marker_cooldown(session_id, marker_basename: str, cooldown_seconds: int) -> bool:
+def _marker_cooldown(session_id: str | None, marker_basename: str, cooldown_seconds: int) -> bool:
     """Per-session cooldown gate backed by a /tmp marker file's mtime.
 
     Returns True (skip) if the marker was touched less than `cooldown_seconds`

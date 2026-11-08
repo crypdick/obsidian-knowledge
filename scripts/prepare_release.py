@@ -42,10 +42,7 @@ def prepare_version(root: Path, published: list[str]) -> str:
     ]
     latest = max(released, default=(-1, -1, -1))
     version = current if current_parts > latest else f"{latest[0]}.{latest[1]}.{latest[2] + 1}"
-    project_path.write_text(
-        re.sub(r'^version = "[^"]+"$', f'version = "{version}"', project, count=1, flags=re.M)
-    )
-
+    manifests = []
     for name in (
         ".codex-plugin/plugin.json",
         ".claude-plugin/plugin.json",
@@ -54,10 +51,20 @@ def prepare_version(root: Path, published: list[str]) -> str:
         path = root / name
         data = json.loads(path.read_text())
         if name.endswith("marketplace.json"):
-            plugin = next(item for item in data["plugins"] if item["name"] == "obsidian-knowledge")
-            plugin["version"] = version
+            matches = [item for item in data["plugins"] if item["name"] == "obsidian-knowledge"]
+            if len(matches) != 1:
+                raise ValueError(f"{name}: expected exactly one obsidian-knowledge plugin")
+            matches[0]["version"] = version
         else:
+            if data.get("name") != "obsidian-knowledge":
+                raise ValueError(f"{name}: expected plugin name obsidian-knowledge")
             data["version"] = version
+        manifests.append((path, data))
+
+    project_path.write_text(
+        re.sub(r'^version = "[^"]+"$', f'version = "{version}"', project, count=1, flags=re.M)
+    )
+    for path, data in manifests:
         path.write_text(json.dumps(data, indent=2) + "\n")
     return version
 

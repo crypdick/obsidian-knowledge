@@ -98,7 +98,11 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from detect_secrets.core.secrets_collection import SecretsCollection
 
 from pydantic import BaseModel
 
@@ -298,7 +302,7 @@ def run_scan(
         _save_if_changed(result_sc, baseline_path, ds_baseline)
 
 
-def _drop_same_value_duplicates(result_sc) -> None:
+def _drop_same_value_duplicates(result_sc: SecretsCollection) -> None:
     """Keep one finding per (file, secret) when several detectors match one value.
 
     Prefer a finding that already carries an audit decision, so one audit covers the value.
@@ -310,7 +314,7 @@ def _drop_same_value_duplicates(result_sc) -> None:
         result_sc.data[filename] = set(by_hash.values())
 
 
-def _save_if_changed(result_sc, baseline_path: Path, ds_baseline) -> None:
+def _save_if_changed(result_sc: SecretsCollection, baseline_path: Path, ds_baseline: ModuleType) -> None:
     """Write baseline only if findings differ from existing on disk.
 
     detect_secrets stamps `generated_at` on every save_to_file call. With

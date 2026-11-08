@@ -61,14 +61,23 @@ def test_semantic_fallback_does_not_swallow_outer_deadline(tmp_path, failure):
 
 @pytest.mark.parametrize("budget", ["invalid", "0"])
 def test_search_budget_preserves_cli_environment_defaults(tmp_path, monkeypatch, budget):
-    from types import SimpleNamespace
+    from obsidian_knowledge_vendor.memweave import SearchResult
 
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", budget)
     instance = Indexer(tmp_path, tmp_path / "cache", VaultIndexConfig(), skip_probe=True)
     instance.vector_issue = None
 
     async def search(*args, **kwargs):
-        return [SimpleNamespace(path=str(tmp_path / "note.md"), score=0.5)]
+        return [
+            SearchResult(
+                path=str(tmp_path / "note.md"),
+                start_line=1,
+                end_line=1,
+                score=0.5,
+                snippet="",
+                source="memory",
+            )
+        ]
 
     instance._store.search = search
     assert instance.search_report("query").mode == "hybrid"
