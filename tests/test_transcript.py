@@ -173,3 +173,9 @@ def test_count_user_messages_excludes_agent_delivered_claude_messages(tmp_path):
         "\n".join(json.dumps({"type": "user", "message": {"content": text}}) for text in messages)
     )
     assert count_user_messages(str(path)) == 2
+
+
+def test_tool_reader_skips_non_object_records_and_messages(tmp_path):
+    transcript = tmp_path / "invalid-shapes.jsonl"
+    transcript.write_text('[]\n{"message": 42}\n{"message": {"content": []}}\n')
+    assert list(iter_tool_uses(str(transcript))) == []

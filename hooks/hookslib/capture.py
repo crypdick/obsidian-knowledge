@@ -56,7 +56,7 @@ def build_reason(vault_root: str, session_key: str | None = None) -> str:
     )
 
 
-def main() -> int:
+def run() -> int:
     """Emit one capture decision per user-message generation in a configured vault."""
     payload = read_input()
     vault_root = resolve_capture_vault(os.getcwd())
@@ -66,3 +66,11 @@ def main() -> int:
         return 0
     emit_block(build_reason(vault_root, capture_session_key(payload.get("session_id"))))
     return 0
+
+
+def main() -> int:
+    """Optional context must not break host when input or storage is unavailable."""
+    try:
+        return run()
+    except Exception:  # allow: exception-handling  (optional lifecycle hook boundary)
+        return 0

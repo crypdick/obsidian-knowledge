@@ -2,6 +2,7 @@
 
 import datetime
 
+import pytest
 from hookslib import patterns
 
 # Wikilink violations
@@ -182,3 +183,16 @@ def test_only_opening_delimiter_returns_error():
     parsed, err = patterns.parse_frontmatter(content)
     assert parsed is None
     assert err is not None
+
+
+def test_publication_predicate_handles_yaml_fragments_and_parse_errors(monkeypatch):
+    from hookslib.patterns import is_published
+
+    assert is_published('"dg-publish": yes', fragment=True)
+    assert not is_published("body text", fragment=True)
+    assert not is_published("title: [broken", fragment=True)
+    with pytest.raises(ValueError, match="missing closing"):
+        is_published("---\ndg-publish: true")
+    monkeypatch.setattr("hookslib.patterns.yaml", None)
+    with pytest.raises(ValueError, match="PyYAML required"):
+        is_published("---\ndg-publish: true\n---")

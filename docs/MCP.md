@@ -84,7 +84,7 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   changes between calls can shift pages. Optional case-sensitive `fnmatch`
   patterns match paths relative to the requested directory; `*` also matches
   `/`. Filtering does not prune directories. Hidden paths, `node_modules`,
-  `_sources`, sync-conflict paths, and symlinks are excluded; directly requesting
+  `venv`, `__pycache__`, `_sources`, sync-conflict paths, and symlinks are excluded; directly requesting
   an excluded directory is rejected. Files of all formats can be listed.
 - `vault_search_status()` returns `index_exists`, `indexed_files`,
   `vector_index_ready`, and `degraded_reason`. Readiness checks persisted vector
@@ -142,7 +142,9 @@ CLI or app is unavailable. The original tools above remain usable without the ap
   permanent-delete option. Returns an `index` result.
 - `vault_move(from_path, to_path, dry_run=False)` delegates moving and link
   updates to Obsidian. Link updates follow the app's automatic-update setting.
-  An existing destination is rejected. `dry_run=True` checks the source through
+  An existing destination is rejected, rechecked inside the shared mutation
+  lock before invoking Obsidian. External app activity is not covered by that
+  lock. `dry_run=True` checks the source through
   native file info and reports the destination without moving; it does not
   simulate link rewrites. A completed move returns an `index` result.
 
@@ -173,7 +175,8 @@ expose fixed operations rather than an arbitrary command or JavaScript tool.
 
 Each CLI invocation uses the configured search deadline (at least one second)
 and caps stdout and stderr at 6 MiB each. Timeout, cancellation, and oversized
-output kill and reap its subprocess. Native mutations share the existing
+output kill and reap its subprocess. Read-only native operations do not acquire
+the mutation lock. Native mutations share the existing
 thread-held write lock; cancelling an MCP request can leave its worker running
 until the native CLI wait finishes. Killing that client cannot cancel work
 already dispatched to the app: verify note state before retrying a failed

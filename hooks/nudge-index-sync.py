@@ -99,4 +99,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:  # allow: exception-handling  (optional reminder boundary)
+        sys.exit(0)

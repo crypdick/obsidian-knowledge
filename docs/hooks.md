@@ -48,6 +48,10 @@ changes with an operation and supplied text. i-insist normalizes Write/Edit,
 MultiEdit, notebooks, and apply_patch. The provider does not parse native tool
 payloads or emit harness hook responses. Patch renames check both source and
 destination; deletion skips content and new-filename rules. Shell checks retain their recognized-command limitations.
+Targets are resolved to filesystem identity, including symlink aliases into registered vaults.
+Publication checks parse complete YAML frontmatter; malformed or unreadable existing
+frontmatter fails closed rather than granting write access. Edit fragments use YAML
+publication values too.
 Each checker prints JSON `null` to allow or a nonempty denial string to block.
 Messages live in checker code. Policy and registry parse/read failures propagate
 as checker failures; i-insist blocks and displays stderr. Missing optional policy
@@ -162,3 +166,12 @@ Agents must fix and verify defects introduced by or required for their task.
 For unrelated friction that agents can avoid or the user can fix, they can
 record a [papercut](CLI.md#papercut-logs) and continue. A reminder repeats this distinction
 every 100 shell calls.
+
+
+Optional hooks normalize invalid lifecycle envelopes to empty context and contain
+state-storage failures. Recall retains its empty-context fallback. Session identifiers are hashed before use in state
+filenames. Protection checkers retain their separate fail-closed policy.
+
+The parent `index.md` reminder supports Claude transcripts only. Codex does not
+register that reminder; use vault-organizer for parent-index upkeep. This is
+separate from search-index reconciliation performed by the indexing worker.

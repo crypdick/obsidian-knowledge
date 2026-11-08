@@ -27,12 +27,12 @@ class ListingReport(BaseModel):
     next_offset: int | None
 
 
+# Shared discovery exclusions; raw filesystem tools retain their separate access contract.
+VISIBLE_EXCLUDED_NAMES = frozenset({"node_modules", "_sources", "venv", "__pycache__"})
+
+
 def visible_name(name: str) -> bool:
-    return (
-        not name.startswith(".")
-        and name not in {"node_modules", "_sources"}
-        and ".sync-conflict-" not in name
-    )
+    return not name.startswith(".") and name not in VISIBLE_EXCLUDED_NAMES and ".sync-conflict-" not in name
 
 
 def _entries(directory: Path, vault: Path, remaining_depth: int) -> Iterator[ListingEntry]:

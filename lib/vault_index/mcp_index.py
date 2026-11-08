@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
-import re
 import sqlite3
 from pathlib import Path
 from typing import Literal
@@ -14,13 +12,7 @@ from pydantic import BaseModel, Field
 
 from lib.vault_index.cli import default_cache_dir_for_vault, search_ttl_seconds
 from lib.vault_index.index_generations import active_cache
-from lib.vault_index.index_state import rebuild_pending
-from lib.vault_index.indexer import (
-    DEFAULT_CHUNK_OVERLAP,
-    DEFAULT_CHUNK_TOKENS,
-    DEFAULT_EMBEDDING_MODEL,
-    FINGERPRINT_FILENAME,
-)
+from lib.vault_index.index_state import vector_issue
 
 
 class IndexStatus(BaseModel):
@@ -57,9 +49,6 @@ def read_index_status(vault: Path) -> IndexStatus:
         ) as connection:
             row = connection.execute("SELECT count(*) FROM files").fetchone()
             indexed_files = int(row[0])
-            vector_table = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunks_vec'"
-            ).fetchone()
     except sqlite3.Error as exc:
         return IndexStatus(
             index_exists=True,
@@ -67,42 +56,21 @@ def read_index_status(vault: Path) -> IndexStatus:
             vector_index_ready=False,
             degraded_reason=f"index unreadable: {exc}",
         )
-    try:
-        fingerprint = (cache / FINGERPRINT_FILENAME).read_text().strip()
-    except (OSError, UnicodeError):
-        fingerprint = None
-    model = os.environ.get("MEMWEAVE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
-    current = f"{model}@{DEFAULT_CHUNK_TOKENS}/{DEFAULT_CHUNK_OVERLAP}"
-    if rebuild_pending(database):
-        reason = "vector index rebuild incomplete; update required"
-    elif indexed_files == 0:
-        reason = "index empty"
-    elif fingerprint is None:
-        reason = "embedding fingerprint unavailable"
-    elif fingerprint == "keyword-only":
-        reason = "index built in keyword-only mode"
-    elif fingerprint != current:
+    issue = vector_issue(cache)
+    reasons = {
+        "index not built yet": "index empty",
+        "index rebuild incomplete": "vector index rebuild incomplete; update required",
+        "vectors missing after keyword-only sync": "index built in keyword-only mode",
+    }
+    reason = reasons.get(issue, issue) if issue is not None else None
+    if issue is not None and issue.startswith("embedder changed"):
         reason = "embedding settings changed; update required"
-    elif vector_table is None:
-        reason = "vector index unavailable"
-    else:
-        reason = None
     return IndexStatus(
         index_exists=True,
         indexed_files=indexed_files,
         vector_index_ready=reason is None,
         degraded_reason=reason,
     )
-
-
-def parse_index_update(stdout: bytes, stderr: bytes) -> IndexUpdate:
-    """Interpret successful reindex exits, including its clean lock-contention exit."""
-    if b"reindex: another index operation is in progress (lock held); exiting cleanly." in stderr:
-        return IndexUpdate(status="busy")
-    match = re.fullmatch(rb"Indexed: ([0-9]+), Skipped: ([0-9]+), Deleted: ([0-9]+)\s*", stdout)
-    if match is None:
-        raise ValueError("unexpected reindex output")
-    return IndexUpdate(status="updated", indexed=int(match[1]), skipped=int(match[2]), deleted=int(match[3]))
 
 
 async def run_index_command(

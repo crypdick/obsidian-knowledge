@@ -23,6 +23,10 @@ live embedding service. Use `python scripts/cli_smoke_test.py` when live backend
 validation is relevant. For manual indexing, isolate the vault and cache as
 [described in the architecture](ARCHITECTURE.md#worktree-isolation).
 
+Native-operation tests execute generated JavaScript against an app stub and
+require `node` on PATH (provided by the CI runner). They do not replace live
+Obsidian validation.
+
 ## Important limits
 
 - Strict mypy checks retain configured exceptions; passing does not mean every

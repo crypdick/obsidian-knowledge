@@ -81,7 +81,16 @@ def test_rejects_invalid_bounds(tmp_path: Path, options: dict[str, int]):
 
 
 @pytest.mark.parametrize(
-    "relative", ["../outside", ".hidden", "node_modules", "_sources", "wiki/a.sync-conflict-copy.md"]
+    "relative",
+    [
+        "../outside",
+        ".hidden",
+        "node_modules",
+        "_sources",
+        "venv",
+        "__pycache__",
+        "wiki/a.sync-conflict-copy.md",
+    ],
 )
 def test_rejects_disallowed_requested_paths(tmp_path: Path, relative: str):
     with pytest.raises(ValueError):
@@ -102,7 +111,7 @@ def test_rejects_symlink_components(tmp_path: Path):
 
 
 def test_excludes_hidden_protected_conflict_and_symlink_paths(tmp_path: Path):
-    for name in (".hidden", "node_modules", "_sources", "a.sync-conflict-copy"):
+    for name in (".hidden", "node_modules", "_sources", "venv", "__pycache__", "a.sync-conflict-copy"):
         folder = tmp_path / name
         folder.mkdir()
         (folder / "note.md").touch()

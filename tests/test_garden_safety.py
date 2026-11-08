@@ -30,6 +30,8 @@ from gardener.io import (
         "wiki/../outside.md",
         "wiki/.hidden/note.md",
         "wiki/node_modules/note.md",
+        "wiki/venv/note.md",
+        "wiki/__pycache__/note.md",
         "wiki/_sources/note.md",
         "wiki/note.sync-conflict-123.md",
     ],
@@ -86,6 +88,8 @@ def test_scan_prunes_excluded_trees_and_yields_only_visible_markdown(tmp_path: P
         "wiki/.hidden/note.md",
         "wiki/_sources/note.md",
         "wiki/node_modules/note.md",
+        "wiki/venv/note.md",
+        "wiki/__pycache__/note.md",
         "wiki/old.sync-conflict-12.md",
     ):
         path = tmp_path / relative
@@ -266,3 +270,20 @@ def test_malformed_published_frontmatter_allows_preview_and_refuses_apply(tmp_pa
     assert exc.value.code == 1
     assert "cannot safely rewrite malformed frontmatter" in capsys.readouterr().err
     assert path.read_bytes() == original.encode("utf-8")
+
+
+def test_reviewed_write_rechecks_baseline_at_writer_handoff(tmp_path, monkeypatch):
+    from lib.vault_index.vault_files import write_vault_file
+
+    path = tmp_path / "wiki/note.md"
+    path.parent.mkdir()
+    path.write_text("Reviewed")
+
+    def concurrent_edit(*args, **kwargs):
+        path.write_text("External edit")
+        return write_vault_file(*args, **kwargs)
+
+    monkeypatch.setattr("gardener.io.write_vault_file", concurrent_edit)
+    with pytest.raises(ValueError, match="changed since it was read"):
+        write_checked(tmp_path, "wiki/note.md", "Reviewed", "Repair")
+    assert path.read_text() == "External edit"

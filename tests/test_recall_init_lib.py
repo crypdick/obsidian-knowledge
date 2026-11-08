@@ -44,15 +44,14 @@ class TestBuildPrimer:
         assert "setup-harness" not in primer
 
 
-def test_adapter_reuses_already_loaded_primer_module():
+def test_adapter_uses_one_canonical_primer_module():
     hooks = Path(__file__).parents[1] / "hooks"
     script = """
 import sys
-from types import SimpleNamespace
-sentinel = object()
-sys.modules['vault_index.primer'] = SimpleNamespace(build_primer=sentinel)
+from hookslib.primer import build_primer
 from hookslib import recall_init_lib
-assert recall_init_lib.build_primer is sentinel
+assert recall_init_lib.build_primer is build_primer
+assert 'vault_index.primer' not in sys.modules
 """
     result = subprocess.run(
         [sys.executable, "-c", script],

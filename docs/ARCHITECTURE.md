@@ -9,9 +9,9 @@ The following directories contain the shared components and host adapters:
 
 | Location | Responsibility |
 | --- | --- |
-| `lib/vault_index/` | Retrieval, configuration, verified file I/O, session primer, papercut logs, and CLI orchestration. |
+| `lib/vault_index/` | Retrieval, configuration, verified file I/O, primer compatibility exports, papercut logs, and CLI orchestration. |
 | `hooks/` | Lifecycle hooks, provider-owned i-insist checkers and rule template, and the dependency-light vault registry. |
-| `hooks/hookslib/` | Shared protection, capture, transcript, memory-routing, and reflection logic. |
+| `hooks/hookslib/` | Shared protection, capture, transcript, memory-routing, session primer, and reflection logic. |
 | `gardener/` | Installed vault maintenance commands, shared traversal and policy, and reviewed repairs. |
 | `scripts/` | Packaging, release, and quality tools. |
 | `plugins/obsidian-knowledge/` | Generated Codex distribution; edit root sources and run `scripts/sync_codex_plugin.py`. |
@@ -65,7 +65,7 @@ The static import checker is `scripts/prek_hooks/check_architecture.py`.
 Preserve these boundaries:
 
 - `lib` imports neither adapters nor shared hooks, except that `primer.py`
-  imports `hookslib.repo_memory` to resolve the memory destination and `cli.py`
+  re-exports `hookslib.primer` for public compatibility and `cli.py`
   dispatches to `gardener.cli`.
 - `hooks/hookslib` imports neither `lib`, `vault_index`, nor `gardener`.
   It may import the shared `vault_registry` and `vault_preferences` modules.

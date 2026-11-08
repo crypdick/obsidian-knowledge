@@ -456,6 +456,7 @@ def setup(vault: Path, *, skip_claude_plugin: bool = False, skip_guards: bool = 
     import shutil
 
     from lib.vault_index.config import load_config
+    from lib.vault_index.index_worker import foreground_reindex
     from lib.vault_index.indexer import Indexer, default_cache_dir
 
     vault = existing_vault(vault)
@@ -498,7 +499,7 @@ def setup(vault: Path, *, skip_claude_plugin: bool = False, skip_guards: bool = 
             "To enable semantic search, resolve the reported embedding access or model issue, then reindex."
         )
     try:
-        stats = idx.full_reindex(force=False)
+        stats = foreground_reindex(vault)
     except IndexBusyError:
         print("reindex: another index operation in progress; skipping")
         return
@@ -595,9 +596,6 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
     from lib.vault_index.config import load_config
     from lib.vault_index.indexer import Indexer, default_cache_dir
 
-    no_wait = getattr(args, "no_wait", False)
-    if args.cmd == "search" and no_wait and not getattr(args, "no_rebuild", False):
-        raise ValueError("search --no-wait requires --no-rebuild")
     vault = resolve_vault(args.vault)
     cfg = load_config()
     cache = default_cache_dir(vault)
@@ -620,7 +618,6 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
         query,
         top_k=args.top_k,
         override_digest_filter=args.all,
-        wait_for_writer=not no_wait,
     )
     if result.outside_digest_matches:
         count = result.outside_digest_matches
@@ -721,12 +718,12 @@ def main() -> int:
     p_search.add_argument(
         "--no-rebuild",
         action="store_true",
-        help="Do not start a background reindex when vectors are missing or stale.",
+        help="Legacy no-op; searches never start index maintenance.",
     )
     p_search.add_argument(
         "--no-wait",
         action="store_true",
-        help="Report busy instead of waiting for an index writer; requires --no-rebuild.",
+        help="Legacy no-op; searches always use committed snapshots without waiting for writers.",
     )
     p_search.add_argument(
         "--json", action="store_true", help="Print hits and retrieval mode as one JSON object"
@@ -866,6 +863,7 @@ def run_reindex(args: argparse.Namespace) -> int:
     try:
         with search_ttl(args.timeout_seconds, label="reindex"):
             from lib.vault_index.config import load_config
+            from lib.vault_index.index_worker import foreground_reindex
             from lib.vault_index.indexer import Indexer
 
             vault = resolve_vault(args.vault)
@@ -877,18 +875,17 @@ def run_reindex(args: argparse.Namespace) -> int:
                 print("reindex: deferred (index not built yet)", file=sys.stderr)
                 return 3
             cache.mkdir(parents=True, exist_ok=True)
-            cfg = load_config()
-            idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
             if args.paths:
+                idx = Indexer(vault_root=vault, cache_dir=cache, config=load_config())
                 return index_selected_paths(idx, args.paths)
             if sys.stderr.isatty():
                 progress = ReindexProgress()
                 try:
-                    stats = idx.full_reindex(force=args.force, progress=progress)
+                    stats = foreground_reindex(vault, force=args.force, progress=progress)
                 finally:
                     progress.close()
             else:
-                stats = idx.full_reindex(force=args.force)
+                stats = foreground_reindex(vault, force=args.force)
     except IndexBusyError:
         print(
             "reindex: another index operation is in progress (lock held); exiting cleanly.",

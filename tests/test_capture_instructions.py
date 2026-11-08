@@ -90,7 +90,7 @@ def test_session_start_requires_explicit_guard_installation(manifest: str) -> No
 def test_capture_routes_to_merged_skill_without_overriding_user_policy() -> None:
     reason = build_reason("/vault")
     skill = _read("skills/obsidian-knowledge/SKILL.md")
-    primer = _read("lib/vault_index/primer.py")
+    primer = _read("hooks/hookslib/primer.py")
 
     assert "obsidian-knowledge skill" in reason
     assert "remember-conversations" not in reason
@@ -132,3 +132,17 @@ def test_capture_main_is_silent_without_resolved_vault(monkeypatch) -> None:
     monkeypatch.setattr("hookslib.capture.read_input", lambda: {"session_id": "session"})
     monkeypatch.setattr("hookslib.capture.resolve_capture_vault", lambda cwd: None)
     assert main() == 0
+
+
+def test_capture_storage_or_registry_failure_is_optional(monkeypatch):
+    def unavailable(cwd):
+        raise OSError("registry unavailable")
+
+    monkeypatch.setattr("hookslib.capture.resolve_capture_vault", unavailable)
+    assert main() == 0
+
+
+def test_codex_does_not_register_unsupported_parent_index_reminder():
+    config = json.loads(_read("hooks/codex-hooks.json"))
+    commands = [hook["command"] for group in config["hooks"]["Stop"] for hook in group["hooks"]]
+    assert all("nudge-index-sync" not in command for command in commands)

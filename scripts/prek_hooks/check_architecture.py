@@ -35,7 +35,7 @@ def forbidden(path: Path, module: str) -> bool:
         if top == "gardener":
             return path.as_posix() != "lib/vault_index/cli.py"
         if path.as_posix() == "lib/vault_index/primer.py" and (
-            module == "hookslib.repo_memory" or module.startswith("hookslib.repo_memory.")
+            module == "hookslib.primer" or module.startswith("hookslib.primer.")
         ):
             return False
         return top in {"hooks", "hookslib", "vault_registry"}

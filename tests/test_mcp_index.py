@@ -6,7 +6,8 @@ from contextlib import closing
 import pytest
 
 from lib.vault_index.cli import default_cache_dir_for_vault
-from lib.vault_index.mcp_index import parse_index_update, read_index_status
+from lib.vault_index.index_state import embedding_fingerprint
+from lib.vault_index.mcp_index import read_index_status
 
 
 def make_index(vault, *, vector=False, fingerprint=None, count=2):
@@ -40,17 +41,22 @@ def test_absent_index_status_does_not_create_cache(tmp_path):
     [
         (False, "keyword-only", 2, "index built in keyword-only mode"),
         (True, "ollama/old@320/64", 2, "embedding settings changed; update required"),
-        (False, "ollama/bge-m3@320/64", 2, "vector index unavailable"),
+        (False, "current", 2, "vector index unavailable"),
         (True, None, 2, "embedding fingerprint unavailable"),
         (True, "ollama/bge-m3@320/64", 0, "index empty"),
-        (True, "ollama/bge-m3@320/64", 2, None),
+        (True, "current", 2, None),
     ],
 )
 def test_index_metadata_reports_persisted_readiness(
     tmp_path, monkeypatch, vector, fingerprint, count, reason
 ):
     monkeypatch.delenv("MEMWEAVE_EMBEDDING_MODEL", raising=False)
-    cache = make_index(tmp_path, vector=vector, fingerprint=fingerprint, count=count)
+    cache = make_index(
+        tmp_path,
+        vector=vector,
+        fingerprint=embedding_fingerprint() if fingerprint == "current" else fingerprint,
+        count=count,
+    )
     before = {path.name: path.read_bytes() for path in cache.iterdir()}
     result = read_index_status(tmp_path)
     assert result.index_exists
@@ -62,7 +68,7 @@ def test_index_metadata_reports_persisted_readiness(
 
 def test_index_status_uses_current_embedding_model(tmp_path, monkeypatch):
     monkeypatch.setenv("MEMWEAVE_EMBEDDING_MODEL", "ollama/custom")
-    make_index(tmp_path, vector=True, fingerprint="ollama/custom@320/64")
+    make_index(tmp_path, vector=True, fingerprint=embedding_fingerprint())
     assert read_index_status(tmp_path).vector_index_ready
 
 
@@ -99,26 +105,6 @@ def test_unreadable_fingerprint_reports_unknown_readiness(tmp_path, invalid_utf8
     else:
         marker.mkdir()
     assert read_index_status(tmp_path).degraded_reason == "embedding fingerprint unavailable"
-
-
-def test_update_output_reports_counts():
-    result = parse_index_update(b"Indexed: 2, Skipped: 3, Deleted: 4\n", b"")
-    assert result.model_dump() == {"status": "updated", "indexed": 2, "skipped": 3, "deleted": 4}
-
-
-def test_update_busy_does_not_claim_success():
-    result = parse_index_update(
-        b"", b"reindex: another index operation is in progress (lock held); exiting cleanly.\n"
-    )
-    assert result.model_dump() == {"status": "busy", "indexed": None, "skipped": None, "deleted": None}
-
-
-@pytest.mark.parametrize(
-    "stdout", [b"", b"Indexed: -1, Skipped: 3, Deleted: 4", b"Indexed: 1, Skipped: 2, Deleted: 3 junk"]
-)
-def test_update_rejects_unrecognized_output(stdout):
-    with pytest.raises(ValueError, match="unexpected reindex output"):
-        parse_index_update(stdout, b"")
 
 
 def test_index_status_accepts_relative_cache_root(tmp_path, monkeypatch):

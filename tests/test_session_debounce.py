@@ -5,6 +5,7 @@ AND the user sent a new message since the last run. Either gate alone
 suppresses an auto-compaction storm (many SessionStart events, no new message).
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -93,7 +94,7 @@ def test_capture_debounce_stays_silent_for_empty_transcript(tmp_path):
 def test_session_debounce_recovers_from_corrupt_message_count(tmp_path):
     sid = _sid("corrupt")
     marker_basename = "unit-corrupt"
-    marker = f"/tmp/.obsidian-hook-{marker_basename}-{sid}"
+    marker = f"/tmp/.obsidian-hook-{marker_basename}-{hashlib.sha256(sid.encode()).hexdigest()[:24]}"
     with open(marker, "w") as handle:
         handle.write("not-an-integer")
     payload = {"session_id": sid, "transcript_path": _transcript(tmp_path, 1)}
@@ -105,10 +106,30 @@ def test_session_debounce_recovers_from_corrupt_message_count(tmp_path):
 def test_session_debounce_treats_unreadable_marker_as_unknown_count(tmp_path):
     sid = _sid("unreadable")
     marker_basename = "unit-unreadable"
-    marker = f"/tmp/.obsidian-hook-{marker_basename}-{sid}"
+    marker = f"/tmp/.obsidian-hook-{marker_basename}-{hashlib.sha256(sid.encode()).hexdigest()[:24]}"
     os.mkdir(marker)
     try:
         payload = {"session_id": sid, "transcript_path": _transcript(tmp_path, 1)}
         assert session_debounce(payload, marker_basename, cooldown_seconds=300) is True
     finally:
         os.rmdir(marker)
+
+
+def test_optional_cooldowns_skip_when_storage_unavailable(monkeypatch):
+    import builtins
+
+    def unavailable(*args, **kwargs):
+        raise OSError("state unavailable")
+
+    monkeypatch.setattr(builtins, "open", unavailable)
+    payload = {"session_id": _sid("unavailable")}
+    assert in_cooldown(payload, "unit-unavailable") is True
+    assert session_debounce(payload, "unit-unavailable") is True
+
+
+def test_stop_input_rejects_non_object_and_invalid_field_shapes(monkeypatch):
+    import io
+
+    for raw in ("[]", "null", '{"transcript_path": []}', '{"stop_hook_active": "false"}'):
+        monkeypatch.setattr(sys, "stdin", io.StringIO(raw))
+        assert read_input() == {}

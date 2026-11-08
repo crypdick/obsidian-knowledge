@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 
 from lib.vault_index.obsidian_cli import NativeObsidian
 from lib.vault_index.vault_files import append_vault_file, resolve_vault_file
+from lib.vault_index.vault_listing import VISIBLE_EXCLUDED_NAMES, visible_name
 
 
 class _NativeMatch(BaseModel):
@@ -42,7 +43,7 @@ class _NativeRecentReport(BaseModel):
 _GREP = TypeAdapter(list[_NativeFileMatches])
 _VISIBLE_JS = (
     "const visible=p=>p.split('/').every(s=>!s.startsWith('.')"
-    "&&!['_sources','node_modules','__pycache__','venv'].includes(s))"
+    f"&&!{json.dumps(sorted(VISIBLE_EXCLUDED_NAMES))}.includes(s))"
     "&&!p.includes('.sync-conflict-');"
 )
 
@@ -53,17 +54,16 @@ def run_vault_mutation[T](lock: LockType, operation: Callable[[], T]) -> T:
         return operation()
 
 
+def _check_destination(vault: Path, destination: str) -> None:
+    if resolve_vault_file(vault, Path(destination)).exists():
+        raise FileExistsError(f"destination already exists: {destination}")
+
+
 def _path(vault: Path, value: str, *, allow_root: bool = False) -> str:
     if allow_root and value in {"", "."}:
         return ""
     relative = Path(value)
-    if (
-        any(
-            part.startswith(".") or part in {"_sources", "node_modules", "__pycache__", "venv"}
-            for part in relative.parts
-        )
-        or ".sync-conflict-" in value
-    ):
+    if any(not visible_name(part) for part in relative.parts):
         raise ValueError("path must name a visible vault entry")
     target = resolve_vault_file(vault, relative)
     current = vault
@@ -131,12 +131,12 @@ def register_native_tools(
     # NOTE: docs/MCP.md, App-backed tools, documents native contracts and discovery bounds.
     native = NativeObsidian(vault)
 
-    async def run(command: str, *arguments: str) -> str:
+    async def mutate(command: str, *arguments: str) -> str:
         return await asyncio.to_thread(
             run_vault_mutation, file_lock, lambda: asyncio.run(native.run(command, *arguments))
         )
 
-    async def run_json(command: str, *arguments: str) -> object:
+    async def mutate_json(command: str, *arguments: str) -> object:
         return await asyncio.to_thread(
             run_vault_mutation, file_lock, lambda: asyncio.run(native.run_json(command, *arguments))
         )
@@ -159,7 +159,7 @@ def register_native_tools(
         """Read native properties or merge fields through processFrontMatter; native YAML formatting applies."""
         path = _path(vault, path)
         if not updates:
-            return _mapping(await run_json("properties", f"path={path}", "format=json"))
+            return _mapping(await native.run_json("properties", f"path={path}", "format=json"))
         code = (
             "(async()=>{"
             + _arguments({"path": path, "updates": updates})
@@ -170,7 +170,7 @@ def register_native_tools(
             "Object.defineProperty(fm,key,{value,enumerable:true,writable:true,configurable:true});"
             "result=fm;});return JSON.stringify(result);})()"
         )
-        return _mapping(await run_json("eval", f"code={code}"))
+        return _mapping(await mutate_json("eval", f"code={code}"))
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_recent(
@@ -188,7 +188,7 @@ def register_native_tools(
             "return JSON.stringify({notes:files.slice(0,args.n).map(f=>"
             "({path:f.path,mtime_ms:f.stat.mtime,size_bytes:f.stat.size})),has_more:files.length>args.n});})()"
         )
-        return _recent_report(vault, await run_json("eval", f"code={code}"), n)
+        return _recent_report(vault, await native.run_json("eval", f"code={code}"), n)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_grep(
@@ -201,19 +201,19 @@ def register_native_tools(
         arguments = [f"query={json.dumps(query)}", "format=json", f"limit={max_results}"]
         if path_filter:
             arguments.append(f"path={path_filter}")
-        results = _GREP.validate_python(await run_json("search:context", *arguments), strict=True)
+        results = _GREP.validate_python(await native.run_json("search:context", *arguments), strict=True)
         return _grep_report(vault, results, max_results, query)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_info() -> dict[str, str]:
         """Return native vault information for the server's fixed vault."""
-        return {"info": await run("vault")}
+        return {"info": await native.run("vault")}
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
     async def vault_delete(path: str) -> dict[str, str]:
         """Use Obsidian's default trash behavior; permanent deletion is unavailable."""
         path = _path(vault, path)
-        await run("delete", f"path={path}")
+        await mutate("delete", f"path={path}")
         return {"path": path, "status": "trashed", "index": await refresh([path])}
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
@@ -221,16 +221,21 @@ def register_native_tools(
         """Delegate moves and link updates to Obsidian's settings; dry_run checks native file info only."""
         source = _path(vault, from_path)
         destination = _path(vault, to_path)
-        if resolve_vault_file(vault, Path(destination)).exists():
-            raise FileExistsError(f"destination already exists: {destination}")
+
         if dry_run:
+            _check_destination(vault, destination)
             return {
                 "from_path": source,
                 "to_path": destination,
                 "dry_run": True,
-                "source_info": await run("file", f"path={source}"),
+                "source_info": await native.run("file", f"path={source}"),
             }
-        await run("move", f"path={source}", f"to={destination}")
+
+        def move() -> str:
+            _check_destination(vault, destination)
+            return asyncio.run(native.run("move", f"path={source}", f"to={destination}"))
+
+        await asyncio.to_thread(run_vault_mutation, file_lock, move)
         return {
             "from_path": source,
             "to_path": destination,

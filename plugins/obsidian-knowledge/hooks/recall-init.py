@@ -23,7 +23,7 @@ from hookslib import (
     recall_init_lib,
     vault_config,
 )
-from hookslib.stop_hook import session_debounce
+from hookslib.stop_hook import read_input, session_debounce
 
 
 def resolve_vaults_config() -> Path:
@@ -34,12 +34,8 @@ def resolve_vaults_config() -> Path:
     return vault_config.CONFIG_PATH
 
 
-def main() -> int:
-    # Read stdin payload (used for the SessionStart debounce below).
-    try:
-        payload = json.load(sys.stdin) or {}
-    except (json.JSONDecodeError, ValueError):
-        payload = {}
+def run() -> int:
+    payload = read_input()
 
     # Resolve vault config
     config_path = resolve_vaults_config()
@@ -74,6 +70,14 @@ def main() -> int:
     emit_message(primer)
 
     return 0
+
+
+def main() -> int:
+    """Optional context must not break host when input or storage is unavailable."""
+    try:
+        return run()
+    except Exception:  # allow: exception-handling  (optional lifecycle hook boundary)
+        return 0
 
 
 def emit_message(message: str) -> None:

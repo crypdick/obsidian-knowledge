@@ -109,3 +109,13 @@ def test_fires_for_obsidian_move_command(tmp_path, subprocess_vault):
     payload = {"session_id": f"s-{RUN_ID}-move", "transcript_path": str(path)}
     _, out = run_hook(payload, cwd=str(vault), env=env)
     assert "wiki/projects/" in out
+
+
+def test_optional_reminder_ignores_malformed_tool_fields(tmp_path, subprocess_vault):
+    vault, env = subprocess_vault
+    path = transcript(tmp_path, [{"type": "tool_use", "name": "Write", "input": {"file_path": 42}}])
+    code, out = run_hook(
+        {"session_id": "malformed-tool", "transcript_path": str(path)}, cwd=str(vault), env=env
+    )
+    assert code == 0
+    assert out == ""

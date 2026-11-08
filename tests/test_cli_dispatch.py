@@ -62,18 +62,16 @@ def test_main_reindex_outcomes(tmp_path, monkeypatch, capsys, outcome):
     monkeypatch.setattr(cli, "resolve_vault", lambda _vault: tmp_path)
     monkeypatch.setattr(cli, "default_cache_dir_for_vault", lambda _vault: tmp_path / "cache")
 
-    class Index:
-        def __init__(self, **_kwargs):
-            pass
+    def reindex(vault, *, force):
+        assert vault == tmp_path
+        assert force
+        if outcome == "busy":
+            raise IndexBusyError("busy")
+        if outcome == "timeout":
+            raise SearchTimeoutError("slow")
+        return SimpleNamespace(indexed=2, skipped=1, deleted=3)
 
-        def full_reindex(self, *, force):
-            if outcome == "busy":
-                raise IndexBusyError("busy")
-            if outcome == "timeout":
-                raise SearchTimeoutError("slow")
-            return SimpleNamespace(indexed=2, skipped=1, deleted=3)
-
-    monkeypatch.setattr("lib.vault_index.indexer.Indexer", Index)
+    monkeypatch.setattr("lib.vault_index.index_worker.foreground_reindex", reindex)
     code = run_main(monkeypatch, "reindex", "--vault", str(tmp_path), "--force")
     assert code == {"success": 0, "busy": 0, "timeout": 124}[outcome]
     output = capsys.readouterr()
@@ -86,16 +84,12 @@ def test_reindex_progress_is_interactive_only(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "default_cache_dir_for_vault", lambda _vault: tmp_path / "cache")
     monkeypatch.setattr("sys.stderr.isatty", lambda: True)
 
-    class Index:
-        def __init__(self, **_kwargs):
-            pass
+    def reindex(vault, *, force, progress):
+        progress(0, 2)
+        progress(2, 2)
+        return SimpleNamespace(indexed=2, skipped=0, deleted=0)
 
-        def full_reindex(self, *, force, progress):
-            progress(0, 2)
-            progress(2, 2)
-            return SimpleNamespace(indexed=2, skipped=0, deleted=0)
-
-    monkeypatch.setattr("lib.vault_index.indexer.Indexer", Index)
+    monkeypatch.setattr("lib.vault_index.index_worker.foreground_reindex", reindex)
     assert run_main(monkeypatch, "reindex", "--vault", str(tmp_path)) == 0
     output = capsys.readouterr()
     assert "2/2" in output.err

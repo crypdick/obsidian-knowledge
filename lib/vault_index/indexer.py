@@ -59,16 +59,26 @@ from typing import Any
 import platformdirs
 
 from lib.vault_index.config import VaultIndexConfig
-from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE, make_embedding_provider
+from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE as DEFAULT_EMBEDDING_API_BASE
+from lib.vault_index.embeddings import make_embedding_provider
 from lib.vault_index.embeddings import ollama_probe as _ollama_probe
 from lib.vault_index.filters import path_passes
 from lib.vault_index.index_generations import active_cache
 from lib.vault_index.index_lock import index_lock
-from lib.vault_index.index_state import indexed_file_count, rebuild_pending, vector_table_exists
+from lib.vault_index.index_policy import index_path, indexable
+from lib.vault_index.index_state import (
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_TOKENS,
+    FINGERPRINT_FILENAME,
+    embedding_fingerprint,
+    embedding_settings,
+    vector_issue,
+    vector_table_exists,
+)
+from lib.vault_index.index_state import DEFAULT_EMBEDDING_MODEL as DEFAULT_EMBEDDING_MODEL
 from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
 from lib.vault_index.search_budget import semantic_deadline
 from lib.vault_index.snippets import with_snippets
-from lib.vault_index.vault_listing import visible_name
 from lib.vault_index.vector_search import IndexedHybridSearch
 from obsidian_knowledge_vendor import memweave
 
@@ -76,10 +86,6 @@ from obsidian_knowledge_vendor import memweave
 # this at its first lazy import; preserve an explicit operator override.
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
-DEFAULT_EMBEDDING_MODEL = "ollama/bge-m3"
-DEFAULT_CHUNK_TOKENS = 320
-DEFAULT_CHUNK_OVERLAP = 64
-FINGERPRINT_FILENAME = "embedder-fingerprint.txt"
 APP_NAME = "obsidian-knowledge"
 CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
 SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
@@ -150,7 +156,7 @@ class Indexer:
         vector_enabled: bool = True,
         skip_probe: bool = False,
     ):
-        self.vault_root = vault_root
+        self.vault_root = vault_root.resolve()
         cache_dir = active_cache(cache_dir)
         self.cache_dir = cache_dir
         self.config = config
@@ -194,23 +200,11 @@ class Indexer:
         return store
 
     def _embedder_fingerprint(self) -> str:
-        """Stable string identifying the current embedding setup.
-
-        Format: ``<model>@<chunk_tokens>/<chunk_overlap>``. Any change to
-        model name or chunking parameters invalidates the existing index
-        because chunk boundaries and vector dimensions may both shift.
-        """
-        model, _api_base, _ = self._embedding_settings()
-        return f"{model}@{DEFAULT_CHUNK_TOKENS}/{DEFAULT_CHUNK_OVERLAP}"
+        """Identify provider, model, endpoint, and chunking consistently."""
+        return embedding_fingerprint()
 
     def _fingerprint_path(self) -> Path:
         return self.cache_dir / FINGERPRINT_FILENAME
-
-    def _read_stored_fingerprint(self) -> str | None:
-        try:
-            return self._fingerprint_path().read_text().strip()
-        except OSError:
-            return None
 
     def _write_fingerprint(self, *, indexed: int) -> None:
         # An offline sync that indexed files leaves their chunks without
@@ -225,28 +219,7 @@ class Indexer:
             self._fingerprint_path().write_text(fingerprint)
 
     def _vector_issue(self) -> str | None:
-        """Explain why the persisted vector index cannot serve searches yet.
-
-        memweave owns rebuild decisions; this only reports readiness. A new or
-        interrupted first build is not an embedder change, so name it apart.
-        """
-        db = self.cache_dir / "index.sqlite"
-        if not db.exists() or indexed_file_count(db) == 0:
-            return "index not built yet"
-        if rebuild_pending(db):
-            return "index rebuild incomplete"
-        stored = self._read_stored_fingerprint()
-        if stored is None:
-            # Pre-fingerprint caches with a vector table remain usable.
-            return None if self._vector_table_exists(db) else "index not built yet"
-        if stored == "keyword-only":
-            return "vectors missing after keyword-only sync"
-        current = self._embedder_fingerprint()
-        if stored != current:
-            return f"embedder changed (was {stored}, now {current})"
-        if not self._vector_table_exists(db):
-            return "vector index unavailable"
-        return None
+        return vector_issue(self.cache_dir)
 
     @staticmethod
     def _vector_table_exists(db_path: Path) -> bool:
@@ -256,10 +229,7 @@ class Indexer:
     @staticmethod
     def _embedding_settings() -> tuple[str, str, str | None]:
         """Resolve (model, api_base, api_key) from env with bge-m3/Ollama defaults."""
-        model = os.environ.get("MEMWEAVE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
-        api_base = os.environ.get("MEMWEAVE_EMBEDDING_API_BASE", DEFAULT_EMBEDDING_API_BASE)
-        api_key = os.environ.get("MEMWEAVE_EMBEDDING_API_KEY")
-        return model, api_base, api_key
+        return embedding_settings()
 
     def _make_config(
         self,
@@ -385,7 +355,7 @@ class Indexer:
         allowed = []
         for abs_path in self.vault_root.rglob("*.md"):
             rel = str(abs_path.relative_to(self.vault_root))
-            if path_passes(rel, self.config.index):
+            if indexable(self.vault_root, rel, self.config):
                 allowed.append((not path_passes(rel, self.config.digest), rel, str(abs_path)))
         # Index digest notes first so a slow first build or rebuild makes the
         # notes searched by default available earliest.
@@ -441,10 +411,10 @@ class Indexer:
         with index_lock(self.cache_dir, exclusive=True, blocking=False):
             stored = self.indexed_paths()
             for rel in rel_paths:
-                root = self.vault_root / rel
+                root = index_path(self.vault_root, rel)
                 present = sorted(root.rglob("*.md")) if root.is_dir() else [root] if root.is_file() else []
                 keep = {str(path.relative_to(self.vault_root)) for path in present}
-                keep = {path for path in keep if path_passes(path, self.config.index)}
+                keep = {path for path in keep if indexable(self.vault_root, path, self.config)}
                 for path in sorted(keep):
                     result = asyncio.run(self._store.add(self.vault_root / path))
                     indexed += result.files_indexed
@@ -454,22 +424,18 @@ class Indexer:
                         deleted += asyncio.run(self._store.remove(self.vault_root / path))
         return SyncStats(indexed=indexed, skipped=skipped, deleted=deleted)
 
-    async def index_settled_path(self, relative: str) -> None:
+    async def index_settled_path(self, relative: str) -> SyncStats:
         """Commit one settled file, rolling back interrupted or superseded work."""
-        path = self.vault_root / relative
-        if not path.resolve().is_relative_to(self.vault_root.resolve()):
-            raise ValueError("index path escapes vault")
+        path = index_path(self.vault_root, relative)
         try:
             with index_lock(self.cache_dir, exclusive=True, blocking=False):
-                if (
-                    path.is_file()
-                    and all(visible_name(part) for part in Path(relative).parts)
-                    and path_passes(relative, self.config.index)
-                ):
-                    await self._store.add(path, force=True)
+                if indexable(self.vault_root, relative, self.config):
+                    result = await self._store.add(path, force=True)
+                    stats = SyncStats(result.files_indexed, result.files_skipped, 0)
                 else:
-                    await self._store.remove(path)
+                    stats = SyncStats(0, 0, int(await self._store.remove(path)))
                 self._write_fingerprint(indexed=1)
+                return stats
         finally:
             await self._store.close()
 
@@ -537,17 +503,18 @@ class Indexer:
         """
         from lib.vault_index.filters import apply_filters
 
-        effective_top_k = top_k or self.config.top_k
+        overrides: dict[str, int | float] = {}
+        if top_k is not None:
+            overrides["top_k"] = top_k
+        if min_score is not None:
+            overrides["min_score"] = min_score
+        config = VaultIndexConfig.model_validate(self.config.model_dump() | overrides)
+        effective_top_k = config.top_k
         # Request more candidates than needed so apply_filters has room to filter.
         candidate_count = max(50, effective_top_k * 5)
 
         def filtered(hits: list[Hit]) -> list[Hit]:
-            cfg = self.config
-            if top_k is not None:
-                cfg = cfg.model_copy(update={"top_k": top_k})
-            if min_score is not None:
-                cfg = cfg.model_copy(update={"min_score": min_score})
-            return apply_filters(hits, cfg, override_digest_filter=override_digest_filter)
+            return apply_filters(hits, config, override_digest_filter=override_digest_filter)
 
         def keyword_report(reason: str) -> SearchReport:
             keep = (

@@ -291,7 +291,11 @@ def test_embedder_change_serves_keywords_without_rebuilding(
     (cache_dir / "embedder-fingerprint.txt").write_text("ollama/old-model@320/64")
 
     idx2 = make_indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
-    assert idx2.vector_issue == "embedder changed (was ollama/old-model@320/64, now ollama/bge-m3@320/64)"
+    from lib.vault_index.index_state import embedding_fingerprint
+
+    assert (
+        idx2.vector_issue == f"embedder changed (was ollama/old-model@320/64, now {embedding_fingerprint()})"
+    )
 
     async def unexpected_embed(self, texts):
         pytest.fail("search must not embed while vectors are stale")
