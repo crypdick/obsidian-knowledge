@@ -6,7 +6,6 @@ import asyncio
 import json
 import sys
 from argparse import Namespace
-from types import SimpleNamespace
 
 import pytest
 
@@ -93,7 +92,16 @@ def test_report_tracks_query_fallback_then_hybrid_success(tmp_path, monkeypatch,
         calls += 1
         if calls == 1:
             raise memweave.SearchError(message)
-        return [SimpleNamespace(path=str(tmp_path / "note.md"), score=0.5)]
+        return [
+            memweave.SearchResult(
+                path=str(tmp_path / "note.md"),
+                start_line=1,
+                end_line=1,
+                score=0.5,
+                snippet="An orchid note.",
+                source="memory",
+            )
+        ]
 
     monkeypatch.setattr(instance._store, "search", retrieve)
     try:
