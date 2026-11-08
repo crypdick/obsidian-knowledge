@@ -305,6 +305,11 @@ def test_setup_reports_existing_registration_no_claude_and_busy(tmp_path, monkey
             raise IndexBusyError("busy")
 
     monkeypatch.setattr("lib.vault_index.indexer.Indexer", BusyIndexer)
+
+    def busy(_vault):
+        raise IndexBusyError("busy")
+
+    monkeypatch.setattr("lib.vault_index.index_worker.foreground_reindex", busy)
     monkeypatch.setattr("lib.vault_index.indexer.default_cache_dir", lambda _vault: tmp_path / "cache")
     cli.setup(tmp_path)
     output = capsys.readouterr().out
@@ -334,6 +339,10 @@ def test_setup_success_modes(tmp_path, monkeypatch, capsys, plugin_mode):
             return SimpleNamespace(indexed=2, skipped=1, deleted=0)
 
     monkeypatch.setattr("lib.vault_index.indexer.Indexer", HealthyIndexer)
+    monkeypatch.setattr(
+        "lib.vault_index.index_worker.foreground_reindex",
+        lambda _vault: SimpleNamespace(indexed=2, skipped=1, deleted=0),
+    )
     monkeypatch.setattr("lib.vault_index.indexer.default_cache_dir", lambda _vault: tmp_path / "cache")
     cli.setup(tmp_path, skip_claude_plugin=plugin_mode == "skip")
     output = capsys.readouterr().out

@@ -121,7 +121,7 @@ def test_no_wait_still_bounds_slow_query_embedding(vector_vault, monkeypatch):
     assert "budget" in report["degraded_reason"]
 
 
-def test_no_wait_requires_no_rebuild(tmp_path):
+def test_legacy_no_wait_works_without_no_rebuild(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
@@ -138,9 +138,8 @@ def test_no_wait_requires_no_rebuild(tmp_path):
         timeout=15,
         check=False,
     )
-    assert result.returncode == 2
-    assert "--no-wait requires --no-rebuild" in result.stderr
-    assert result.stdout == ""
+    assert result.returncode == 0
+    assert "(no results)" in result.stdout
 
 
 def test_hybrid_snapshot_survives_writer_commit(vector_vault):

@@ -147,7 +147,7 @@ def test_readonly_outside_vault_is_allowed(tmp_path):
 
 @pytest.mark.parametrize(
     "content",
-    ["ordinary text", "---\ndg-publish: true"],
+    ["ordinary text", "---\ndg-publish: false\n---"],
 )
 @pytest.mark.parametrize("operation", ["write", "edit"])
 def test_unpublished_files_can_be_edited(tmp_path, content, operation):
@@ -434,3 +434,41 @@ def test_registration_write_failure_preserves_previous_file(tmp_path, monkeypatc
         guard_install.install_rules(tmp_path)
     assert path.read_text() == "previous complete registration"
     assert list(path.parent.iterdir()) == [path]
+
+
+@pytest.mark.parametrize(
+    "header",
+    ['"dg-publish": true', "title: " + "x" * 1100 + "\ndg-publish: yes", "dg-publish: true # public"],
+)
+def test_publication_uses_full_yaml_for_existing_notes_and_allowlist(tmp_path, header):
+    content = "---\n" + header + "\n---\nbody"
+    (tmp_path / "live.md").write_text(content)
+    event = file_event(tmp_path, "live.md", "replacement", "delete")
+    result = run_check(tmp_path, "published-files", event)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) is not None
+    Path(os.environ["OBSIDIAN_KNOWLEDGE_CONFIG"]).write_text('publish_allowlist: ["Public/"]\n')
+    result = run_check(tmp_path, "publish-allowlist", file_event(tmp_path, "private.md", content))
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) is not None
+
+
+def test_publication_fails_closed_for_malformed_existing_frontmatter(tmp_path):
+    (tmp_path / "broken.md").write_text("---\ndg-publish: true")
+    result = run_check(tmp_path, "published-files", file_event(tmp_path, "broken.md", "replacement"))
+    assert result.returncode == 2
+    assert "missing closing" in result.stderr
+
+
+def test_file_protection_resolves_vault_and_internal_aliases(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(vault, target_is_directory=True)
+    internal = vault / "friendly"
+    (vault / "_sources").mkdir()
+    internal.symlink_to(vault / "_sources", target_is_directory=True)
+    for target in (alias / "_sources/original.md", internal / "original.md"):
+        result = run_check(vault, "protected-dirs", file_event(tmp_path, str(target)))
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) is not None

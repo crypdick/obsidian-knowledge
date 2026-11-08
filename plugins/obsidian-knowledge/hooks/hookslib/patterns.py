@@ -133,3 +133,24 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any] | None, str | None]:
         return parsed, None
     except yaml.YAMLError as e:
         return None, str(e)
+
+
+def is_published(content: str, *, fragment: bool = False) -> bool:
+    """Interpret publication as YAML Boolean true, never a text match.
+
+    Edit events can contain a YAML fragment rather than a complete note.
+    Malformed frontmatter fails closed; arbitrary non-YAML body fragments do
+    not themselves establish publication.
+    """
+    if yaml is None:
+        raise ValueError("PyYAML required to determine publication state")
+    metadata, error = parse_frontmatter(content)
+    if error:
+        raise ValueError(error)
+    if metadata is None and fragment:
+        try:
+            candidate = yaml.safe_load(content)
+        except yaml.YAMLError:
+            return False
+        metadata = candidate if isinstance(candidate, dict) else None
+    return bool(metadata and metadata.get("dg-publish") is True)

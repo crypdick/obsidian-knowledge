@@ -17,7 +17,7 @@ def iter_tool_uses(transcript_path: str) -> Iterable[dict[str, Any]]:
         # opened outside the `with` so only the open() is guarded by this narrow
         # except; the file is still context-managed by `with f:` below.
         f = open(transcript_path, encoding="utf-8")  # noqa: SIM115
-    except FileNotFoundError:
+    except OSError:
         return
     with f:
         for line in f:
@@ -28,7 +28,11 @@ def iter_tool_uses(transcript_path: str) -> Iterable[dict[str, Any]]:
                 entry = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            msg = entry.get("message") or {}
+            if not isinstance(entry, dict):
+                continue
+            msg = entry.get("message")
+            if not isinstance(msg, dict):
+                continue
             content = msg.get("content")
             if not isinstance(content, list):
                 continue
@@ -37,7 +41,7 @@ def iter_tool_uses(transcript_path: str) -> Iterable[dict[str, Any]]:
                     yield {
                         "id": block.get("id"),
                         "name": block.get("name"),
-                        "input": block.get("input") or {},
+                        "input": block["input"] if isinstance(block.get("input"), dict) else {},
                     }
 
 

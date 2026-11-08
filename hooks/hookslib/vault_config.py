@@ -38,7 +38,7 @@ def matching_vault_root(path: str, vault_roots: list[str] | None = None) -> str 
     """
     if vault_roots is None:
         vault_roots = load_vault_roots()
-    abs_path = os.path.abspath(os.path.expanduser(path))
+    abs_path = str(Path(path).expanduser().resolve())
     for root in vault_roots:
         if abs_path == root or abs_path.startswith(root + os.sep):
             return root

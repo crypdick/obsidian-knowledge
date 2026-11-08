@@ -1,5 +1,6 @@
 """Integration tests for reflect-nudge PostToolUse hook."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -45,7 +46,7 @@ def make_payload(session_id: str = "test-session") -> dict:
 
 
 def set_count(cache_root: Path, count: int, session_id: str = "test-session") -> None:
-    state = cache_root / session_id
+    state = cache_root / hashlib.sha256(session_id.encode()).hexdigest()[:24]
     state.mkdir(parents=True, exist_ok=True)
     (state / "bash-count").write_text(str(count))
 
@@ -67,7 +68,12 @@ class TestReflectNudge:
             env=env,
         )
         assert result.returncode == 0
-        assert (tmp_path / ".cache/obsidian-knowledge/home-session/bash-count").read_text() == "1"
+        assert (
+            tmp_path
+            / ".cache/obsidian-knowledge"
+            / hashlib.sha256(b"home-session").hexdigest()[:24]
+            / "bash-count"
+        ).read_text() == "1"
 
     def test_does_not_fire_before_threshold(self, tmp_path):
         """99th call produces no systemMessage."""
@@ -105,3 +111,31 @@ class TestReflectNudge:
         # Session A at call 100 SHOULD fire
         code, out = run_hook(make_payload("session-A"), tmp_path)
         assert "systemMessage" in out
+
+
+def test_invalid_envelopes_and_unavailable_state_are_silent(tmp_path):
+    for raw in (
+        "[]",
+        "42",
+        "null",
+        '{"session_id": 42}',
+        '{"session_id": "x", "stop_hook_active": []}',
+        "{}",
+    ):
+        result = run_raw_hook(raw, {"OBSIDIAN_KNOWLEDGE_CACHE_ROOT": str(tmp_path)})
+        assert result.returncode == 0
+        assert result.stdout == result.stderr == ""
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("occupied")
+    result = run_raw_hook(json.dumps(make_payload()), {"OBSIDIAN_KNOWLEDGE_CACHE_ROOT": str(blocked)})
+    assert result.returncode == 0
+    assert result.stdout == result.stderr == ""
+
+
+def test_session_identifier_cannot_escape_state_directory(tmp_path):
+    session = str(tmp_path / "escaped")
+    code, _ = run_hook(make_payload(session), tmp_path / "cache")
+    assert code == 0
+    assert not (tmp_path / "escaped").exists()
+    key = hashlib.sha256(session.encode()).hexdigest()[:24]
+    assert (tmp_path / "cache" / key / "bash-count").read_text() == "1"

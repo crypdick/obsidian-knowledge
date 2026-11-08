@@ -6,13 +6,14 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
-from hookslib.patterns import parse_frontmatter
+from hookslib.patterns import is_published
 from pydantic import BaseModel, ConfigDict, field_validator
 from vault_preferences import load_preferences
 
 from gardener.models import DEFAULT_STUB_PATTERNS
 from lib.vault_index.cli import resolve_vault as resolve_cli_vault
 from lib.vault_index.vault_files import write_vault_file
+from lib.vault_index.vault_listing import visible_name
 
 # NOTE: skills/vault-organizer/SKILL.md, Question report, documents this state path.
 REPORT_PATH = "Utility/obsidian-knowledge/reports/open-questions.md"
@@ -67,8 +68,7 @@ def validate_relative(relative: str) -> Path:
         rel.is_absolute()
         or not rel.parts
         or rel.as_posix() != relative
-        or any(part.startswith(".") or part in {"node_modules", "_sources"} for part in rel.parts)
-        or ".sync-conflict-" in relative
+        or any(not visible_name(part) for part in rel.parts)
     ):
         raise ValueError(f"not a visible vault path: {relative}")
     return rel
@@ -127,9 +127,16 @@ def write_checked(vault_root: Path, relative: str, before: str | None, after: st
     current = path.read_bytes().decode("utf-8") if path.exists() else None
     if current != before:
         raise ValueError(f"file changed since review: {relative}")
-    metadata, error = parse_frontmatter(current or "")
-    if error:
-        raise ValueError(f"cannot safely rewrite malformed frontmatter: {relative}")
-    if metadata and metadata.get("dg-publish") is True:
+    try:
+        published = is_published(current or "")
+    except ValueError as exc:
+        raise ValueError(f"cannot safely rewrite malformed frontmatter: {relative}") from exc
+    if published:
         raise ValueError(f"published note requires human consent: {relative}")
-    write_vault_file(vault_root, Path(relative), after.encode("utf-8"), replace=before is not None)
+    write_vault_file(
+        vault_root,
+        Path(relative),
+        after.encode("utf-8"),
+        replace=before is not None,
+        expected_content=before.encode("utf-8") if before is not None else None,
+    )

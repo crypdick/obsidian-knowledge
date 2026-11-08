@@ -313,3 +313,58 @@ def test_mutations_without_an_index_defer_to_next_sync(native_server):
     server, _, _ = native_server
     result = call(server, "vault_append", {"path": "folder/note.md", "content": "Next"})
     assert result["index"] == "queued"
+
+
+def test_competing_moves_recheck_destination_inside_lock(native_server, monkeypatch):
+    from lib.vault_index.obsidian_cli import NativeObsidian
+
+    server, vault, _ = native_server
+    (vault / "other.md").write_text("Other")
+
+    async def move(self, command, *arguments):
+        assert command == "move"
+        await asyncio.sleep(0.02)
+        args = dict(argument.split("=", 1) for argument in arguments)
+        (vault / args["path"]).rename(vault / args["to"])
+        return "Moved"
+
+    monkeypatch.setattr(NativeObsidian, "run", move)
+
+    async def compete():
+        return await asyncio.gather(
+            server.call_tool("vault_move", {"from_path": "folder/note.md", "to_path": "moved.md"}),
+            server.call_tool("vault_move", {"from_path": "other.md", "to_path": "moved.md"}),
+            return_exceptions=True,
+        )
+
+    outcomes = asyncio.run(compete())
+    assert sum(isinstance(value, ToolError) for value in outcomes) == 1
+    assert "already exists" in str(next(value for value in outcomes if isinstance(value, ToolError)))
+    remaining = [path for path in (vault / "folder/note.md", vault / "other.md") if path.exists()]
+    assert len(remaining) == 1
+    assert {remaining[0].read_text(), (vault / "moved.md").read_text()} == {"Original", "Other"}
+
+
+def test_native_reads_do_not_wait_for_mutation_lock(tmp_path, monkeypatch):
+    from lib.vault_index.obsidian_cli import NativeObsidian
+
+    async def properties(self, command, *arguments):
+        assert command == "properties"
+        return {"title": "Note"}
+
+    async def refresh(paths):
+        return "queued"
+
+    monkeypatch.setattr(NativeObsidian, "run_json", properties)
+    server = FastMCP("read-lock-test")
+    lock = threading.Lock()
+    register_native_tools(server, tmp_path, lock, refresh)
+
+    async def read_while_locked():
+        lock.acquire()
+        try:
+            return await asyncio.wait_for(server.call_tool("vault_frontmatter", {"path": "note.md"}), 1)
+        finally:
+            lock.release()
+
+    assert asyncio.run(read_while_locked())[1] == {"title": "Note"}

@@ -139,3 +139,13 @@ class TestRecallInit:
         assert code1 == 0 and code2 == 0
         assert "harness" in out1["hookSpecificOutput"]["additionalContext"].lower()
         assert out2 == {}  # second fire debounced → no injection
+
+
+def test_recall_invalid_registry_is_silent(tmp_path):
+    config = tmp_path / "vaults.yaml"
+    config.write_text("vaults: [invalid")
+    code, output = run_hook(
+        {"session_id": "registry-error"}, {"OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG": str(config)}
+    )
+    assert code == 0
+    assert output == {}

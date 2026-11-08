@@ -18,12 +18,23 @@ from .transcript import count_user_messages
 
 
 def read_input() -> dict[str, Any]:
-    """Read and parse the JSON payload from stdin. Returns {} on parse error."""
+    """Normalize optional lifecycle input; invalid envelopes become empty context."""
     try:
-        payload: dict[str, Any] = json.load(sys.stdin)
-        return payload
-    except (json.JSONDecodeError, ValueError):
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError, OSError):
         return {}
+    if not isinstance(payload, dict):
+        return {}
+    if any(key in payload and not isinstance(payload[key], str) for key in ("session_id", "transcript_path")):
+        return {}
+    if "stop_hook_active" in payload and not isinstance(payload["stop_hook_active"], bool):
+        return {}
+    return payload
+
+
+def session_state_key(session_id: str) -> str:
+    """Opaque filesystem key; host identifiers never become path components."""
+    return hashlib.sha256(session_id.encode()).hexdigest()[:24]
 
 
 def _marker_cooldown(session_id, marker_basename: str, cooldown_seconds: int) -> bool:
@@ -36,13 +47,15 @@ def _marker_cooldown(session_id, marker_basename: str, cooldown_seconds: int) ->
     """
     if not session_id:
         return False
-    marker = f"/tmp/.obsidian-hook-{marker_basename}-{session_id}"
+    marker = f"/tmp/.obsidian-hook-{marker_basename}-{session_state_key(session_id)}"
     now = time.time()
-    if os.path.exists(marker) and now - os.path.getmtime(marker) < cooldown_seconds:
+    try:
+        if os.path.exists(marker) and now - os.path.getmtime(marker) < cooldown_seconds:
+            return True
+        with open(marker, "w"):
+            pass
+    except OSError:
         return True
-    # Touch (create) the marker to start the next cooldown window.
-    with open(marker, "w"):
-        pass
     return False
 
 
@@ -76,7 +89,7 @@ def capture_debounce(
     user_message_count = count_user_messages(payload.get("transcript_path"))
     if user_message_count == 0:
         return True
-    session_digest = hashlib.sha256(str(session_id).encode()).hexdigest()[:24]
+    session_digest = session_state_key(str(session_id))
     generation = "unknown" if user_message_count is None else str(user_message_count)
     marker = os.path.join(
         tempfile.gettempdir(),
@@ -124,24 +137,27 @@ def session_debounce(
         return False
 
     msg_count = count_user_messages(payload.get("transcript_path"))
-    marker = f"/tmp/.obsidian-hook-{marker_basename}-{session_id}"
+    marker = f"/tmp/.obsidian-hook-{marker_basename}-{session_state_key(session_id)}"
     now = time.time()
 
-    if os.path.exists(marker):
-        within_cooldown = now - os.path.getmtime(marker) < cooldown_seconds
-        no_new_message = False
-        if msg_count is not None:
-            try:
-                last_count = int((_read_marker(marker) or "").strip())
-            except ValueError:
-                last_count = None
-            no_new_message = last_count is not None and msg_count <= last_count
-        if within_cooldown or no_new_message:
-            return True
+    try:
+        if os.path.exists(marker):
+            within_cooldown = now - os.path.getmtime(marker) < cooldown_seconds
+            no_new_message = False
+            if msg_count is not None:
+                try:
+                    last_count = int((_read_marker(marker) or "").strip())
+                except ValueError:
+                    last_count = None
+                no_new_message = last_count is not None and msg_count <= last_count
+            if within_cooldown or no_new_message:
+                return True
 
-    # Arm: record the current message count and reset the cooldown window.
-    with open(marker, "w") as fh:
-        fh.write("" if msg_count is None else str(msg_count))
+        # Arm: record the current message count and reset the cooldown window.
+        with open(marker, "w") as fh:
+            fh.write("" if msg_count is None else str(msg_count))
+    except OSError:
+        return True
     return False
 
 

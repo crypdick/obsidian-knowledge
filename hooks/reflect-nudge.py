@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hookslib import reflect_counter
+from hookslib.stop_hook import read_input, session_state_key
 
 REMINDER = (
     "Fix and verify bugs you introduce, failed validation of your changes, and defects "
@@ -42,15 +43,16 @@ def resolve_cache_root() -> Path:
 
 
 def main() -> int:
-    try:
-        payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
+    payload = read_input()
+    session_id = payload.get("session_id")
+    if not session_id:
         return 0
-
-    session_id = payload.get("session_id", "unknown")
-    session_state_dir = resolve_cache_root() / session_id
-
-    count = reflect_counter.increment(session_state_dir)
+    session_state_dir = resolve_cache_root() / session_state_key(session_id)
+    try:
+        count = reflect_counter.increment(session_state_dir)
+    except OSError:
+        # Optional reminder must not fail the tool call when state is unavailable.
+        return 0
 
     if reflect_counter.should_fire(count):
         json.dump({"systemMessage": REMINDER}, sys.stdout)

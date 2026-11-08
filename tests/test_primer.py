@@ -94,7 +94,7 @@ def test_build_primer_treats_missing_repo_memory_as_empty(
         hostname=None,
         remote_url="git@github.com:acme/project.git",
     )
-    monkeypatch.setattr("lib.vault_index.primer._resolve_memory_target", lambda _cwd: target)
+    monkeypatch.setattr("hookslib.primer.resolve_target", lambda _cwd: target)
 
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
 
@@ -118,7 +118,7 @@ def test_build_primer_reads_existing_repo_memory(
     memory_file = tmp_path / "wiki" / target.rel_path / "MEMORY.md"
     memory_file.parent.mkdir(parents=True)
     memory_file.write_text("- durable fact\n")
-    monkeypatch.setattr("lib.vault_index.primer._resolve_memory_target", lambda _cwd: target)
+    monkeypatch.setattr("hookslib.primer.resolve_target", lambda _cwd: target)
 
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
 
@@ -126,7 +126,7 @@ def test_build_primer_reads_existing_repo_memory(
     assert "No MEMORY.md exists yet" not in text
 
 
-def test_build_primer_adds_hooks_path_when_loaded_standalone(
+def test_build_primer_uses_canonical_module_without_path_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -135,5 +135,5 @@ def test_build_primer_adds_hooks_path_when_loaded_standalone(
 
     text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin", cwd=str(tmp_path))
 
-    assert hooks_dir in sys.path
+    assert hooks_dir not in sys.path
     assert "Agent memory for this host" in text

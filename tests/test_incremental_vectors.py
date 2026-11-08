@@ -200,11 +200,14 @@ def test_offline_sync_backfills_only_missing_vectors(tmp_path, monkeypatch, fake
         close(restored)
 
     fake_ollama.models = ("bge-m3:latest", "other-embed:latest")
+    from lib.vault_index.index_state import embedding_fingerprint
+
+    previous_fingerprint = embedding_fingerprint()
     monkeypatch.setenv("MEMWEAVE_EMBEDDING_MODEL", "ollama/other-embed")
     changed = Indexer(vault, cache, CONFIG)
     try:
         assert changed.vector_issue == (
-            "embedder changed (was ollama/bge-m3@320/64, now ollama/other-embed@320/64)"
+            f"embedder changed (was {previous_fingerprint}, now {embedding_fingerprint()})"
         )
         assert changed.full_reindex().indexed == 3
     finally:
@@ -328,7 +331,9 @@ def test_index_without_vector_table_is_not_ready(tmp_path, fake_ollama):
     with sqlite3.connect(cache / "index.sqlite") as connection:
         connection.execute("CREATE TABLE files (path TEXT PRIMARY KEY)")
         connection.execute("INSERT INTO files VALUES ('note.md')")
-    (cache / "embedder-fingerprint.txt").write_text("ollama/bge-m3@320/64")
+    from lib.vault_index.index_state import embedding_fingerprint
+
+    (cache / "embedder-fingerprint.txt").write_text(embedding_fingerprint())
     instance = Indexer(tmp_path, cache, CONFIG)
     try:
         assert instance.vector_issue == "vector index unavailable"

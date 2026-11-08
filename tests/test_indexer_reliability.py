@@ -138,7 +138,7 @@ def test_indexer_falls_back_when_preferred_cache_is_unwritable(tmp_path, monkeyp
 
 
 @pytest.mark.parametrize("with_vector_table", [False, True])
-def test_pre_fingerprint_cache_rebuild_depends_on_vector_table(tmp_path, with_vector_table):
+def test_pre_fingerprint_cache_requires_known_embedding_identity(tmp_path, with_vector_table):
     cache = tmp_path / "cache"
     cache.mkdir()
     db = cache / "index.sqlite"
@@ -153,7 +153,7 @@ def test_pre_fingerprint_cache_rebuild_depends_on_vector_table(tmp_path, with_ve
         skip_probe=True,
     )
     try:
-        assert (instance.vector_issue is None) is with_vector_table
+        assert instance.vector_issue == "embedding fingerprint unavailable"
     finally:
         close(instance)
 

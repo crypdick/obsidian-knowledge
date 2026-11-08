@@ -82,6 +82,10 @@ Edit `vault_index.index` to choose files to index and `vault_index.digest` to
 choose which indexed files appear in normal searches. `search --all` bypasses
 the digest filter, but cannot return files excluded from the index.
 
+Search configuration rejects unknown keys and invalid regular expressions when
+loaded. `top_k` must be a positive integer; weights and score thresholds must be
+finite numbers. Negative finite weights remain supported.
+
 Put naming conventions in the vault's `CLAUDE.md`. The organizer reads its zone
 configuration from the shared preferences file: `ai_managed: [wiki]` selects managed
 folders and is the default. Its state lives in

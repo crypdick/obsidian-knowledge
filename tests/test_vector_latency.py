@@ -15,12 +15,14 @@ import pytest
 import sqlite_vec
 
 from lib.vault_index.config import VaultIndexConfig
+from lib.vault_index.index_state import embedding_fingerprint
 from lib.vault_index.indexer import Indexer
 from obsidian_knowledge_vendor.memweave.storage.schema import ensure_schema, ensure_vector_table
 
 
 def seed_cache(cache: Path, vault: Path, count: int = 6000) -> None:
     cache.mkdir()
+    (cache / "embedder-fingerprint.txt").write_text(embedding_fingerprint())
     database = cache / "index.sqlite"
 
     async def schema():

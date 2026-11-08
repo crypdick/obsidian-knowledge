@@ -18,6 +18,7 @@ from hookslib.patterns import (
     DATE_PREFIX_RE,
     find_wikilink_ext_violations,
     is_in_dated_folder,
+    is_published,
     parse_frontmatter,
 )
 from hookslib.shell_guard import destructive_vault_ops, enters_protected_directory, write_targets
@@ -28,7 +29,7 @@ from hookslib.vault_policy import load_vault_policy
 def absolute_path(value: str) -> str:
     if not Path(value).is_absolute() or "\0" in value:
         raise ValueError("event paths must be absolute and contain no NUL bytes")
-    return value
+    return str(Path(value).resolve())
 
 
 AbsolutePath = Annotated[str, AfterValidator(absolute_path)]
@@ -81,12 +82,7 @@ def readonly(path: str, roots: list[str]) -> bool:
 def published(path: Path) -> bool:
     if not path.is_file():
         return False
-    with path.open(encoding="utf-8") as stream:
-        content = stream.read(1000)
-    if not content.startswith("---"):
-        return False
-    end = content.find("---", 3)
-    return end != -1 and bool(re.search(r"^dg-publish:\s*true", content[3:end], re.MULTILINE))
+    return is_published(path.read_text(encoding="utf-8"))
 
 
 def agent_memory(path: str) -> bool:
@@ -148,9 +144,7 @@ def file_blocks(name: str, change: Change, roots: list[str]) -> bool:
     policy = load_vault_policy()
     if name == "publish-allowlist":
         allowlist = policy.publish_allowlist
-        return bool(
-            allowlist and re.search(r"^\s*dg-publish:\s*true\s*$", content, re.MULTILINE)
-        ) and not any(
+        return bool(allowlist and is_published(content, fragment=True)) and not any(
             relative == entry.rstrip("/") or (entry.endswith("/") and relative.startswith(entry))
             for entry in allowlist
         )

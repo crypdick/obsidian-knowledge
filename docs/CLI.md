@@ -36,7 +36,7 @@ Use these commands to configure, search, and maintain the vault:
 | `init-vault-index` | Create the shared `config.yaml` preferences and its parent directory, or append search defaults to an existing mapping. An existing `vault_index` section is left unchanged. |
 | `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
 | `write PATH [--replace]` | Read stdin, apply opt-in [configured creation defaults](configuration.md#note-creation) to new Markdown files, then atomically write and verify bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Then [indexes the written note](#index-on-write). |
-| `reindex [--force] [--path PATH] [--timeout-seconds N]` | Queue coalesced work when the worker runs (`--force` requests a new generation). Otherwise, show an in-place progress bar on interactive stderr, index changed files and remove stale index entries. Files indexed while embeddings were unavailable get vectors without rebuilding the rest. Embeddings for small notes are batched across files; see [indexing progress](#indexing-progress). `--force` reprocesses unchanged files too. `--path` (repeatable) updates only the named vault-relative files or folders: notes present are indexed, and entries at or under a path that no longer exists (or is now excluded) are removed, so passing both the old and new path records a move without re-embedding. It exits 3 when the index is not ready, the embedder is unavailable, or another index operation holds the lock. Does not delete vault notes. |
+| `reindex [--force] [--path PATH] [--timeout-seconds N]` | Queue coalesced work when the worker runs (`--force` requests a new generation). Otherwise, drain the same queue and generation lifecycle in the foreground, with progress on interactive stderr. Index changed files and remove stale index entries. Keyword-only indexes receive a replacement vector generation when embeddings return. `--force` reprocesses unchanged files too. `--path` (repeatable) updates only the named vault-relative files or folders: notes present are indexed, and entries at or under a path that no longer exists (or is now excluded) are removed, so passing both the old and new path records a move without re-embedding. It exits 3 when the index is not ready, the embedder is unavailable, or another index operation holds the lock. Does not delete vault notes. |
 | `index-worker [--quiet-seconds N] [--scan-seconds N]` | Watch edits, coalesce work, cancel superseded indexing, and reconcile periodically. Defaults: 30 and 3600 seconds. |
 | `search QUERY [--top-k N] [--all] [--json]` | Print ranked paths and snippets, or a JSON search report. `--all` bypasses the digest filter, not the indexing exclusions. |
 | `remember TEXT [--top-k N] [--all]` | Print scored candidate homes; does not save the memory. |
@@ -250,12 +250,16 @@ cooldown while quiet files proceed. Content is checked before commit. Cancelling
 HTTP cannot guarantee Ollama stops computation already in flight; completed
 embedding batches remain reusable. Failed files remain pending with a 60-second
 retry delay. Offline embeddings do not mark work complete. Discovery excludes
-hidden directories, `_sources`, dependencies, sync conflicts, and external symlinks.
+hidden directories, `_sources`, dependency directories (`node_modules`, `venv`, and `__pycache__`), sync conflicts, and symlinks. Full, targeted, and worker indexing share these admission rules.
 
 `reindex` requests received while the worker runs coalesce into pending work;
 `--force` requests an unpublished replacement generation. Without a worker,
-`reindex` retains synchronous maintenance behavior. MCP refresh always queues
-reconciliation and requires the worker to make progress.
+`reindex` drains the same durable queue and generation lifecycle synchronously.
+Backend failures surface immediately and leave work pending; foreground commands
+do not retry indefinitely. If embeddings are unavailable, keyword-only recovery
+uses the existing full-sync path under the same worker ownership lock.
+MCP refresh always queues reconciliation and requires a worker or foreground
+`reindex` to make progress.
 
 First builds and embedding-setting changes use a separate generation. Readers
 continue using the old generation until pending work completes, then publication
@@ -264,7 +268,19 @@ atomically switches `current-generation`. Interrupted builds resume using
 switch; the previous index remains available. Normal file updates use short
 SQLite WAL transactions. Previous generations are retained for rollback and
 existing readers; remove obsolete generations only during stopped-service
-maintenance. The queue and generations live outside the vault.
+maintenance. The queue and generations live outside the vault. Restart reconciliation includes
+published paths, staged paths, and current files, so notes deleted during downtime
+cannot survive only in a resumed generation.
+
+Embedding identity includes provider, model, endpoint, and chunking settings;
+credentials are not part of identity. Legacy fingerprints without endpoint identity
+require a rebuild; keyword retrieval remains available during migration. Worker,
+query fallback, and MCP readiness use the same persisted-readiness contract.
+
+Foreground online indexing deliberately uses the same per-file worker pipeline,
+not cross-file embedding batches. This trades batching throughput for one recovery
+and publication contract; offline keyword recovery retains the legacy full-sync
+pipeline.
 
 The worker warms Ollama with an empty `/api/embed` request at startup and every
 five minutes, with a separate 120-second timeout and a 60-second retry on HTTP
@@ -274,19 +290,18 @@ warmup request. Other embedding providers do not receive Ollama warmups.
 
 ### Indexing progress
 
-Indexing commits embeddings in batches sized to take about five seconds each,
-starting with four chunks and adapting to the embedder's measured speed. On a
-CPU-only host embedding about one chunk every two seconds, an interrupted
-reindex loses at most the few chunks in flight; rerunning computes only the
-remainder. Fast embedders grow to batches of 64. Indexing processes notes in
-the digest (the default search scope) first, so a first build or rebuild makes
-them searchable before other indexed notes.
+Within each note, embedding batches target about five seconds of work, starting
+with four chunks and growing to at most 64. Completed batches are cached before
+file publication, so interrupted notes can reuse completed work when retried in
+the same generation. File text, vectors, and recorded revision publish together.
+Foreground progress counts queue operations, including reconciliation; it does
+not imply a replacement generation is visible before every pending file settles.
 
-A sync while the embedder is unavailable indexes changed files for keyword
-search only. The next sync with the embedder available adds vectors to exactly
-those files and keeps every other stored vector. Only a different embedding
-model, endpoint, or chunking setting rebuilds vectors for the whole vault, and
-cached embeddings make returning to a previous model cheap.
+An offline foreground sync indexes changed files for keyword search. Once the
+embedder returns, a replacement generation restores vector coverage. Provider,
+model, endpoint, or chunking changes also require a replacement generation.
+Normal edits reuse chunk embeddings within the active generation; replacement
+generations start with their own embedding cache.
 
 ### Index on write
 
