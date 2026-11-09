@@ -127,7 +127,7 @@ def exercise(executable: str, root: Path) -> None:
         output = run("_hook", "stop", "--kind", kind, content=stop_payload)
         if kind == "capture-session":
             assert json.loads(output)["decision"] == "block"
-    run("_hook", "stop", "--kind", "invalid", content="{}", expected=2)
+    run("_hook", "stop", "--kind", "invalid", content="{}")
     exercise_garden(vault, config, run)
     print(f"All {checks} installed CLI checks passed.")
 

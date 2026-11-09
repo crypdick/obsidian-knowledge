@@ -175,3 +175,10 @@ filenames. Protection checkers retain their separate fail-closed policy.
 The parent `index.md` reminder supports Claude transcripts only. Codex does not
 register that reminder; use vault-organizer for parent-index upkeep. This is
 separate from search-index reconciliation performed by the indexing worker.
+
+
+The private _hook dispatcher is an optional lifecycle boundary: invalid arguments
+or execution failures exit successfully without a hook response; diagnostics remain
+on stderr, so host retries cannot trap the session. Rejected arguments are
+not accepted, translated, or forwarded. Valid JSON blocking responses still reach
+the host. Protection checkers use a separate CLI and remain fail-closed.
