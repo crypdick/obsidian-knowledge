@@ -99,8 +99,26 @@ def main() -> None:
             unavailable.bind(("127.0.0.1", 0))
             env["MEMWEAVE_EMBEDDING_API_BASE"] = f"http://127.0.0.1:{unavailable.getsockname()[1]}"
             output = run([cli, "setup", "--vault", str(vault)], env, root)
-            if "Setup complete." not in output or "Search mode: keyword-only" not in output:
-                raise RuntimeError("First-time setup did not finish in keyword mode")
+            if "Setup complete." not in output:
+                raise RuntimeError("First-time setup did not finish")
+            # Verify persisted behavior, not an incidental console banner.
+            run(
+                [
+                    str(python),
+                    "-c",
+                    (
+                        "import sys; from pathlib import Path; "
+                        "from lib.vault_index.mcp_index import read_index_status; "
+                        "status = read_index_status(Path(sys.argv[1])); "
+                        "assert status.index_exists and status.indexed_files == 1, status; "
+                        "assert not status.vector_index_ready, status; "
+                        "assert status.degraded_reason == 'index built in keyword-only mode', status"
+                    ),
+                    str(vault),
+                ],
+                env,
+                root,
+            )
             # Omit --vault to check that setup registered it in the isolated config.
             output = run([cli, "search", "Quokkas"], env, root)
             if "example.md" not in output:
