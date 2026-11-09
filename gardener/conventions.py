@@ -5,10 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from hookslib.patterns import (
-    DATE_PREFIX_RE,
-    PERIODIC_NOTE_RE,
+    dated_filename_violation,
     find_wikilink_ext_violations,
-    is_in_dated_folder,
     parse_frontmatter,
 )
 from hookslib.vault_policy import load_vault_policy
@@ -31,15 +29,8 @@ def sweep(vault_root: Path) -> list[str]:
         if not path.is_file() or path.suffix != ".md":
             continue
 
-        if is_in_dated_folder(rel_str):
-            basename = path.name
-            is_journal = rel_str.startswith("Journal/")
-            if (
-                basename != "index.md"
-                and not DATE_PREFIX_RE.match(basename)
-                and not (is_journal and PERIODIC_NOTE_RE.match(basename))
-            ):
-                issues.append(f"UNDATED_FILE\t{rel_str}")
+        if dated_filename_violation(rel_str):
+            issues.append(f"UNDATED_FILE\t{rel_str}")
 
         try:
             content = path.read_text(encoding="utf-8", errors="replace")

@@ -6,8 +6,12 @@ import argparse
 import re
 from pathlib import Path
 
+from markdown_spans import markdown_text
+
 from gardener.conventions import sweep
+from gardener.frontmatter import stacked_marker
 from gardener.io import OrganizerPolicy, iter_markdown, iter_paths, resolve_vault, visible_path
+from gardener.link_targets import resolve_target
 
 SKIP_NAMES = {"index.md"}
 SKIP_PATTERNS = [
@@ -18,7 +22,6 @@ TYPED_SUBFOLDERS = {"plans", "convos", "diary", "reference", "_sources", "archiv
 DUMPING_GROUND_SKIP_NAMES = {"archive", "_sources", "Utility"}
 DUMPING_GROUND_THRESHOLD = 4
 AUDIT_SKIP_ZONES = {"Utility"}
-FRONTMATTER_SCAN_LINE_LIMIT = 60
 
 # Patterns matching filenames that belong in a typed subfolder (diary/, convos/,
 # plans/) rather than at folder root. Inline files NOT matching these are
@@ -39,7 +42,7 @@ def is_skipped(name: str) -> bool:
 
 
 def extract_wikilink_targets(text: str) -> set[str]:
-    return set(re.findall(r"\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]", text))
+    return set(re.findall(r"\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]", markdown_text(text)))
 
 
 def has_visible_content(folder: Path, vault_root: Path) -> bool:
@@ -51,22 +54,13 @@ def has_visible_content(folder: Path, vault_root: Path) -> bool:
 
 def links_entry(targets: set[str], entry: Path, folder: Path, vault_root: Path) -> bool:
     # NOTE: docs/CLI.md, Vault maintenance, describes conservative path resolution.
-    expected = entry.relative_to(vault_root).as_posix().removesuffix(".md")
-    bases = (vault_root, folder, *(vault_root / parent for parent in folder.relative_to(vault_root).parents))
     for target in targets:
-        target = target.removesuffix(".md")
-        if expected != target and not expected.endswith("/" + target):
+        try:
+            candidate = resolve_target(vault_root, folder, target)
+        except ValueError:
             continue
-        for base in bases:
-            relative = base.relative_to(vault_root) / (target + ".md")
-            try:
-                candidate = visible_path(vault_root, relative.as_posix())
-            except ValueError:
-                break
-            if candidate.is_file():
-                if candidate == entry:
-                    return True
-                break
+        if candidate == entry:
+            return True
     return False
 
 
@@ -131,34 +125,11 @@ def is_misplaced_inline(filename: str) -> bool:
 
 
 def has_stacked_frontmatter(file: Path) -> bool:
-    """True if file starts with two consecutive YAML frontmatter blocks.
-
-    Pattern: line 1 is `---`, find closing `---`, then next non-blank line is
-    also `---`. Triggered by tools like update-time-on-edit injecting a
-    `created/updated` block on top of a Templater-emitted block.
-    """
+    """Report possible stacked blocks; a thematic break may have the same shape."""
     try:
-        with open(file, encoding="utf-8", errors="replace") as f:
-            lines = []
-            for i, line in enumerate(f):
-                if i >= FRONTMATTER_SCAN_LINE_LIMIT:
-                    break
-                lines.append(line.rstrip("\n"))
+        return stacked_marker(file.read_text(encoding="utf-8", errors="replace"))
     except OSError:
         return False
-
-    if not lines or lines[0] != "---":
-        return False
-
-    close_idx = next((i for i in range(1, len(lines)) if lines[i] == "---"), None)
-    if close_idx is None:
-        return False
-
-    j = close_idx + 1
-    while j < len(lines) and lines[j].strip() == "":
-        j += 1
-
-    return j < len(lines) and lines[j] == "---"
 
 
 def walk_vault_for_stacked_frontmatter(vault_root: Path) -> list[str]:

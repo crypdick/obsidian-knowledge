@@ -254,3 +254,53 @@ def test_missing_embedding_does_not_hide_database_errors(tmp_path, monkeypatch):
                 await IndexedHybridSearch(HybridConfig()).search(connection, "query", None, "model", 1)
 
     asyncio.run(retrieve())
+
+
+def test_hybrid_document_pool_cannot_be_consumed_by_one_long_note(tmp_path):
+    cache = tmp_path / "cache"
+    seed_cache(cache, tmp_path, count=300)
+    with closing(sqlite3.connect(cache / "index.sqlite")) as connection, connection:
+        connection.execute(
+            "UPDATE chunks SET path = ? WHERE cast(id AS int) < 297", (str(tmp_path / "long.md"),)
+        )
+        connection.enable_load_extension(True)
+        sqlite_vec.load(connection)
+        connection.execute(
+            "UPDATE chunks_vec SET embedding = ?", (struct.pack("1024f", 1.0, *([0.0] * 1023)),)
+        )
+    instance = Indexer(tmp_path, cache, VaultIndexConfig(), skip_probe=True)
+
+    async def embed_query(text):
+        return [1.0, *([0.0] * 1023)]
+
+    instance._store.embedding_provider.embed_query = embed_query
+    try:
+        report = instance.search_report("no-keyword-match")
+        assert report.mode == "hybrid"
+        assert {hit.path for hit in report.hits} == {"long.md", "note-297.md", "note-298.md", "note-299.md"}
+    finally:
+        asyncio.run(instance._store.close())
+
+
+def test_exhausted_chunk_budget_reports_keyword_fallback_not_empty_hybrid(tmp_path):
+    cache = tmp_path / "cache"
+    seed_cache(cache, tmp_path, count=4100)
+    with closing(sqlite3.connect(cache / "index.sqlite")) as connection, connection:
+        connection.execute("UPDATE chunks SET path = ?", (str(tmp_path / "long.md"),))
+        connection.execute(
+            "INSERT INTO chunks_fts VALUES ('needle', 'last', ?, 'memory', 'ollama/bge-m3', 1, 1)",
+            (str(tmp_path / "eligible.md"),),
+        )
+    instance = Indexer(tmp_path, cache, VaultIndexConfig(), skip_probe=True)
+
+    async def embed_query(text):
+        return [1.0, *([0.0] * 1023)]
+
+    instance._store.embedding_provider.embed_query = embed_query
+    try:
+        report = instance.search_report("needle")
+        assert report.mode == "keyword"
+        assert report.degraded_reason == "eligible document candidate budget exhausted"
+        assert [hit.path for hit in report.hits] == ["eligible.md"]
+    finally:
+        asyncio.run(instance._store.close())

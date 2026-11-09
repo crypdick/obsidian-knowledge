@@ -11,7 +11,8 @@ from collections.abc import Iterable
 from difflib import SequenceMatcher
 from pathlib import Path
 
-import yaml as yaml_module
+from hookslib.patterns import parse_frontmatter
+from markdown_spans import markdown_text
 
 from gardener.io import OrganizerPolicy, iter_paths, resolve_vault, visible_path, write_checked
 from gardener.models import (
@@ -87,16 +88,8 @@ def managed_sources(item: UnresolvedItem, config: OrganizerPolicy, vault_root: P
 
 
 def frontmatter_aliases(text: str) -> tuple[str, ...]:
-    if not text.startswith("---\n"):
-        return ()
-    end = text.find("\n---", 4)
-    if end == -1:
-        return ()
-    try:
-        frontmatter = yaml_module.safe_load(text[4:end]) or {}
-    except yaml_module.YAMLError:
-        return ()
-    if not isinstance(frontmatter, dict):
+    frontmatter, error = parse_frontmatter(text)
+    if error or frontmatter is None:
         return ()
     aliases = frontmatter.get("aliases", [])
     if isinstance(aliases, str):
@@ -308,13 +301,13 @@ def rewrite_source(vault_root: Path, source: str, old_link: str, new_target: str
     path = OrganizerPolicy.load().writable(vault_root, source)
     text = path.read_bytes().decode("utf-8")
     escaped = re.escape(old_link)
-    pattern = re.compile(r"\[\[(" + escaped + r")(?P<suffix>[#^|\]])")
+    pattern = re.compile(r"\[\[(" + escaped + r")(?=[#^|\]])[^\]\r\n]*\]\]")
 
-    def repl(match: re.Match[str]) -> str:
-        suffix = match.group("suffix")
-        return "[[" + new_target + suffix
-
-    new_text, count = pattern.subn(repl, text)
+    matches = list(pattern.finditer(markdown_text(text)))
+    new_text = text
+    for match in reversed(matches):
+        new_text = new_text[: match.start(1)] + new_target + new_text[match.end(1) :]
+    count = len(matches)
     if count and new_text != text:
         write_checked(vault_root, source, text, new_text)
         return count

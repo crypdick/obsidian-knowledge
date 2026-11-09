@@ -42,7 +42,7 @@ Triage findings within the requested scope:
   or delete folders automatically.
 - `DUMPING_GROUND`: classify misplaced dated, design, diary, and conversation
   notes by meaning. Follow [note locations](lib/note-types.md).
-- `STACKED_FRONTMATTER`: use `obsidian-knowledge garden frontmatter --apply NOTE_PATH`.
+- `STACKED_FRONTMATTER`: inspect with `obsidian-knowledge garden frontmatter NOTE_PATH`; review manually, because markers may be valid thematic breaks.
   `NEEDS_MERGE` requires [manual frontmatter repair](lib/stacked-frontmatter.md).
 - `ILLEGAL_FILENAME`: review the path and offending characters against configured
   `illegal_filename_chars`. Checks cover visible files, attachments, and folders.

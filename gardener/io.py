@@ -7,7 +7,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from hookslib.patterns import is_published
-from pydantic import BaseModel, ConfigDict, field_validator
+from hookslib.vault_policy import VaultPolicy
+from pydantic import ConfigDict, field_validator
 from vault_preferences import load_preferences
 
 from gardener.models import DEFAULT_STUB_PATTERNS
@@ -29,11 +30,9 @@ def resolve_vault(explicit: Path | None = None) -> Path:
     return root
 
 
-class OrganizerPolicy(BaseModel):
+class OrganizerPolicy(VaultPolicy):
     model_config = ConfigDict(frozen=True)
     ai_managed: tuple[str, ...] = ("wiki",)
-    ai_readonly_folders: tuple[str, ...] = ()
-    ai_readonly_root_files: tuple[str, ...] = ()
     stub_link_patterns: tuple[str, ...] = tuple(DEFAULT_STUB_PATTERNS)
 
     @field_validator("ai_managed", "ai_readonly_folders", "ai_readonly_root_files")
@@ -49,9 +48,7 @@ class OrganizerPolicy(BaseModel):
 
     def writable(self, vault_root: Path, relative: str) -> Path:
         path = visible_path(vault_root, relative)
-        if relative in self.ai_readonly_root_files or any(
-            within(relative, folder) for folder in self.ai_readonly_folders
-        ):
+        if self.readonly_relative(relative):
             raise ValueError(f"read-only path: {relative}")
         if relative != REPORT_PATH and not any(within(relative, zone) for zone in self.ai_managed):
             raise ValueError(f"outside managed zones: {relative}")

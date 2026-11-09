@@ -354,7 +354,7 @@ def test_default_cache_dir_honors_cache_root_env(tmp_path, monkeypatch):
     assert cache_dir.name.startswith("vault-")
 
 
-def test_default_cache_dir_prefers_existing_user_cache_even_when_unwritable(tmp_path, monkeypatch):
+def test_default_cache_dir_shares_unwritable_fallback_with_cli(tmp_path, monkeypatch):
     vault = tmp_path / "vault"
     vault.mkdir()
     monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", raising=False)
@@ -363,5 +363,8 @@ def test_default_cache_dir_prefers_existing_user_cache_even_when_unwritable(tmp_
     cache_dir = default_cache_dir(vault)
 
     assert cache_dir.parent.name == "obsidian-knowledge"
-    assert cache_dir.parent.parent.name.startswith("user_cache")
+    from lib.vault_index.cli import default_cache_dir_for_vault
+
+    assert cache_dir == default_cache_dir_for_vault(vault)
+    assert cache_dir.parent.parent == Path("/tmp/obsidian-knowledge-cache")
     assert cache_dir.name.startswith("vault-")

@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
+from note_frontmatter import frontmatter_envelope
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, field_validator
 from vault_preferences import load_preferences
 
@@ -88,19 +89,16 @@ def initialize_note(vault_root: Path, relative_path: Path, content: bytes) -> by
     text = content.decode("utf-8-sig")
     bom = "\ufeff" if content.startswith(b"\xef\xbb\xbf") else ""
     newline = "\r\n" if "\r\n" in text else "\n"
-    frontmatter = re.match(
-        r"\A(?P<opening>---[ \t]*\r?\n)(?P<yaml>.*?)(?P<closing>^(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z))",
-        text,
-        flags=re.MULTILINE | re.DOTALL,
-    )
+    try:
+        frontmatter = frontmatter_envelope(text)
+    except ValueError as exc:
+        raise ValueError("new note has unclosed YAML frontmatter") from exc
     if frontmatter:
         try:
             raw = yaml.safe_load(frontmatter["yaml"])
         except yaml.YAMLError as exc:
             raise ValueError("new note has malformed YAML frontmatter") from exc
         metadata = NoteFrontmatter.model_validate({} if raw is None else raw)
-    elif re.match(r"\A---[ \t]*(?:\r?\n|\Z)", text):
-        raise ValueError("new note has unclosed YAML frontmatter")
     else:
         metadata = NoteFrontmatter()
 

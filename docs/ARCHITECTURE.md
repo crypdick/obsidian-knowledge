@@ -41,7 +41,9 @@ nearest-neighbor query. Memweave normalizes embeddings, so L2 candidate ordering
 matches cosine ordering; the strategy derives cosine scores from L2 distance
 without fetching vectors a second time and retains the keyword merge. Model and source filters apply before candidate selection. Pools
 are capped at sqlite-vec's 4096-candidate ceiling; large requests never switch
-back to exhaustive JSON-vector retrieval.
+back to exhaustive JSON-vector retrieval. The strategy owns bounded expansion,
+filters digest eligibility, and deduplicates documents before returning candidates.
+Budget exhaustion degrades explicitly to keyword retrieval.
 Schema initialization adds a covering `(model, source, id)` chunk index to both
 new and existing caches. This keeps candidate eligibility off the large chunk
 text/JSON-embedding table without changing ranking, filters, or embedding policy;
@@ -54,8 +56,9 @@ retrieval, including during index updates. Rebuild generations are published
 separately; query connections never create schema or run maintenance.
 
 The wheel installs `hooks/vault_registry.py` as the top-level `vault_registry`
-module, `hooks/vault_preferences.py` as `vault_preferences`, and
-`hooks/hookslib/` as `hookslib`. The registry owns only host-local vault paths;
+module, `hooks/vault_preferences.py` as `vault_preferences`,
+`hooks/note_frontmatter.py` and `hooks/markdown_spans.py` as dependency-light
+shared document parsers, and `hooks/hookslib/` as `hookslib`. The registry owns only host-local vault paths;
 preferences own portable policy and relative template selection. Hooks, the CLI, and gardener commands
 share these canonical module names in source checkouts and installed wheels.
 
@@ -65,7 +68,8 @@ The static import checker is `scripts/prek_hooks/check_architecture.py`.
 Preserve these boundaries:
 
 - `lib` imports neither adapters nor shared hooks. Only `cli.py` dispatches
-  to `gardener.cli`.
+  to `gardener.cli`. Dependency-light top-level registry, preferences, and
+  document-parser modules may be shared with `lib`.
 - `hooks/hookslib` imports neither `lib`, `vault_index`, nor `gardener`.
   It may import the shared `vault_registry` and `vault_preferences` modules.
 - Hook entrypoints import `hookslib` and may import `lib.vault_index` for the doctor.
@@ -130,3 +134,11 @@ cancels superseded work, and retains failures for retry. Queries never schedule
 maintenance. `index_generations.py` publishes rebuilds with an atomic pointer;
 existing readers retain their chosen generation. See
 [CLI operations](CLI.md#settled-file-indexing-worker).
+
+## Cache identity
+
+`cache_paths.py` selects one host-local, vault-keyed cache root for workers,
+queries and MCP status without creating state. An inaccessible default base uses
+the sandbox base; explicit overrides never silently fall back. Once selected,
+concrete generations fail on storage errors rather than relocating away from
+their queue and publication pointer.

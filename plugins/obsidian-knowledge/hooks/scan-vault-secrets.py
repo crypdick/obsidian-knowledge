@@ -10,8 +10,8 @@ Vault detection: cwd must be inside a configured vault root from
 per session per 5 minutes, tracked via a /tmp marker's mtime.
 
 First run (or missing baseline) does a full scan of the vault.
-Subsequent runs are incremental: only files modified since the baseline
-mtime are rescanned. Findings merge into the baseline at
+Subsequent runs hash eligible content and rescan only changed file versions.
+Host-local completion state is independent of baseline audit/alert writes. Findings merge into the baseline at
 <vault>/.secrets.baseline, preserving audit decisions on findings that
 still exist after the rescan.
 
@@ -96,6 +96,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -108,6 +109,7 @@ from pydantic import BaseModel
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hookslib.secret_alerts import ALERTED_KEY, baseline_lock, record_alerts, sync_needs_attention
+from hookslib.secret_progress import ScanProgress, content_digest, content_version, scan_completed
 from hookslib.stop_hook import emit_block, in_cooldown, read_input
 from hookslib.vault_config import is_in_vault, load_vault_roots, matching_vault_root
 
@@ -209,29 +211,26 @@ DETECT_SECRETS_CFG = {
 }
 
 
-def find_files(root: str, since_mtime: float = 0.0) -> list[str]:
-    """Return regular files under `root` with mtime > `since_mtime`.
+def find_files(root: str) -> list[str]:
+    """Enumerate eligible regular files completely; failed discovery cannot mean deletion."""
 
-    Returns paths RELATIVE to `root` so that they match the keys
-    detect-secrets stores in the baseline. `since_mtime=0.0` returns
-    every file (full bootstrap walk). Skips hidden directories and
-    known noise directories.
-    """
+    def abort(error: OSError) -> None:
+        raise error
+
     out: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root, onerror=abort):
         dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in SKIP_NAMED_DIRS]
         for fn in filenames:
             ext = os.path.splitext(fn)[1].lower()
-            if ext in EXCLUDE_EXTS:
-                continue
-            if fn in {BASELINE_FILENAME, KNOWN_LEAKED_FILENAME}:
+            if ext in EXCLUDE_EXTS or fn in {BASELINE_FILENAME, KNOWN_LEAKED_FILENAME}:
                 continue
             absolute = os.path.join(dirpath, fn)
             try:
-                if os.path.getmtime(absolute) > since_mtime:
-                    out.append(os.path.relpath(absolute, root))
-            except OSError:
-                continue
+                status = os.stat(absolute)
+            except FileNotFoundError:
+                continue  # Removed after enumeration; a real deletion, unlike an unreadable path.
+            if stat.S_ISREG(status.st_mode):
+                out.append(os.path.relpath(absolute, root))
     return out
 
 
@@ -240,7 +239,7 @@ def run_scan(
     vault_root: str,
     scan_paths: list[str],
     all_paths: list[str],
-) -> None:
+) -> list[str]:
     """Scan `scan_paths` and merge into baseline at `baseline_path`.
 
     All path arguments are vault-relative. `scan_paths` are files
@@ -265,8 +264,7 @@ def run_scan(
         fresh_sc = SecretsCollection(root=vault_root)
         # Incremental hooks must work without multiprocessing sockets, including
         # Python 3.14 forkserver sockets denied by restricted agent sandboxes.
-        for scan_path in scan_paths:
-            fresh_sc.scan_file(scan_path)
+        completed = [path for path in scan_paths if scan_completed(fresh_sc.scan_file, path)]
 
         old_sc: SecretsCollection | None = None
         if baseline_path.exists():
@@ -277,12 +275,12 @@ def run_scan(
                 old_sc = None
 
         result_sc = SecretsCollection(root=vault_root)
+        rescanned = set(completed)
         if old_sc is not None:
             # Carry forward old findings for files we did NOT rescan
             # and that still exist. The PotentialSecret objects retain
             # their audit flags as-is.
             still_present = set(all_paths)
-            rescanned = set(scan_paths)
             for fp in list(old_sc.files):
                 if fp not in rescanned and fp in still_present:
                     result_sc.data[fp] = old_sc.data[fp]
@@ -290,13 +288,15 @@ def run_scan(
         # Add fresh scan findings (audit flags blank — populated by
         # merge() below where old finding hash still matches).
         for fp in fresh_sc.files:
-            result_sc.data[fp] = fresh_sc.data[fp]
+            if fp in rescanned:
+                result_sc.data[fp] = fresh_sc.data[fp]
 
         if old_sc is not None:
             result_sc.merge(old_sc)
         _drop_same_value_duplicates(result_sc)
 
         _save_if_changed(result_sc, baseline_path, ds_baseline)
+        return completed
 
 
 def _drop_same_value_duplicates(result_sc: SecretsCollection) -> None:
@@ -457,15 +457,48 @@ def scan_known_leaked(
 
 
 def scan_and_track(
-    baseline_path: Path, vault_root: str, scan_paths: list[str], all_paths: list[str], *, manual: bool
-) -> tuple[int, list[str]]:
-    """Scan under the host lock; return all unaudited (manual) or newly alerted findings."""
-    with baseline_lock(vault_root):
-        run_scan(baseline_path, vault_root, scan_paths, all_paths)
+    baseline_path: Path, vault_root: str, *, manual: bool, full: bool = False
+) -> tuple[int, list[str], list[str], list[str]]:
+    """Select and complete exact file versions under the host lock, then track alerts."""
+    # NOTE: docs/hooks.md documents content progress and conservative rescan triggers.
+    with baseline_lock(vault_root) as lock_path:
+        progress_path = Path(lock_path).with_suffix(".json")
+        progress = ScanProgress.load(progress_path)
+        all_paths = find_files(vault_root)
+        versions = {path: content_version(Path(vault_root) / path) for path in all_paths}
+        reset = (
+            full
+            or not scan_policy_is_current(baseline_path)
+            or progress.revision != SCAN_POLICY_VERSION
+            or progress.baseline != content_digest(baseline_path)
+        )
+        scan_paths = [
+            path
+            for path, version in versions.items()
+            if version is not None and (reset or progress.files.get(path) != version[0])
+        ]
+        scanned = run_scan(baseline_path, vault_root, scan_paths, all_paths)
+        completed = (
+            {} if reset else {path: digest for path, digest in progress.files.items() if path in all_paths}
+        )
+        for path in scan_paths:
+            version = versions[path]
+            if (
+                path in scanned
+                and version is not None
+                and content_version(Path(vault_root) / path) == version
+            ):
+                completed[path] = version[0]
+            else:
+                completed.pop(path, None)
         unaudited = count_unaudited(baseline_path)
         new_count, new_sample, unaudited_paths = record_alerts(baseline_path, UNAUDITED_SAMPLE_LIMIT)
         sync_needs_attention(vault_root, unaudited_paths)
-    return unaudited if manual else (new_count, new_sample)
+        ScanProgress(
+            revision=SCAN_POLICY_VERSION, baseline=content_digest(baseline_path), files=completed
+        ).save(progress_path)
+    count, sample = unaudited if manual else (new_count, new_sample)
+    return count, sample, scan_paths, all_paths
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -510,21 +543,12 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(0)
 
     baseline_path = Path(vault_root) / BASELINE_FILENAME
-    all_paths = find_files(vault_root)
-    # Baseline mtime is the vault-global "last scanned" signal — using
-    # the per-session cooldown marker here would force a full scan in
-    # every new session.
-    if args.full or not scan_policy_is_current(baseline_path):
-        scan_paths = all_paths
-    else:
-        scan_paths = find_files(vault_root, since_mtime=baseline_path.stat().st_mtime)
-        # Even with no rescans, we still call run_scan so deletions get
-        # pruned from the baseline.
-
-    count, sample = scan_and_track(baseline_path, vault_root, scan_paths, all_paths, manual=args.manual)
+    count, sample, scan_paths, all_paths = scan_and_track(
+        baseline_path, vault_root, manual=args.manual, full=args.full
+    )
 
     # Known-leaked literals: walk every file in the vault, not just
-    # mtime-changed ones, so a literal added to .secrets.known-leaked
+    # changed-content ones, so a literal added to .secrets.known-leaked
     # surfaces existing occurrences immediately.
     literals = load_known_leaked(vault_root)
     if literals:

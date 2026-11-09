@@ -15,9 +15,8 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, ValidationError
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from hookslib.patterns import (
-    DATE_PREFIX_RE,
+    dated_filename_violation,
     find_wikilink_ext_violations,
-    is_in_dated_folder,
     is_published,
     parse_frontmatter,
 )
@@ -62,7 +61,7 @@ MESSAGES = {
     "memory-routing": "Do not write operational facts to agent auto-memory. Search the Obsidian wiki; file only durable, novel facts not recoverable from code, git, docs, or runtime. Use the repo or host memory scope in the vault. No override.",
     "decision-records": "Do not create a docs/decisions/ directory; this repository has no tracked decision records there. Record durable decisions with obsidian-knowledge in the Obsidian wiki. Ask the human for consent to override.",
     "wikilinks": "Remove .md extensions from wikilinks: use [[foo]], not [[foo.md]]. No override.",
-    "dated-filenames": "New notes in dated folders need a YYYY-MM-DD filename prefix; index.md is exempt. No override.",
+    "dated-filenames": "New notes in dated folders need a YYYY-MM-DD filename prefix; index.md and periodic Journal names are exempt. No override.",
     "frontmatter": "Vault note has malformed YAML frontmatter. Fix it before writing. No override.",
 }
 
@@ -73,10 +72,7 @@ def readonly(path: str, roots: list[str]) -> bool:
         return False
     policy = load_vault_policy()
     relative = Path(path).relative_to(root)
-    return bool(relative.parts) and (
-        relative.parts[0] in policy.ai_readonly_folders
-        or (len(relative.parts) == 1 and relative.name in policy.ai_readonly_root_files)
-    )
+    return policy.readonly_relative(relative.as_posix())
 
 
 def published(path: Path) -> bool:
@@ -157,9 +153,7 @@ def file_blocks(name: str, change: Change, roots: list[str]) -> bool:
     if name == "illegal-filenames":
         return any(char in path.name for char in policy.illegal_filename_chars)
     if name == "dated-filenames":
-        return (
-            is_in_dated_folder(relative) and path.name != "index.md" and not DATE_PREFIX_RE.match(path.name)
-        )
+        return dated_filename_violation(relative)
     return False
 
 

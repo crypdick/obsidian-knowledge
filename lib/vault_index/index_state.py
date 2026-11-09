@@ -37,8 +37,11 @@ def embedding_fingerprint() -> str:
 def vector_issue(cache: Path) -> str | None:
     """One persisted-readiness contract shared by queries, workers, and MCP."""
     database = cache / "index.sqlite"
-    if not database.exists() or indexed_file_count(database) == 0:
+    if not database.exists():
         return "index not built yet"
+    count = indexed_file_count(database)
+    if count is None:
+        return "index unreadable"
     if rebuild_pending(database):
         return "index rebuild incomplete"
     try:
@@ -50,7 +53,7 @@ def vector_issue(cache: Path) -> str | None:
     current = embedding_fingerprint()
     if stored != current:
         return f"embedder changed (was {stored}, now {current})"
-    if not vector_table_exists(database):
+    if count != 0 and not vector_table_exists(database):
         return "vector index unavailable"
     return None
 

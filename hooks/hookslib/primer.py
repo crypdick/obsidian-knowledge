@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .repo_memory import resolve_target
+from .repo_memory import absolute_target, resolve_target
 
 KNOWLEDGE_BASE_INDEX_REL = Path("wiki/systems/knowledge-base/index.md")
 KNOWLEDGE_BASE_INDEX_MAX_CHARS = 6000
@@ -36,7 +36,7 @@ def build_primer(
     """
     wiki = vault_root / "wiki"
     target = resolve_target(cwd or os.getcwd())
-    memory_dir = wiki / target.rel_path
+    memory_dir = absolute_target(vault_root, target)
     memory_file = memory_dir / "MEMORY.md"
     if memory_file.is_file():
         memory_start = f"Read {memory_file} at session start. "

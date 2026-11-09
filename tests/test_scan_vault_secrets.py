@@ -4,27 +4,14 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
-import importlib.util
 import json
 import os
-import sys
 from pathlib import Path
 
 import pytest
 
-PLUGIN_ROOT = Path(__file__).parent.parent
-HOOK_PATH = PLUGIN_ROOT / "hooks" / "scan-vault-secrets.py"
-
-
-@pytest.fixture(scope="module")
-def hook_module():
-    """Import scan-vault-secrets.py as a module despite the hyphenated name."""
-    sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
-    spec = importlib.util.spec_from_file_location("scan_vault_secrets", HOOK_PATH)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+from tests.secret_scanner import WEAK, configure_vault, run_stop
+from tests.secret_scanner import hook_module as hook_module
 
 
 class TestLoadKnownLeaked:
@@ -171,37 +158,32 @@ def test_baseline_staging_never_creates_visible_vault_entries(tmp_path, hook_mod
     assert hook_module.scan_policy_is_current(baseline)
 
 
-def test_find_files_filters_noise_and_honors_mtime(tmp_path, hook_module, monkeypatch):
+def test_find_files_filters_noise_without_timestamp_cutoff(tmp_path, hook_module):
     (tmp_path / "new.md").write_text("new")
     (tmp_path / "old.md").write_text("old")
+    os.utime(tmp_path / "old.md", (0, 0))
     (tmp_path / "image.png").write_bytes(b"image")
     (tmp_path / ".secrets.baseline").write_text("state")
     (tmp_path / ".secrets.known-leaked").write_text("secret")
-    hidden = tmp_path / ".hidden"
-    hidden.mkdir()
-    (hidden / "hidden.md").write_text("hidden")
-    sources = tmp_path / "_sources"
-    sources.mkdir()
-    (sources / "source.md").write_text("source")
-    real_getmtime = os.path.getmtime
-
-    def selective_mtime(path):
-        if str(path).endswith("old.md"):
-            return 1
-        return real_getmtime(path)
-
-    monkeypatch.setattr(hook_module.os.path, "getmtime", selective_mtime)
-    assert hook_module.find_files(str(tmp_path), since_mtime=2) == ["new.md"]
+    for folder in (".hidden", "_sources"):
+        directory = tmp_path / folder
+        directory.mkdir()
+        (directory / "ignored.md").write_text("ignored")
+    os.mkfifo(tmp_path / "pipe")
+    assert set(hook_module.find_files(str(tmp_path))) == {"new.md", "old.md"}
 
 
 def test_find_files_skips_file_removed_during_walk(tmp_path, hook_module, monkeypatch):
     note = tmp_path / "vanished.md"
     note.write_text("content")
-    monkeypatch.setattr(
-        hook_module.os.path,
-        "getmtime",
-        lambda path: (_ for _ in ()).throw(OSError("vanished")),
-    )
+    original = hook_module.os.stat
+
+    def vanished(path, *args, **kwargs):
+        if str(path) == str(note):
+            raise FileNotFoundError("vanished")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(hook_module.os, "stat", vanished)
     assert hook_module.find_files(str(tmp_path)) == []
 
 
@@ -232,7 +214,7 @@ def test_count_unaudited_handles_missing_file_and_caps_sample(tmp_path, hook_mod
     assert len(sample) == hook_module.UNAUDITED_SAMPLE_LIMIT
 
 
-def test_manual_mode_reports_outside_vault(tmp_path, hook_module, monkeypatch, capsys):
+def test_manual_mode_reports_outsideconfigure_vault(tmp_path, hook_module, monkeypatch, capsys):
     monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: False)
     with pytest.raises(SystemExit) as stopped:
         hook_module.main(["--manual"])
@@ -240,7 +222,7 @@ def test_manual_mode_reports_outside_vault(tmp_path, hook_module, monkeypatch, c
     assert "Not inside a configured vault root" in capsys.readouterr().err
 
 
-def test_hook_mode_is_silent_outside_vault(tmp_path, hook_module, monkeypatch):
+def test_hook_mode_is_silent_outsideconfigure_vault(tmp_path, hook_module, monkeypatch):
     monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: False)
     with pytest.raises(SystemExit) as stopped:
         hook_module.main([])
@@ -278,7 +260,7 @@ def _stub_main_scan(hook_module, monkeypatch, tmp_path, *, count=0, leaked=0):
     monkeypatch.setattr(hook_module, "load_vault_roots", lambda: [str(tmp_path)])
     monkeypatch.setattr(hook_module, "find_files", lambda root, since_mtime=0: ["note.md"])
     monkeypatch.setattr(hook_module, "scan_policy_is_current", lambda path: False)
-    monkeypatch.setattr(hook_module, "run_scan", lambda *args: None)
+    monkeypatch.setattr(hook_module, "run_scan", lambda *args: args[2])
     monkeypatch.setattr(hook_module, "count_unaudited", lambda path: (count, ["note.md:1 (Synthetic)"]))
     monkeypatch.setattr(
         hook_module, "record_alerts", lambda path, limit: (count, ["note.md:1 (Synthetic)"], [])
@@ -325,74 +307,25 @@ def test_hook_mode_emits_only_when_findings_exist(tmp_path, hook_module, monkeyp
     assert "unaudited finding" in emitted[0]
 
 
-def test_incremental_scan_uses_baseline_mtime(tmp_path, hook_module, monkeypatch, capsys):
-    baseline = tmp_path / hook_module.BASELINE_FILENAME
-    baseline.write_text(f'{{"vault_filter_revision": {hook_module.SCAN_POLICY_VERSION}}}')
-    monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: True)
-    monkeypatch.setattr(hook_module, "matching_vault_root", lambda cwd, roots: str(tmp_path))
-    monkeypatch.setattr(hook_module, "load_vault_roots", lambda: [str(tmp_path)])
-    calls = []
-
-    def find_files(root, since_mtime=0):
-        calls.append(since_mtime)
-        return ["all.md"] if since_mtime == 0 else ["changed.md"]
-
-    scanned = []
-    monkeypatch.setattr(hook_module, "find_files", find_files)
-    monkeypatch.setattr(hook_module, "run_scan", lambda path, root, paths, all_paths: scanned.append(paths))
-    monkeypatch.setattr(hook_module, "count_unaudited", lambda path: (0, []))
-    monkeypatch.setattr(hook_module, "load_known_leaked", lambda root: [])
-
-    with pytest.raises(SystemExit) as stopped:
-        hook_module.main(["--manual"])
-    assert stopped.value.code == 0
-    assert calls[0] == 0
-    assert calls[1] == baseline.stat().st_mtime
-    assert scanned == [["changed.md"]]
-    assert "Scanned 1 file(s) out of 1" in capsys.readouterr().out
-
-
-WEAK = 'password = "synthetic-weak-password"\n'  # pragma: allowlist secret
-
-
-def _vault(hook_module, monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: True)
-    monkeypatch.setattr(hook_module, "matching_vault_root", lambda cwd, roots: str(tmp_path))
-    monkeypatch.setattr(hook_module, "load_vault_roots", lambda: [str(tmp_path)])
-    monkeypatch.setattr(hook_module, "read_input", dict)
-    monkeypatch.setattr(hook_module, "in_cooldown", lambda payload, marker_basename: False)
-    emitted: list[str] = []
-    monkeypatch.setattr(hook_module, "emit_block", emitted.append)
-    return emitted
-
-
-def _stop(hook_module):
-    try:
-        hook_module.main([])
-    except SystemExit as stopped:
-        assert stopped.code == 0
-
-
 def _needs_attention(tmp_path):
     path = tmp_path / "Utility" / "obsidian-knowledge" / "needs-attention.md"
     return path.read_text() if path.exists() else ""
 
 
 def test_alerts_once_per_finding_and_tracks_pointer_in_needs_attention(tmp_path, hook_module, monkeypatch):
-    emitted = _vault(hook_module, monkeypatch, tmp_path)
+    emitted = configure_vault(hook_module, monkeypatch, tmp_path)
     (tmp_path / "note.md").write_text(WEAK)
-    _stop(hook_module)
+    run_stop(hook_module)
     assert len(emitted) == 1
     assert "note.md:1" in emitted[0]
     assert "synthetic-weak-password" not in emitted[0]
     assert "- [ ] `note.md`" in _needs_attention(tmp_path)
 
-    _stop(hook_module)
+    run_stop(hook_module)
     assert len(emitted) == 1
 
     (tmp_path / "second.md").write_text(WEAK)
-    _stop(hook_module)
+    run_stop(hook_module)
     assert len(emitted) == 2
     assert "second.md:1" in emitted[1]
     assert "note.md:1" not in emitted[1]
@@ -404,7 +337,7 @@ def test_alerts_once_per_finding_and_tracks_pointer_in_needs_attention(tmp_path,
     payload = json.loads(baseline.read_text())
     payload["results"]["note.md"][0]["is_secret"] = False
     baseline.write_text(json.dumps(payload))
-    _stop(hook_module)
+    run_stop(hook_module)
     assert len(emitted) == 2
     tracked = _needs_attention(tmp_path)
     assert "`note.md`" not in tracked
@@ -412,21 +345,21 @@ def test_alerts_once_per_finding_and_tracks_pointer_in_needs_attention(tmp_path,
 
 
 def test_needs_attention_pointer_preserves_other_sections(tmp_path, hook_module, monkeypatch):
-    _vault(hook_module, monkeypatch, tmp_path)
+    configure_vault(hook_module, monkeypatch, tmp_path)
     page = tmp_path / "Utility" / "obsidian-knowledge" / "needs-attention.md"
     page.parent.mkdir(parents=True)
     page.write_text("# Needs Attention\n\n## Other\n\n- [ ] keep me\n")
     (tmp_path / "note.md").write_text(WEAK)
-    _stop(hook_module)
+    run_stop(hook_module)
     text = page.read_text()
     assert text.startswith("# Needs Attention\n\n## Other\n\n- [ ] keep me\n")
     assert "- [ ] `note.md`" in text
 
 
 def test_manual_mode_lists_previously_alerted_findings(tmp_path, hook_module, monkeypatch, capsys):
-    emitted = _vault(hook_module, monkeypatch, tmp_path)
+    emitted = configure_vault(hook_module, monkeypatch, tmp_path)
     (tmp_path / "note.md").write_text(WEAK)
-    _stop(hook_module)
+    run_stop(hook_module)
     assert len(emitted) == 1
     with pytest.raises(SystemExit):
         hook_module.main(["--manual"])

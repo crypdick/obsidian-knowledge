@@ -6,9 +6,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import errno
-import hashlib
 import os
-import re
 import signal
 import sqlite3
 import subprocess
@@ -21,15 +19,17 @@ from pathlib import Path
 from types import FrameType
 from typing import Annotated, Any
 
-import platformdirs
 import yaml
 from pydantic import BaseModel, Field
 from vault_preferences import load_preferences, preferences_path
+from vault_registry import read_registry, registry_path
 
+from lib.vault_index.cache_paths import default_cache_dir
 from lib.vault_index.index_generations import active_cache
 from lib.vault_index.models import Hit, IndexBusyError
-from lib.vault_index.registration import existing_vault, read_registry, register_vault
+from lib.vault_index.registration import existing_vault, register_vault
 from lib.vault_index.search_budget import command_deadline
+from lib.vault_index.search_budget import search_ttl_seconds as search_ttl_seconds
 from lib.vault_index.vault_files import read_vault_file, write_vault_file
 
 
@@ -98,12 +98,6 @@ vault_index:
   # min_score: null  # uncomment to set a hard cutoff
 """
 
-VAULTS_CONFIG_ENV = "OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG"
-APP_NAME = "obsidian-knowledge"
-CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
-SEARCH_TTL_ENV = "OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS"
-DEFAULT_SEARCH_TTL_SECONDS = 30
-
 
 class _WriterConfig(BaseModel):
     vaults: list[Path] = Field(default_factory=list)
@@ -132,7 +126,6 @@ _KILLER = (
     "        break\n"
     "    time.sleep(0.2)\n"
 )
-SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
 
 
 class SearchTimeoutError(TimeoutError):
@@ -211,47 +204,14 @@ def search_ttl(seconds: int | None, *, label: str = "search") -> Iterator[None]:
                 signal.alarm(previous_alarm)
 
 
-def search_ttl_seconds() -> int:
-    """Return configured search TTL, defaulting to a conservative bound."""
-    raw = os.environ.get(SEARCH_TTL_ENV)
-    if raw is None:
-        return DEFAULT_SEARCH_TTL_SECONDS
-    try:
-        return int(raw)
-    except ValueError:
-        return DEFAULT_SEARCH_TTL_SECONDS
-
-
-def _cache_base_dir() -> Path:
-    """Return a writable cache base, falling back for restricted sandboxes."""
-    cache_root = os.environ.get(CACHE_ROOT_ENV)
-    if cache_root:
-        return Path(cache_root).expanduser() / APP_NAME
-
-    base = Path(platformdirs.user_cache_dir(APP_NAME))
-    parent = base if base.exists() else base.parent
-    if parent.exists() and not os.access(parent, os.W_OK):
-        return SANDBOX_CACHE_ROOT / APP_NAME
-    return base
-
-
 def default_cache_dir_for_vault(vault_root: Path) -> Path:
-    """Return the cache dir without importing the memweave-backed indexer."""
-    resolved = vault_root.resolve()
-    digest = hashlib.sha256(str(resolved).encode()).hexdigest()[:8]
-    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "-", resolved.name) or "vault"
-    return _cache_base_dir() / f"{safe_name}-{digest}"
+    """Compatibility entry point; shared locator owns cache identity."""
+    return default_cache_dir(vault_root)
 
 
 def vaults_config_path() -> Path:
-    """Return the global vault registry path, with a test override."""
-    override = os.environ.get(VAULTS_CONFIG_ENV)
-    if override:
-        return Path(override)
-    return (
-        Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
-        / "obsidian-knowledge/vaults.yaml"
-    )
+    """Return the canonical host registry path."""
+    return registry_path()
 
 
 def load_configured_vaults(config_path: Path | None = None) -> list[Path]:

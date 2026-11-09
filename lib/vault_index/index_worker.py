@@ -14,13 +14,14 @@ from pathlib import Path
 import httpx
 from watchfiles import Change, awatch
 
-from lib.vault_index.config import load_config
+from lib.vault_index.cache_paths import default_cache_dir
+from lib.vault_index.config import VaultIndexConfig, load_config
 from lib.vault_index.dirty_paths import DirtyPaths
 from lib.vault_index.embeddings import OllamaEmbeddingProvider
 from lib.vault_index.index_generations import active_cache, prepare_generation, publish_generation
 from lib.vault_index.index_policy import index_path, indexable
 from lib.vault_index.index_state import embedding_fingerprint, vector_issue
-from lib.vault_index.indexer import Indexer, SyncStats, default_cache_dir
+from lib.vault_index.indexer import Indexer, SyncStats
 from lib.vault_index.models import IndexBusyError, Progress
 from lib.vault_index.vault_listing import visible_name
 from obsidian_knowledge_vendor.memweave.exceptions import MemWeaveError
@@ -39,7 +40,6 @@ def content_signature(path: Path) -> str:
 def enqueue_paths(vault: Path, paths: list[str]) -> None:
     """Coalesce notifications without waiting for embeddings."""
     queue = DirtyPaths(default_cache_dir(vault) / "pending.sqlite")
-    config = load_config()
     for relative in paths:
         path = index_path(vault, relative)
         if not path.resolve().is_relative_to(vault.resolve()):
@@ -47,7 +47,10 @@ def enqueue_paths(vault: Path, paths: list[str]) -> None:
         if path.is_dir() or path.suffix != ".md":
             request_scan(vault)
         else:
-            queue.mark(relative, content_signature(path) if indexable(vault, relative, config) else "deleted")
+            queue.mark(
+                relative,
+                content_signature(path) if indexable(vault, relative, VaultIndexConfig()) else "deleted",
+            )
 
 
 def request_scan(vault: Path, *, rebuild: bool = False) -> None:
@@ -105,23 +108,35 @@ class IndexWorker:
             self.queue.invalidate()
         return created
 
-    def observe(self, relative: str) -> None:
+    def observe(self, relative: str) -> bool:
         try:
             path = index_path(self.vault, relative)
         except ValueError:
-            return
+            return False
         if path.suffix != ".md":
-            return
+            return False
         try:
             signature = content_signature(path) if indexable(self.vault, relative, self.config) else "deleted"
         except OSError:
             logger.exception("Cannot read note; later reconciliation will retry", extra={"path": relative})
-            return
+            self.queue.mark(relative, "unreadable")
+            self.queue.require(relative)
+            return False
         self.queue.mark(relative, signature)
         self.wake.set()
+        return True
 
-    async def scan(self) -> None:
+    async def scan(self) -> bool:
         """Discover current files and deletions without extending unchanged deadlines."""
+        self.config = load_config()
+        self.initial_scan = False
+        enumeration_failed = False
+
+        def failed(error: OSError) -> None:
+            nonlocal enumeration_failed
+            enumeration_failed = True
+            logger.error("Cannot enumerate vault; reconciliation will retry", extra={"error": str(error)})
+
         published = active_cache(self.cache)
         paths = (
             set(Indexer(self.vault, published, self.config, vector_enabled=False).indexed_paths())
@@ -130,7 +145,7 @@ class IndexWorker:
         )
         staged = set(Indexer(self.vault, self.target, self.config, vector_enabled=False).indexed_paths())
         paths.update(staged)
-        for directory, folders, files in os.walk(self.vault):
+        for directory, folders, files in os.walk(self.vault, onerror=failed):
             folders[:] = [
                 name for name in folders if visible_name(name) and not (Path(directory) / name).is_symlink()
             ]
@@ -139,12 +154,18 @@ class IndexWorker:
                 for name in files
                 if visible_name(name) and name.endswith(".md")
             )
+        if enumeration_failed:
+            revision = self.queue.mark("@scan", str(time.time_ns()))
+            self.queue.retry("@scan", revision)
+            return False
+        readable = True
         for relative in sorted(paths):
-            self.observe(relative)
+            readable = self.observe(relative) and readable
             if self.building and relative not in staged and (self.vault / relative).is_file():
                 self.queue.require(relative)
             await asyncio.sleep(0)
         self.initial_scan = True
+        return readable
 
     async def watch(self) -> None:
         async for changes in awatch(self.vault, debounce=100, step=50):
@@ -183,9 +204,16 @@ class IndexWorker:
         return await instance.index_settled_path(relative)
 
     async def process_next(self, *, retry_errors: bool = True) -> bool:
+        config = load_config()
+        if config.index != self.config.index:
+            await self.scan()
+        else:
+            self.config = config
         selected = self.queue.ready()
         if selected is None:
             if self.building and self.initial_scan and self.queue.pending_count() == 0:
+                if not (self.target / "index.sqlite").exists():
+                    await Indexer(self.vault, self.target, self.config, skip_probe=True).initialize_empty()
                 publish_generation(self.cache, self.target)
                 self.building = False
             return False
@@ -196,6 +224,13 @@ class IndexWorker:
                 revision += 1
             await self.scan()
             self.queue.complete(relative, revision)
+            return True
+        if not self.observe(relative):
+            self.queue.retry(relative, revision)
+            if not retry_errors:
+                raise OSError(f"cannot observe note: {relative}")
+            return True
+        if not self.queue.current(relative, revision):
             return True
         self.active_path = relative
         task = self.active_task = asyncio.create_task(self.index_one(relative))
@@ -267,10 +302,15 @@ def foreground_reindex(vault: Path, *, force: bool = False, progress: Progress |
         try:
             before = set(probe.indexed_paths())
             if not probe.vector_enabled:
+                if not asyncio.run(worker.scan()):
+                    raise OSError("cannot complete vault discovery; index update remains pending")
                 if force and published is not None:
                     asyncio.run(probe._store.close())
                     probe = Indexer(vault, worker.target, worker.config, vector_enabled=False)
                 result = probe.full_reindex(force=force, progress=progress)
+                asyncio.run(
+                    Indexer(vault, probe.cache_dir, worker.config, skip_probe=True).initialize_empty()
+                )
                 result.deleted = max(result.deleted, len(before - set(probe.indexed_paths())))
                 if published is None or force:
                     publish_generation(cache, worker.target)
@@ -279,7 +319,8 @@ def foreground_reindex(vault: Path, *, force: bool = False, progress: Progress |
             asyncio.run(probe._store.close())
 
         async def drain() -> SyncStats:
-            await worker.scan()
+            if not await worker.scan():
+                raise OSError("cannot complete vault discovery; index update remains pending")
             total = worker.queue.pending_count()
             done = 0
             if progress is not None:

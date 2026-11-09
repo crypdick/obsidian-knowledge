@@ -9,7 +9,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from gardener.io import OrganizerPolicy, resolve_vault, visible_path, write_checked
+from gardener.io import OrganizerPolicy, resolve_vault, write_checked
+from gardener.link_targets import resolve_target
 
 ENTRY = re.compile(r"^- \[\[([^\]|#^]+)(?:\|[^\]]+)?\]\].*$")
 HEADING = re.compile(r"^(#{1,6}) (.+?)\s*$")
@@ -55,12 +56,10 @@ class IndexReview(BaseModel):
 
 
 def resolve_entry(vault: Path, index: Path, target: str) -> Path:
-    for relative in (target, target + ".md"):
-        for candidate in (relative, (index.parent.relative_to(vault) / relative).as_posix()):
-            path = visible_path(vault, candidate)
-            if path.is_file():
-                return path
-    raise ValueError(f"target does not exist: {target}")
+    path = resolve_target(vault, index.parent, target)
+    if path is None:
+        raise ValueError(f"target does not exist: {target}")
+    return path
 
 
 def section_bounds(lines: tuple[str, ...], section: str | None) -> tuple[int, int]:
@@ -91,7 +90,7 @@ def sort_entry(line: str) -> tuple[bool, str]:
 def reviewed_entries(
     vault: Path, index: Path, existing_lines: tuple[str, ...], review: IndexReview
 ) -> tuple[str, ...]:
-    entries = list(existing_lines)
+    entries = [line if line.endswith("\n") else line + "\n" for line in existing_lines]
     for entry in review.entries:
         resolved = resolve_entry(vault, index, entry.target)
         if resolved == index:

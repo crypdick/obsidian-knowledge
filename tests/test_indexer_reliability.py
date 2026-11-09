@@ -112,9 +112,8 @@ print(json.dumps({'paths': [hit.path for hit in hits], 'litellm_loaded': 'litell
     assert report["litellm_loaded"] is False
 
 
-def test_indexer_falls_back_when_preferred_cache_is_unwritable(tmp_path, monkeypatch):
+def test_indexer_refuses_to_relocate_selected_generation(tmp_path, monkeypatch):
     preferred = tmp_path / "preferred"
-    sandbox = tmp_path / "sandbox"
     real_mkdir = Path.mkdir
 
     def mkdir(path, *args, **kwargs):
@@ -123,18 +122,9 @@ def test_indexer_falls_back_when_preferred_cache_is_unwritable(tmp_path, monkeyp
         return real_mkdir(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "mkdir", mkdir)
-    monkeypatch.setattr(indexer, "SANDBOX_CACHE_ROOT", sandbox)
-    instance = indexer.Indexer(
-        tmp_path,
-        preferred,
-        VaultIndexConfig(),
-        vector_enabled=False,
-    )
-    try:
-        assert instance.cache_dir == sandbox / indexer.APP_NAME / preferred.name
-        assert instance.cache_dir.is_dir()
-    finally:
-        close(instance)
+    with pytest.raises(OSError, match="read-only"):
+        indexer.Indexer(tmp_path, preferred, VaultIndexConfig(), vector_enabled=False)
+    assert not preferred.exists()
 
 
 @pytest.mark.parametrize("with_vector_table", [False, True])
@@ -143,6 +133,7 @@ def test_missing_fingerprint_requires_known_embedding_identity(tmp_path, with_ve
     cache.mkdir()
     db = cache / "index.sqlite"
     with sqlite3.connect(db) as connection:
+        connection.execute("CREATE TABLE files (path TEXT PRIMARY KEY)")
         if with_vector_table:
             connection.execute("CREATE TABLE chunks_vec (id INTEGER)")
     instance = indexer.Indexer(

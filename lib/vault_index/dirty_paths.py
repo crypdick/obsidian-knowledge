@@ -23,7 +23,7 @@ class DirtyPaths:
                 "eligible REAL NOT NULL, first_seen REAL NOT NULL)"
             )
 
-    def mark(self, path: str, signature: str, *, now: float | int | None = None) -> None:
+    def mark(self, path: str, signature: str, *, now: float | int | None = None) -> int:
         """An unchanged observation never restarts the quiet period."""
         if Path(path).is_absolute() or ".." in Path(path).parts:
             raise ValueError("dirty path must be vault-relative")
@@ -37,6 +37,7 @@ class DirtyPaths:
                 "WHERE signature != excluded.signature",
                 (path, signature, instant + self.quiet_seconds, instant),
             )
+            return int(db.execute("SELECT revision FROM pending WHERE path=?", (path,)).fetchone()[0])
 
     def ready(self, *, now: float | int | None = None) -> tuple[str, int] | None:
         """Choose oldest pending file whose quiet period or retry delay elapsed."""

@@ -81,3 +81,18 @@ def test_empty_digest_result_reports_matches_outside_digest(tmp_path, monkeypatc
                 assert json.loads(output.out)["outside_digest_matches"] == 1
     finally:
         asyncio.run(instance._store.close())
+
+
+def test_hybrid_search_finds_digest_note_crowded_out_by_other_matches(tmp_path, fake_ollama):
+    vault = make_vault(tmp_path)
+    instance = Indexer(vault, tmp_path / "cache", CONFIG)
+    try:
+        instance.full_reindex()
+        report = instance.search_report("workaround")
+        assert report.mode == "hybrid"
+        assert [hit.path for hit in report.hits] == ["wiki/fix.md"]
+        assert len(instance.search_report("workaround", override_digest_filter=True).hits) == CONFIG.top_k
+        # Per-request eligibility must not leak into later searches on same Indexer.
+        assert [hit.path for hit in instance.search_report("workaround").hits] == ["wiki/fix.md"]
+    finally:
+        asyncio.run(instance._store.close())

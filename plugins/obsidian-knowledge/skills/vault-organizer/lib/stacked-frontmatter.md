@@ -3,17 +3,19 @@
 Obsidian reads only the first YAML block at the start of a note. Properties in
 a second block appear as body text and are unavailable to plugins.
 
-The audit reports `STACKED_FRONTMATTER`. Preview or remove a stray duplicate
-marker with a vault-relative Markdown path:
+The audit reports possible `STACKED_FRONTMATTER`. Inspect a vault-relative
+Markdown path:
 
 ```bash
-obsidian-knowledge garden frontmatter --apply NOTE_PATH
+obsidian-knowledge garden frontmatter NOTE_PATH
 ```
 
-Omit `--apply` to preview. `WOULD_FIX` and `FIXED` identify automatic repairs.
-`NEEDS_MERGE` (exit 1) means the second block contains keys: merge into one YAML
-block with `obsidian-knowledge write`, preserving user-set properties. For
-conflicting timestamps, prefer newer automatically injected values.
+`NEEDS_MERGE` (exit 1) requires manual review. The command never deletes markers,
+even with compatibility flag `--apply`: a second `---` can be a valid thematic
+break, and syntax alone cannot establish intent. Confirm an actual second YAML
+block before merging with `obsidian-knowledge write`, preserving user-set
+properties. For conflicting timestamps, prefer newer automatically injected
+values only when their provenance is established.
 
 ## Prevention for templates
 

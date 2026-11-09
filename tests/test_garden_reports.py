@@ -167,3 +167,15 @@ def test_question_command_refuses_wrong_destination_or_naive_timestamp(
     assert error.value.code == 1
     assert not (tmp_path / "wiki/other.md").exists()
     assert not (tmp_path / "Utility").exists()
+
+
+def test_audit_does_not_credit_links_inside_code_examples(tmp_path: Path) -> None:
+    from gardener.audit import extract_wikilink_targets
+
+    assert extract_wikilink_targets("[[real]] `[[inline]]`\n````\n```\n[[fenced]]\n````\n") == {"real"}
+
+
+def test_question_scanner_uses_actual_fence_length(tmp_path: Path) -> None:
+    path = tmp_path / "note.md"
+    path.write_text("````md\n```\n> [!question]\n> Hidden?\n````\n> [!question]\n> Real?\n")
+    assert scan_file(path) == [(6, "Real?")]
