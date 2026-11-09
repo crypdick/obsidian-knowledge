@@ -9,7 +9,7 @@ import os
 import signal
 from pathlib import Path
 
-from lib.vault_index.cli import search_ttl_seconds
+from lib.vault_index.search_budget import search_ttl_seconds
 
 # NOTE: docs/MCP.md documents the native bridge configuration and output ceiling.
 MAX_NATIVE_OUTPUT_BYTES = 6 * 1024 * 1024

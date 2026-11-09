@@ -46,7 +46,7 @@ def test_absent_index_status_does_not_create_cache(tmp_path):
         (True, "ollama/old@320/64", 2, "embedding settings changed; update required"),
         (False, "current", 2, "vector index unavailable"),
         (True, None, 2, "embedding fingerprint unavailable"),
-        (True, "ollama/bge-m3@320/64", 0, "index empty"),
+        (False, "current", 0, None),
         (True, "current", 2, None),
     ],
 )
@@ -138,3 +138,12 @@ def test_published_generation_without_database_reports_absent(tmp_path):
     assert not result.index_exists
     assert result.degraded_reason == "index absent"
     assert not (cache / "index.sqlite").exists()
+
+
+def test_readiness_rejects_database_missing_file_catalog(tmp_path):
+    from lib.vault_index.index_state import vector_issue
+
+    cache = make_index(tmp_path, vector=True, fingerprint=embedding_fingerprint())
+    with sqlite3.connect(cache / "index.sqlite") as connection:
+        connection.execute("DROP TABLE files")
+    assert vector_issue(cache) == "index unreadable"

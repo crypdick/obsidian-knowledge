@@ -7,6 +7,7 @@ import fcntl
 import pytest
 from watchfiles import Change
 
+import lib.vault_index.index_worker as indexing
 from lib.vault_index import cli
 from lib.vault_index.index_generations import active_cache, prepare_generation, publish_generation
 from lib.vault_index.index_worker import IndexWorker, enqueue_paths, request_scan, worker_running
@@ -276,3 +277,168 @@ def test_corrupt_rebuild_manifest_is_rejected(tmp_path):
     (tmp_path / "building-generation.json").write_text('{"name": "../escape", "fingerprint": "model"}')
     with pytest.raises(ValueError):
         prepare_generation(tmp_path, "model")
+
+
+@pytest.mark.parametrize("replacement", [False, True])
+def test_unreadable_discovery_withholds_publication_and_recovers(
+    tmp_path, monkeypatch, fake_ollama, drain_index, replacement
+):
+    note = tmp_path / "note.md"
+    note.write_text("orchid")
+    if replacement:
+        asyncio.run(drain_index(tmp_path))
+    worker = IndexWorker(tmp_path, quiet_seconds=0)
+    previous = active_cache(worker.cache)
+    if replacement:
+        worker.prepare_rebuild()
+    original = indexing.content_signature
+
+    def unreadable(path):
+        raise PermissionError("read denied")
+
+    monkeypatch.setattr("lib.vault_index.index_worker.content_signature", unreadable)
+    asyncio.run(worker.scan())
+    asyncio.run(worker.process_next())
+    assert worker.queue.pending_count() > 0
+    assert active_cache(worker.cache) == previous
+    restarted = IndexWorker(tmp_path, quiet_seconds=0)
+    assert restarted.target == worker.target
+    monkeypatch.setattr("lib.vault_index.index_worker.content_signature", original)
+
+    async def recover():
+        await restarted.scan()
+        while await restarted.process_next():
+            pass
+
+    asyncio.run(recover())
+    assert active_cache(worker.cache) == worker.target
+
+
+def test_directory_enumeration_failure_withholds_publication(tmp_path, monkeypatch):
+    worker = IndexWorker(tmp_path, quiet_seconds=0)
+    original = indexing.os.walk
+
+    def unreadable(root, *, onerror):
+        onerror(PermissionError("directory denied"))
+        return iter(())
+
+    monkeypatch.setattr("lib.vault_index.index_worker.os.walk", unreadable)
+    asyncio.run(worker.scan())
+    asyncio.run(worker.process_next())
+    assert worker.queue.pending_count() > 0
+    assert active_cache(worker.cache) is None
+    worker.queue.retry("@scan", 1, delay=0)
+    assert asyncio.run(worker.process_next())
+    assert worker.queue.pending_count() == 1
+    monkeypatch.setattr("lib.vault_index.index_worker.os.walk", original)
+    worker.queue.retry("@scan", 2, delay=0)
+    assert asyncio.run(worker.process_next())
+    assert not asyncio.run(worker.process_next())
+    assert active_cache(worker.cache) == worker.target
+
+
+def test_empty_generation_is_ready_and_survives_restart(tmp_path):
+    from lib.vault_index.mcp_index import read_index_status
+
+    worker = IndexWorker(tmp_path, quiet_seconds=0)
+    asyncio.run(worker.scan())
+    assert not asyncio.run(worker.process_next())
+    assert active_cache(worker.cache) == worker.target
+    assert (worker.target / "index.sqlite").is_file()
+    assert read_index_status(tmp_path).vector_index_ready
+    restarted = IndexWorker(tmp_path, quiet_seconds=0)
+    assert not restarted.building
+    assert restarted.target == worker.target
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_running_worker_reconciles_admission_changes(tmp_path, monkeypatch, fake_ollama, drain_index, force):
+    from lib.vault_index.config import VaultIndexConfig
+    from lib.vault_index.indexer import Indexer
+
+    note = tmp_path / "note.md"
+    note.write_text("orchid")
+    asyncio.run(drain_index(tmp_path))
+    worker = IndexWorker(tmp_path, quiet_seconds=0)
+    preferences = tmp_path / "preferences.yaml"
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CONFIG", str(preferences))
+
+    async def reconcile():
+        request_scan(tmp_path, rebuild=force)
+        for _ in range(20):
+            if not await worker.process_next():
+                break
+        return Indexer(
+            tmp_path, active_cache(worker.cache), VaultIndexConfig(), vector_enabled=False
+        ).indexed_paths()
+
+    preferences.write_text("vault_index:\n  index:\n    deny_regex: ['^note\\.md$']\n")
+    assert asyncio.run(reconcile()) == []
+    preferences.write_text("vault_index: {}\n")
+    assert asyncio.run(reconcile()) == ["note.md"]
+
+
+def test_foreground_unreadable_discovery_fails_without_publication(tmp_path, monkeypatch):
+    (tmp_path / "note.md").write_text("orchid")
+
+    def unreadable(path):
+        raise PermissionError("read denied")
+
+    monkeypatch.setattr(indexing, "content_signature", unreadable)
+    with pytest.raises(OSError, match="discovery"):
+        indexing.foreground_reindex(tmp_path)
+    worker = IndexWorker(tmp_path, quiet_seconds=0)
+    assert worker.queue.pending_count() > 0
+    assert active_cache(worker.cache) is None
+
+
+def test_foreground_online_unreadable_discovery_fails_without_retry_loop(tmp_path, monkeypatch, fake_ollama):
+    (tmp_path / "note.md").write_text("orchid")
+
+    def unreadable(path):
+        raise PermissionError("read denied")
+
+    monkeypatch.setattr(indexing, "content_signature", unreadable)
+    with pytest.raises(OSError, match="discovery"):
+        indexing.foreground_reindex(tmp_path)
+    worker = IndexWorker(tmp_path, quiet_seconds=0)
+    assert worker.queue.pending_count() > 0
+    assert active_cache(worker.cache) is None
+
+
+def test_foreground_empty_generation_is_stable_offline(tmp_path):
+    from lib.vault_index.mcp_index import read_index_status
+
+    assert indexing.foreground_reindex(tmp_path).indexed == 0
+    worker = IndexWorker(tmp_path)
+    assert not worker.building
+    assert read_index_status(tmp_path).vector_index_ready
+
+
+def test_unreadable_selected_work_surfaces_in_foreground_mode(tmp_path, monkeypatch):
+    (tmp_path / "note.md").write_text("orchid")
+    worker = IndexWorker(tmp_path, quiet_seconds=0)
+    worker.observe("note.md")
+
+    def unreadable(path):
+        raise PermissionError("read denied")
+
+    monkeypatch.setattr(indexing, "content_signature", unreadable)
+    with pytest.raises(OSError, match="cannot observe note"):
+        asyncio.run(worker.process_next(retry_errors=False))
+    assert worker.queue.pending_count() == 1
+
+
+def test_unreported_edit_is_reobserved_before_embedding(tmp_path, fake_ollama):
+    note = tmp_path / "note.md"
+    note.write_text("orchid original")
+    worker = IndexWorker(tmp_path, quiet_seconds=0)
+    asyncio.run(worker.scan())
+    note.write_text("tulip replacement")
+    # Watcher notification was lost: selection must not embed old revision.
+    assert asyncio.run(worker.process_next())
+    assert fake_ollama.texts == []
+    assert worker.queue.pending_count() == 1
+    assert asyncio.run(worker.process_next())
+    assert fake_ollama.texts == ["tulip replacement"]
+    assert worker.queue.pending_count() == 0

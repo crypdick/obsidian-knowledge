@@ -220,9 +220,12 @@ The coefficients round up observed cold-query overhead (4.7 seconds) and the
 observed 10-to-50-result increase (about 0.1 seconds/result); they are
 conservative allowances, not a claim that runtime scales exactly linearly. Search opens an existing database read-only and
 never runs migrations, scans the vault, or launches repair work. Candidate pools
-are capped at sqlite-vec's 4096 ceiling rather than reverting to exhaustive
-JSON-vector retrieval for large requests. Results may contain fewer than the
-requested number of hits.
+expand within sqlite-vec's 4096-chunk ceiling rather than reverting to exhaustive
+JSON-vector retrieval. Digest eligibility and per-note deduplication precede
+candidate truncation. If excluded or repeated chunks exhaust that ceiling before
+establishing the document pool, retrieval reports keyword mode with a candidate-budget
+reason instead of silently returning starved hybrid results. Results may contain
+fewer than the requested number of hits.
 
 Hybrid searches read the last committed SQLite snapshot while indexing proceeds;
 they do not acquire the application writer lock. Keyword and vector retrieval
@@ -250,8 +253,15 @@ first. An edit during indexing cancels obsolete work and restarts that file's
 cooldown while quiet files proceed. Content is checked before commit. Cancelling
 HTTP cannot guarantee Ollama stops computation already in flight; completed
 embedding batches remain reusable. Failed files remain pending with a 60-second
-retry delay. Offline embeddings do not mark work complete. Discovery excludes
-hidden directories, `_sources`, dependency directories (`node_modules`, `venv`, and `__pycache__`), sync conflicts, and symlinks. Full, targeted, and worker indexing share these admission rules.
+retry delay. Unreadable notes remain durable pending work, and directory enumeration
+failures retain a reconciliation request; neither permits publication of an
+incomplete replacement. Offline embeddings do not mark work complete. Discovery excludes
+hidden directories, `_sources`, dependency directories (`node_modules`, `venv`, and `__pycache__`), sync conflicts, and symlinks. Full, targeted, and worker indexing share these admission rules. The worker
+reloads validated preferences on each reconciliation and before selecting work;
+admission changes trigger a full reconciliation without requiring restart.
+Notifications identify changed content but do not independently decide admission.
+Policy changes converge through indexing; they are not an immediate search
+authorization boundary.
 
 `reindex` requests received while the worker runs coalesce into pending work;
 `--force` requests an unpublished replacement generation. Without a worker,
@@ -274,7 +284,8 @@ SQLite WAL transactions. Previous generations are retained for rollback and
 existing readers; remove obsolete generations only during stopped-service
 maintenance. The queue and generations live outside the vault. Restart reconciliation includes
 published paths, staged paths, and current files, so notes deleted during downtime
-cannot survive only in a resumed generation.
+cannot survive only in a resumed generation. Empty vaults publish an initialized,
+ready empty database rather than repeatedly rebuilding an absent index.
 
 Embedding identity includes provider, model, endpoint, and chunking settings;
 credentials are not part of identity. Only published generation caches are read;
@@ -369,7 +380,7 @@ operations, or `obsidian-knowledge garden OPERATION --help` for their arguments.
 | `links [--format tsv\|json] [--include-stubs] [--apply]` | Read unresolved-link JSON from stdin. Filter intentional stubs and unmanaged sources; classify recoveries. Apply only unique recoveries; report ambiguous and fuzzy candidates for review. |
 | `index PATH [--apply]` | Read reviewed JSON entries from stdin and render an index section. Preserve unrelated sections and prose; require a vault-relative `index.md` path. |
 | `questions [--report] [--timestamp ISO_TIME] [--apply]` | Scan managed Markdown for question callouts. Default output is TSV; `--report` previews the standard Markdown report. `--apply` writes `Utility/obsidian-knowledge/reports/open-questions.md`. |
-| `frontmatter PATH... [--apply]` | Preview removal of stray stacked frontmatter markers. Real second YAML blocks require a manual merge and return nonzero. Paths must be vault-relative Markdown files. |
+| `frontmatter PATH... [--apply]` | Report possible stacked frontmatter and return nonzero for manual review. Never deletes ambiguous markers, even with `--apply`; they may be valid thematic breaks. Paths must be vault-relative Markdown files. |
 
 Filename checks reuse `illegal_filename_chars` from shared preferences, also
 used by the write-time guard. `ILLEGAL_FILENAME` findings include the
@@ -387,8 +398,9 @@ treated as a block separator. This filesystem check does not certify every
 Obsidian link-resolution or filename rule.
 
 Repairs default to previews. Use `--apply` for deterministic repairs; preview
-when review would help. Ambiguous link targets and real frontmatter merges
-require judgment.
+when review would help. Ambiguous link targets and possible stacked frontmatter
+require judgment. Link repairs skip fenced, inline, and indented code examples; ambiguous deep list
+indentation is conservatively left unchanged.
 Maintenance excludes hidden files, dependency directories, protected sources,
 Syncthing conflicts, and symlinks. Writes require a managed path, respect
 configured read-only paths, reject changed baselines, and use the verified

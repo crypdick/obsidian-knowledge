@@ -66,7 +66,7 @@ def _isolated_user_cache(tmp_path_factory, monkeypatch):
     """
     fake_cache = tmp_path_factory.mktemp("user_cache")
     monkeypatch.setattr(
-        "lib.vault_index.indexer.platformdirs.user_cache_dir",
+        "lib.vault_index.cache_paths.platformdirs.user_cache_dir",
         lambda app_name: str(fake_cache / app_name),
     )
 
@@ -86,7 +86,7 @@ def tmp_vaults_yaml(tmp_path, monkeypatch, tmp_vault):
     config_dir.mkdir(parents=True)
     config_file = config_dir / "vaults.yaml"
     config_file.write_text(f"vaults:\n  - {tmp_vault}\n")
-    monkeypatch.setattr("lib.vault_config.CONFIG_PATH", config_file)
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(config_file))
     return config_file
 
 

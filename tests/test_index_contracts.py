@@ -46,7 +46,7 @@ def test_index_admission_agrees_across_entrypoints(tmp_path, monkeypatch, fake_o
                 asyncio.run(index.index_settled_path(relative))
         else:
             worker = IndexWorker(vault, quiet_seconds=0)
-            worker.config = config
+            monkeypatch.setattr("lib.vault_index.index_worker.load_config", lambda: config)
 
             async def drain():
                 await worker.scan()

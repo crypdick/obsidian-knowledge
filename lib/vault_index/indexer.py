@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import os
 import re
 import sqlite3
@@ -56,8 +55,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-import platformdirs
-
+from lib.vault_index.cache_paths import default_cache_dir as default_cache_dir
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.embeddings import make_embedding_provider
 from lib.vault_index.embeddings import ollama_probe as _ollama_probe
@@ -75,43 +73,12 @@ from lib.vault_index.index_state import (
 from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
 from lib.vault_index.search_budget import semantic_deadline
 from lib.vault_index.snippets import with_snippets
-from lib.vault_index.vector_search import IndexedHybridSearch
+from lib.vault_index.vector_search import CandidateBudgetError, IndexedHybridSearch
 from obsidian_knowledge_vendor import memweave
 
 # Local embeddings do not need a public model-pricing download. LiteLLM reads
 # this at its first lazy import; preserve an explicit operator override.
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
-
-APP_NAME = "obsidian-knowledge"
-CACHE_ROOT_ENV = "OBSIDIAN_KNOWLEDGE_CACHE_ROOT"
-SANDBOX_CACHE_ROOT = Path("/tmp") / "obsidian-knowledge-cache"
-
-
-def _cache_base_dir() -> Path:
-    """Return the preferred cache base; Indexer falls back only if creation fails."""
-    cache_root = os.environ.get(CACHE_ROOT_ENV)
-    if cache_root:
-        return Path(cache_root).expanduser() / APP_NAME
-
-    return Path(platformdirs.user_cache_dir(APP_NAME))
-
-
-def default_cache_dir(vault_root: Path) -> Path:
-    """Per-host, per-vault cache directory outside the vault.
-
-    Returns ``<XDG_CACHE_HOME or ~/.cache>/obsidian-knowledge/<vault-key>/``
-    on Linux and ``~/Library/Caches/obsidian-knowledge/<vault-key>/`` on macOS.
-    The vault-key combines the directory's basename with an 8-char hash of its
-    absolute path so two vaults with the same dir name (e.g. ``obsidian/``
-    on different machines or in different parents) never collide.
-
-    Storing the cache outside the vault eliminates the Syncthing-conflict risk
-    entirely: each host owns its own embeddings DB, no replication, no race.
-    """
-    abs_path = str(vault_root.resolve())
-    digest = hashlib.sha256(abs_path.encode()).hexdigest()[:8]
-    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "-", vault_root.resolve().name) or "vault"
-    return _cache_base_dir() / f"{safe_name}-{digest}"
 
 
 @dataclass
@@ -159,12 +126,7 @@ class Indexer:
         self.config = config
         self._vector_enabled = vector_enabled
         self.vector_status = "disabled-by-caller"
-        try:
-            cache_dir.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            cache_dir = SANDBOX_CACHE_ROOT / APP_NAME / cache_dir.name
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            self.cache_dir = cache_dir
+        cache_dir.mkdir(parents=True, exist_ok=True)
 
         if vector_enabled and not skip_probe:
             model, api_base, _ = embedding_settings()
@@ -241,6 +203,7 @@ class Indexer:
             chunking=memweave.ChunkingConfig(tokens=DEFAULT_CHUNK_TOKENS, overlap=DEFAULT_CHUNK_OVERLAP),
             vector=memweave.VectorConfig(enabled=self._vector_enabled),
             sync=memweave.SyncConfig(on_search=False),
+            query=memweave.QueryConfig(hybrid=memweave.HybridConfig(candidate_multiplier=1)),
         )
 
     def _abs_to_rel(self, abs_path: str) -> str:
@@ -403,6 +366,17 @@ class Indexer:
                         deleted += asyncio.run(self._store.remove(self.vault_root / path))
         return SyncStats(indexed=indexed, skipped=skipped, deleted=deleted)
 
+    async def initialize_empty(self) -> None:
+        """Initialize readiness only for an empty generation, without embedding files."""
+        try:
+            with index_lock(self.cache_dir, exclusive=True, blocking=False):
+                if self.indexed_paths():
+                    return
+                await self._store.open()
+                self._write_fingerprint(indexed=1)
+        finally:
+            await self._store.close()
+
     async def index_settled_path(self, relative: str) -> SyncStats:
         """Commit one settled file, rolling back interrupted or superseded work."""
         path = index_path(self.vault_root, relative)
@@ -510,6 +484,12 @@ class Indexer:
         if self.vector_issue is not None:
             return keyword_report("vector index requires reindex")
 
+        keep = (
+            (lambda _path: True)
+            if override_digest_filter
+            else lambda path: path_passes(self._abs_to_rel(path), config.digest)
+        )
+        self._store.register_strategy("hybrid", IndexedHybridSearch(self._store.config.query.hybrid, keep))
         try:
             raw = self._retrieve(query, candidate_count, effective_top_k)
         except IndexBusyError:
@@ -519,6 +499,8 @@ class Indexer:
                 raise
             return keyword_report("semantic search exceeded its budget")
         except memweave.SearchError as exc:
+            if isinstance(exc.__cause__, CandidateBudgetError):
+                return keyword_report(str(exc.__cause__))
             # bge-m3 can return input-specific NaN embeddings on CUDA. Prefer
             # FTS over a CPU retry that reloads Ollama's 1.2 GB model runner.
             # https://github.com/ollama/ollama/issues/15582

@@ -18,7 +18,7 @@ def test_registry_parsing_agrees_across_adapters(tmp_path, monkeypatch, entry):
     vault = tmp_path / "vault"
     registry = tmp_path / "vaults.yaml"
     registry.write_text("vaults:\n  - " + entry.format(vault=vault) + "\n")
-    monkeypatch.setattr(vault_config, "CONFIG_PATH", registry)
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     assert vault_config.load_vault_roots() == [str(vault)]
     assert load_configured_vaults(registry) == [vault]
 
@@ -36,7 +36,7 @@ def test_registry_override_agrees_across_adapters(tmp_path, monkeypatch):
 def test_hooks_and_cli_reject_invalid_registry(tmp_path, monkeypatch, data):
     registry = tmp_path / "vaults.yaml"
     registry.write_text(json.dumps(data))
-    monkeypatch.setattr(vault_config, "CONFIG_PATH", registry)
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     if data is None:
         assert vault_config.load_vault_roots() == []
         assert load_configured_vaults(registry) == []

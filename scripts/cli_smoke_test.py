@@ -203,10 +203,9 @@ def exercise_garden(vault: Path, config: Path, run: Callable[..., str]) -> None:
     garden("questions", *report_args, "--apply")
     assert report.read_text() == report_text
 
-    assert "WOULD_FIX" in garden("frontmatter", "wiki/garden-smoke/stacked.md")
-    assert stacked.read_bytes() == stacked_before.encode()
-    assert "FIXED" in garden("frontmatter", "wiki/garden-smoke/stacked.md", "--apply")
-    assert stacked.read_bytes() == b"---\r\ntitle: Flower\r\n---\r\n# Flower\r\n"
+    for arguments in ((), ("--apply",)):
+        assert "NEEDS_MERGE" in garden("frontmatter", "wiki/garden-smoke/stacked.md", *arguments, expected=1)
+        assert stacked.read_bytes() == stacked_before.encode()
     for relative in (*protected, "wiki/garden-smoke/symlink.md", "../outside-garden.md"):
         garden("frontmatter", relative, "--apply", expected=1)
     assert outside.read_bytes() == stacked_before.encode()

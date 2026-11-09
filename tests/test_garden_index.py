@@ -121,3 +121,33 @@ def test_only_index_filename_is_editable(tmp_path: Path, monkeypatch, capsys) ->
     with pytest.raises(SystemExit):
         run_index(tmp_path, {"entries": []}, monkeypatch, "wiki/note.md")
     assert "only edits index.md" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("target", ["systems/accounts/note", "accounts/note", "note"])
+def test_audit_and_editor_agree_on_shortened_existing_entry(tmp_path: Path, target: str) -> None:
+    from gardener.audit import links_entry
+
+    folder = tmp_path / "wiki/systems/accounts"
+    folder.mkdir(parents=True)
+    note = folder / "note.md"
+    note.write_text("# Note\n")
+    destination = folder / "index.md"
+    before = f"# Accounts\n\n- [[{target}]] — old\n"
+    assert links_entry({target}, note, folder, tmp_path)
+    review = index.IndexReview(
+        entries=(index.ReviewedEntry(target="wiki/systems/accounts/note", description="new"),)
+    )
+    after = index.render_index(tmp_path, destination, before, review)
+    assert after == "# Accounts\n\n- [[wiki/systems/accounts/note]] — new\n"
+    assert index.render_index(tmp_path, destination, after, review) == after
+
+
+def test_retained_eof_entry_remains_separate_from_new_entry(tmp_path: Path) -> None:
+    folder = tmp_path / "wiki"
+    folder.mkdir()
+    for name in ("note", "zzz"):
+        (folder / f"{name}.md").write_text("# Note\n")
+    review = index.IndexReview(entries=(index.ReviewedEntry(target="zzz", description="new"),))
+    before = "# Wiki\n\n- [[note]] — old"
+    after = index.render_index(tmp_path, folder / "index.md", before, review)
+    assert after == before + "\n- [[zzz]] — new\n"

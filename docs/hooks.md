@@ -51,7 +51,14 @@ destination; deletion skips content and new-filename rules. Shell checks retain 
 Targets are resolved to filesystem identity, including symlink aliases into registered vaults.
 Publication checks parse complete YAML frontmatter; malformed or unreadable existing
 frontmatter fails closed rather than granting write access. Edit fragments use YAML
-publication values too.
+publication values too. UTF-8 BOMs, CRLF, delimiter whitespace, and YAML `...`
+closing delimiters use the same envelope recognition as note creation.
+Shared preferences `ai_readonly_folders` and `ai_readonly_root_files` accept
+normalized vault-relative paths, including nested paths. Folder entries protect
+complete subtrees; file entries match exactly. Invalid entries fail closed.
+The date-filename convention exempts periodic Journal notes (`YYYY-Y.md`,
+`YYYY-MNN.md`, `YYYY-WNN.md`, and `All *.md`) consistently across guards,
+doctor, and gardener.
 Each checker prints JSON `null` to allow or a nonempty denial string to block.
 Messages live in checker code. Policy and registry parse/read failures propagate
 as checker failures; i-insist blocks and displays stderr. Missing optional policy
@@ -76,6 +83,9 @@ These checks do not replace filesystem permissions or backups.
 The session primer gives the agent its memory location and search instructions.
 Repository memory lives in `wiki/repos/<owner>/<repo>/memory/`; outside a
 repository, it lives in `wiki/systems/machines/<hostname>/memory/`.
+Remote owner/repository names must be portable path components, never `.` or
+`..`; unsupported origins fall back to sanitized host identity. Composed memory
+paths must remain inside the wiki, including when existing symlinks resolve.
 Each directory contains a small `MEMORY.md` index linked to individual facts.
 Shared profile memory uses `wiki/systems/knowledge-base/index.md`.
 
@@ -125,7 +135,14 @@ for memory location, read/write conventions, and session-start recall.
 ## Secret scanning
 
 The Stop hook scans for unaudited secrets. The first scan covers the vault;
-subsequent scans are incremental. Ask `vault-organizer` to scan the vault for
+subsequent scans hash eligible file content and run detectors only for changed
+versions. Host-local completion state beside the per-vault lock is independent
+of baseline timestamps, so audit/alert writes and sync-preserved mtimes cannot
+hide content changes. Files changed during scanning or backend warning/error diagnostics remain pending;
+failed rescans retain previous findings. Incomplete directory discovery aborts
+baseline/checkpoint updates instead of treating inaccessible files as deleted. Missing
+completion state or an externally replaced baseline triggers a conservative full
+rescan. Ask `vault-organizer` to scan the vault for
 secrets, or request a full rescan of all eligible files while preserving audit
 decisions. Both Claude and Codex use the skill's
 [manual scan workflow](https://github.com/crypdick/obsidian-knowledge/blob/main/skills/vault-organizer/SKILL.md#secret-scans).

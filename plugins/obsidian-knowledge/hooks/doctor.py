@@ -34,9 +34,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from hookslib.patterns import (
-    DATE_PREFIX_RE,
+    dated_filename_violation,
     find_wikilink_ext_violations,
-    is_in_dated_folder,
     parse_frontmatter,
 )
 from hookslib.stop_hook import session_debounce
@@ -68,10 +67,8 @@ def scan_vault(vault_root: str) -> dict[str, int]:
     yaml_err = 0
     for path in iter_vault_md_files(vault_root):
         rel = os.path.relpath(path, vault_root)
-        if is_in_dated_folder(rel):
-            basename = os.path.basename(rel)
-            if basename != "index.md" and not DATE_PREFIX_RE.match(basename):
-                undated += 1
+        if dated_filename_violation(rel):
+            undated += 1
         try:
             with open(path, encoding="utf-8") as f:
                 content = f.read()

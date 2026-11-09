@@ -10,9 +10,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from lib.vault_index.cli import default_cache_dir_for_vault, search_ttl_seconds
+from lib.vault_index.cache_paths import default_cache_dir
 from lib.vault_index.index_generations import active_cache
 from lib.vault_index.index_state import vector_issue
+from lib.vault_index.search_budget import search_ttl_seconds
 
 
 class IndexStatus(BaseModel):
@@ -34,7 +35,7 @@ def read_index_status(vault: Path) -> IndexStatus:
     File freshness and embedding endpoint availability are unknown: this does
     not walk the vault, probe the network, or trigger index repair.
     """
-    cache = active_cache(default_cache_dir_for_vault(vault))
+    cache = active_cache(default_cache_dir(vault))
     database = cache / "index.sqlite" if cache is not None else None
     if database is None or not database.is_file():
         return IndexStatus(

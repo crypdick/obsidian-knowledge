@@ -81,7 +81,8 @@ def test_first_search_embeds_nothing_and_reports_first_init(tmp_path, fake_ollam
             connection.execute("INSERT INTO meta VALUES ('memory_index_rebuild_v1', '{}')")
     instance = Indexer(vault, cache, CONFIG)
     try:
-        assert instance.vector_issue == "index not built yet"
+        expected = "index rebuild incomplete" if pending else "index not built yet"
+        assert instance.vector_issue == expected
         report = instance.search_report("orchid")
     finally:
         close(instance)

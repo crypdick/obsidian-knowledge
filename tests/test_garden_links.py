@@ -286,3 +286,82 @@ def test_recovery_removes_multiple_stale_prefix_components(tmp_path: Path) -> No
     assert decision is not None
     assert decision.classification == "high-confidence moved/renamed file"
     assert links.replacement_for(decision) == "wiki/topic/note"
+
+
+@pytest.mark.parametrize(
+    "example",
+    [
+        "`[[old]]`",
+        "``[[old]] ` literal``",
+        "``multiline\n[[old]]\nexample``",
+        "```md\n[[old]]\n```",
+        "````md\n```\n[[old]]\n````",
+        "~~~md\n[[old]]\n~~~",
+        "> ```md\n> [[old]]\n> ```",
+        "    [[old]]",
+        "\t[[old]]",
+        "```md\n[[old]]\n```not-a-closer\n[[old]]\n```",
+    ],
+)
+def test_link_repair_preserves_literal_code_examples(tmp_path: Path, example: str) -> None:
+    folder = tmp_path / "wiki"
+    folder.mkdir()
+    source = folder / "source.md"
+    original = f"[[old|real]]\n{example}\n[[old#Heading]]\n"
+    source.write_bytes(original.encode())
+    assert links.rewrite_source(tmp_path, "wiki/source.md", "old", "new") == 2
+    assert source.read_bytes() == f"[[new|real]]\n{example}\n[[new#Heading]]\n".encode()
+
+
+@pytest.mark.parametrize("opening,closing", [("\ufeff---\r\n", "... \r\n"), ("--- \n", "---\n")])
+def test_alias_reader_agrees_on_supported_frontmatter_envelopes(opening: str, closing: str) -> None:
+    assert links.frontmatter_aliases(opening + "aliases: Old Name\n" + closing) == ("Old Name",)
+
+
+def test_link_repair_does_not_rewrite_unclosed_link_syntax(tmp_path: Path) -> None:
+    folder = tmp_path / "wiki"
+    folder.mkdir()
+    source = folder / "source.md"
+    original = "[[old|real]]\n[[old]\n[[old#unclosed\n"
+    source.write_text(original)
+    assert links.rewrite_source(tmp_path, "wiki/source.md", "old", "new") == 1
+    assert source.read_text() == original.replace("[[old|real]]", "[[new|real]]")
+
+
+@pytest.mark.parametrize(
+    "before,after,count",
+    [
+        (r"\` [[old]]", r"\` [[new]]", 1),
+        ("` unmatched [[old]]", "` unmatched [[new]]", 1),
+        (r"\\`[[old]]` [[old]]", r"\\`[[old]]` [[new]]", 1),
+    ],
+)
+def test_link_repair_distinguishes_literal_and_actual_backtick_delimiters(
+    tmp_path: Path, before: str, after: str, count: int
+) -> None:
+    folder = tmp_path / "wiki"
+    folder.mkdir()
+    source = folder / "source.md"
+    source.write_text(before)
+    assert links.rewrite_source(tmp_path, "wiki/source.md", "old", "new") == count
+    assert source.read_text() == after
+
+
+@pytest.mark.parametrize("backslashes", [1, 2, 3, 4])
+def test_link_repair_and_audit_respect_escaped_opening_brackets(tmp_path: Path, backslashes: int) -> None:
+    from hookslib.patterns import find_wikilink_ext_violations
+
+    from gardener.audit import extract_wikilink_targets
+
+    folder = tmp_path / "wiki"
+    folder.mkdir()
+    source = folder / "source.md"
+    prefix = "\\" * backslashes
+    original = prefix + "[[old.md]]"
+    source.write_text(original)
+    actual_link = backslashes % 2 == 0
+    assert extract_wikilink_targets(original) == ({"old.md"} if actual_link else set())
+    assert bool(find_wikilink_ext_violations(original)) is actual_link
+    assert links.rewrite_source(tmp_path, "wiki/source.md", "old.md", "new") == int(actual_link)
+    expected = prefix + "[[new]]" if actual_link else original
+    assert source.read_text() == expected

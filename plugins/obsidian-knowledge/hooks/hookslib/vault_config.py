@@ -18,15 +18,10 @@ from pathlib import Path
 
 from vault_registry import load_vault_roots as read_registry
 
-CONFIG_PATH = (
-    Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "obsidian-knowledge/vaults.yaml"
-)
-
 
 def load_vault_roots(config_path: Path | None = None) -> list[str]:
-    """Read the shared YAML registry; invalid registries raise an error."""
-    path = config_path or Path(os.environ.get("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(CONFIG_PATH)))
-    return read_registry(path)
+    """Delegate path selection and parsing to the shared host registry."""
+    return read_registry(config_path)
 
 
 def matching_vault_root(path: str, vault_roots: list[str] | None = None) -> str | None:

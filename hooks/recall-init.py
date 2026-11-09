@@ -24,26 +24,8 @@ from hookslib.primer import build_primer
 from hookslib.stop_hook import read_input, session_debounce
 
 
-def resolve_vaults_config() -> Path:
-    """Path to vaults.yaml, overridable via env for tests."""
-    override = os.environ.get("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG")
-    if override:
-        return Path(override)
-    return vault_config.CONFIG_PATH
-
-
 def run() -> int:
     payload = read_input()
-
-    # Resolve vault config
-    config_path = resolve_vaults_config()
-    if not config_path.exists():
-        # No vault configured at all — emit nothing; hook is a no-op
-        return 0
-
-    # Read vault roots directly (may need to override CONFIG_PATH via env)
-    if config_path != vault_config.CONFIG_PATH:
-        vault_config.CONFIG_PATH = config_path
     vault_roots = vault_config.load_vault_roots()
 
     if len(vault_roots) > 1:

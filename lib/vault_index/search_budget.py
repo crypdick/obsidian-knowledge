@@ -15,6 +15,14 @@ FALLBACK_RESERVE_SECONDS = 2.0
 COMMAND_DEADLINE: ContextVar[float | None] = ContextVar("search_command_deadline", default=None)
 
 
+def search_ttl_seconds() -> int:
+    """Return whole-command deadline; zero/negative explicitly disables it."""
+    try:
+        return int(os.environ.get("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "30"))
+    except ValueError:
+        return 30
+
+
 @contextmanager
 def command_deadline(seconds: int) -> Iterator[None]:
     """Carry the outer command's absolute deadline through initialization and queries."""
@@ -30,10 +38,7 @@ def semantic_deadline(top_k: int) -> float:
     now = time.monotonic()
     outer = COMMAND_DEADLINE.get()
     if outer is None:
-        try:
-            ttl = int(os.environ.get("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "30"))
-        except ValueError:
-            ttl = 30
+        ttl = search_ttl_seconds()
         outer = now + ttl if ttl > 0 else None
     budget = BASE_SECONDS + top_k * SECONDS_PER_RESULT
     if outer is not None:

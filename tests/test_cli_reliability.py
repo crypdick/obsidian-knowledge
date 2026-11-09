@@ -185,11 +185,11 @@ def test_cli_invalid_vault_has_concise_error(tmp_path, command):
 
 
 def test_timeout_configuration_and_disabled_deadline(monkeypatch):
-    monkeypatch.delenv(cli.SEARCH_TTL_ENV, raising=False)
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", raising=False)
     assert cli.search_ttl_seconds() == 30
-    monkeypatch.setenv(cli.SEARCH_TTL_ENV, "nonsense")
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "nonsense")
     assert cli.search_ttl_seconds() == 30
-    monkeypatch.setenv(cli.SEARCH_TTL_ENV, "7")
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "7")
     assert cli.search_ttl_seconds() == 7
     with cli.search_ttl(0):
         pass
@@ -240,22 +240,24 @@ def test_search_ttl_watchdog_reports_and_hard_exits(monkeypatch, capsys):
 def test_resolve_vault_requires_explicit_or_registered_root(tmp_path, monkeypatch, registry_content):
     if registry_content is not None:
         (tmp_path / "missing.yaml").write_text(registry_content)
-    monkeypatch.setenv(cli.VAULTS_CONFIG_ENV, str(tmp_path / "missing.yaml"))
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(tmp_path / "missing.yaml"))
     with pytest.raises(ValueError):
         cli.resolve_vault(None, tmp_path)
     assert cli.resolve_vault(tmp_path) == tmp_path.resolve()
     assert cli.vaults_config_path() == tmp_path / "missing.yaml"
-    monkeypatch.delenv(cli.VAULTS_CONFIG_ENV)
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG")
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     assert cli.vaults_config_path() == tmp_path / ".config/obsidian-knowledge/vaults.yaml"
 
 
 def test_default_cache_uses_platform_path_when_writable(tmp_path, monkeypatch):
-    base = tmp_path / "cache" / cli.APP_NAME
+    from lib.vault_index import cache_paths
+
+    base = tmp_path / "cache" / "obsidian-knowledge"
     base.mkdir(parents=True)
-    monkeypatch.delenv(cli.CACHE_ROOT_ENV, raising=False)
-    monkeypatch.setattr(cli.platformdirs, "user_cache_dir", lambda _name: str(base))
-    assert cli._cache_base_dir() == base
+    monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", raising=False)
+    monkeypatch.setattr(cache_paths.platformdirs, "user_cache_dir", lambda _name: str(base))
+    assert cli.default_cache_dir_for_vault(tmp_path).parent == base
 
 
 def test_empty_candidate_format_and_missing_hook(tmp_path, monkeypatch):

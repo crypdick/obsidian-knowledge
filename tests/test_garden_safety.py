@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from gardener import cli, frontmatter
+from gardener import frontmatter
 from gardener.io import (
     REPORT_PATH,
     OrganizerPolicy,
@@ -173,7 +173,7 @@ def test_verified_write_failure_propagates(tmp_path: Path, monkeypatch) -> None:
         ("# Note\n", "OK"),
         ("---\ntitle: Note\n", "OK"),
         ("---\ntitle: Note\n---\n# Body\n", "OK"),
-        ("---\ntitle: Note\n---\n\n---\n# Body\n", "STRAY_DRY"),
+        ("---\ntitle: Note\n---\n\n---\n# Body\n", "NEEDS_MERGE"),
         ("---\ntitle: Note\n---\n---\nother: value\n---\n# Body\n", "NEEDS_MERGE"),
     ],
 )
@@ -185,12 +185,12 @@ def test_frontmatter_preview_preserves_original(tmp_path: Path, body: str, expec
     assert path.read_text() == body
 
 
-def test_frontmatter_apply_preserves_line_endings(tmp_path: Path) -> None:
+def test_frontmatter_apply_preserves_ambiguous_markers_and_line_endings(tmp_path: Path) -> None:
     path = tmp_path / "wiki/note.md"
     path.parent.mkdir()
     path.write_bytes(b"---\r\ntitle: Note\r\n---\r\n---\r\n# Body\r\n")
-    assert frontmatter.fix_file(tmp_path, "wiki/note.md", True) == "STRAY_FIXED"
-    assert path.read_bytes() == b"---\r\ntitle: Note\r\n---\r\n# Body\r\n"
+    assert frontmatter.fix_file(tmp_path, "wiki/note.md", True) == "NEEDS_MERGE"
+    assert path.read_bytes() == b"---\r\ntitle: Note\r\n---\r\n---\r\n# Body\r\n"
 
 
 @pytest.mark.parametrize("relative", ["wiki/_sources/note.md", "wiki/../private.md", "private.md"])
@@ -205,26 +205,26 @@ def test_frontmatter_refuses_protected_paths_in_preview_and_apply(tmp_path: Path
     assert path.read_text() == original
 
 
-def test_frontmatter_command_reports_preview_apply_and_manual_merge(tmp_path: Path, capsys) -> None:
+@pytest.mark.parametrize("apply", [False, True])
+def test_frontmatter_command_requires_review_without_writing(tmp_path: Path, capsys, apply: bool) -> None:
     folder = tmp_path / "wiki"
     folder.mkdir()
     note = folder / "note.md"
-    note.write_text("---\ntitle: Note\n---\n---\n# Body\n")
+    original = "---\ntitle: Note\n---\n---\n# Body\n"
+    note.write_text(original)
     args = ["--vault", str(tmp_path), "wiki/note.md"]
-    frontmatter.main(args)
-    preview = capsys.readouterr()
-    assert "WOULD_FIX" in preview.out
-    frontmatter.main(["--apply", *args])
-    assert "FIXED" in capsys.readouterr().out
-    frontmatter.main(["--vault", str(tmp_path), "wiki/note.md"])
-    assert capsys.readouterr().out == ""
-    note.write_text("---\ntitle: Note\n---\n---\nother: value\n---\n# Body\n")
+    if apply:
+        args.append("--apply")
     with pytest.raises(SystemExit) as exc:
-        frontmatter.main(["--vault", str(tmp_path), "wiki/note.md"])
+        frontmatter.main(args)
     assert exc.value.code == 1
     report = capsys.readouterr()
     assert "NEEDS_MERGE" in report.out
-    assert "merge keys manually" in report.err
+    assert "review manually; no changes made" in report.err
+    assert note.read_text() == original
+    note.write_text("# No possible stacked block\n")
+    frontmatter.main(args)
+    assert capsys.readouterr().out == ""
 
 
 def test_frontmatter_refuses_missing_and_nonmarkdown_files(tmp_path: Path) -> None:
@@ -234,42 +234,39 @@ def test_frontmatter_refuses_missing_and_nonmarkdown_files(tmp_path: Path) -> No
         frontmatter.main(["--vault", str(tmp_path), "wiki/image.png"])
 
 
-def test_frontmatter_duplicate_marker_at_eof_is_repaired(tmp_path: Path) -> None:
+def test_frontmatter_duplicate_marker_at_eof_requires_review(tmp_path: Path) -> None:
     path = tmp_path / "wiki/note.md"
     path.parent.mkdir()
     path.write_text("---\ntitle: Note\n---\n---")
-    assert frontmatter.fix_file(tmp_path, "wiki/note.md", True) == "STRAY_FIXED"
-    assert path.read_text() == "---\ntitle: Note\n---"
+    assert frontmatter.fix_file(tmp_path, "wiki/note.md", True) == "NEEDS_MERGE"
+    assert path.read_text() == "---\ntitle: Note\n---\n---"
 
 
-def test_published_frontmatter_allows_preview_and_refuses_apply(tmp_path: Path, capsys) -> None:
+@pytest.mark.parametrize(
+    "original",
+    [
+        "---\ndg-publish: true\n---\n# Published\n",
+        "\ufeff---\ndg-publish: true\n---\n# Published\n",
+        "--- \r\ndg-publish: true\r\n... \r\n# Published\r\n",
+    ],
+)
+def test_publication_guard_recognizes_supported_envelopes(tmp_path: Path, original: str) -> None:
     path = tmp_path / "wiki/published.md"
     path.parent.mkdir()
-    original = "---\ndg-publish: true\n---\n---\n# Published\n"
-    path.write_text(original)
-    args = ["frontmatter", "--vault", str(tmp_path), "wiki/published.md"]
-    assert cli.main(args) == 0
-    assert "WOULD_FIX" in capsys.readouterr().out
-    with pytest.raises(SystemExit) as exc:
-        cli.main([*args, "--apply"])
-    assert exc.value.code == 1
-    assert "published note requires human consent" in capsys.readouterr().err
-    assert path.read_text() == original
+    path.write_bytes(original.encode())
+    with pytest.raises(ValueError, match="published note requires human consent"):
+        write_checked(tmp_path, "wiki/published.md", original, original + "Changed\n")
+    assert path.read_bytes() == original.encode()
 
 
-def test_malformed_published_frontmatter_allows_preview_and_refuses_apply(tmp_path: Path, capsys) -> None:
+def test_malformed_published_frontmatter_refuses_rewrite(tmp_path: Path) -> None:
     path = tmp_path / "wiki/published.md"
     path.parent.mkdir()
-    original = "---\ndg-publish: true\nbroken: [\n---\n---\n# Published\n"
-    path.write_text(original)
-    args = ["frontmatter", "--vault", str(tmp_path), "wiki/published.md"]
-    assert cli.main(args) == 0
-    assert "WOULD_FIX" in capsys.readouterr().out
-    with pytest.raises(SystemExit) as exc:
-        cli.main([*args, "--apply"])
-    assert exc.value.code == 1
-    assert "cannot safely rewrite malformed frontmatter" in capsys.readouterr().err
-    assert path.read_bytes() == original.encode("utf-8")
+    original = "\ufeff---\ndg-publish: true\nbroken: [\n---\n# Published\n"
+    path.write_bytes(original.encode())
+    with pytest.raises(ValueError, match="cannot safely rewrite malformed frontmatter"):
+        write_checked(tmp_path, "wiki/published.md", original, original + "Changed\n")
+    assert path.read_bytes() == original.encode()
 
 
 def test_reviewed_write_rechecks_baseline_at_writer_handoff(tmp_path, monkeypatch):

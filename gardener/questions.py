@@ -8,6 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from markdown_spans import markdown_text
 from pydantic import BaseModel, ConfigDict
 
 from gardener.io import (
@@ -65,30 +66,14 @@ def render_report(before: str | None, hits: tuple[QuestionHit, ...], timestamp: 
 def scan_file(path: Path) -> list[tuple[int, str]]:
     """Return [(line_no, question_text)] for each callout outside code fences."""
     hits: list[tuple[int, str]] = []
-    in_fence = False
-    fence_marker = ""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
     except OSError:
         return hits
 
-    for i, line in enumerate(lines, start=1):
-        stripped = line.lstrip()
-        # Track fenced code-block state. Markdown fences start with ``` or ~~~.
-        if stripped.startswith(("```", "~~~")):
-            marker = stripped[:3]
-            if not in_fence:
-                in_fence = True
-                fence_marker = marker
-            elif stripped.startswith(fence_marker):
-                in_fence = False
-                fence_marker = ""
-            continue
-
-        if in_fence:
-            continue
-
+    visible_lines = markdown_text("".join(lines)).splitlines(keepends=True)
+    for i, line in enumerate(visible_lines, start=1):
         if line.rstrip("\n").startswith(QUESTION_MARKER):
             # Question text is on the next non-blank `> ` line.
             question_text = ""

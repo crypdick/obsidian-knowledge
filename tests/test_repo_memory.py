@@ -126,3 +126,47 @@ def test_absolute_target_under_vault_wiki(tmp_path):
     )
     abs_path = repo_memory.absolute_target(tmp_path, target)
     assert abs_path == tmp_path / "wiki" / "repos" / "ricdec" / "obsidian-knowledge" / "memory"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/../../",
+        "git@example.com:owner/..",
+        "https://example.com/owner/repo%2fescape",
+        "https://example.com/owner/repo\\escape",
+    ],
+)
+def test_unsafe_remote_components_rejected(url):
+    assert repo_memory.parse_remote_url(url) is None
+
+
+def test_explicit_hostname_uses_same_sanitization(tmp_path):
+    target = repo_memory.resolve_target(tmp_path, hostname="weird/host:name.local")
+    assert target.hostname == "weird-host-name"
+    assert repo_memory.absolute_target(tmp_path, target).is_relative_to(tmp_path / "wiki")
+
+
+@pytest.mark.parametrize(
+    "kind,owner,repo,hostname,relative",
+    [
+        ("repo", "..", "project", None, "repos/../project/memory"),
+        ("repo", "owner", "project", None, "../../outside"),
+        ("host", None, None, "..", "systems/machines/../memory"),
+        ("host", "owner", None, "host", "systems/machines/host/memory"),
+    ],
+)
+def test_memory_target_rejects_inconsistent_identity(kind, owner, repo, hostname, relative):
+    with pytest.raises(ValueError):
+        repo_memory.MemoryTarget(kind, relative, owner, repo, hostname, None)
+
+
+def test_memory_target_rejects_symlink_escape(tmp_path):
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (wiki / "repos").symlink_to(outside, target_is_directory=True)
+    target = repo_memory.MemoryTarget("repo", "repos/owner/project/memory", "owner", "project", None, None)
+    with pytest.raises(ValueError, match="outside wiki"):
+        repo_memory.absolute_target(tmp_path, target)

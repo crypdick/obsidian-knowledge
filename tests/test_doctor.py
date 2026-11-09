@@ -230,3 +230,11 @@ def test_ollama_check_still_reports_degradation_when_cache_is_unwritable(
     monkeypatch.setattr(doctor["os"], "makedirs", lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
 
     assert doctor["check_ollama"](str(tmp_path)).endswith("offline.")
+
+
+@pytest.mark.parametrize("basename", ["2026-W45.md", "2026-M11.md", "2026-Y.md", "All years.md"])
+def test_periodic_journal_names_match_write_policy(tmp_path, doctor, basename):
+    journal = tmp_path / "Journal"
+    journal.mkdir()
+    (journal / basename).write_text("# Periodic note\n")
+    assert doctor["scan_vault"](str(tmp_path))["undated-file"] == 0

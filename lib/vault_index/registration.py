@@ -6,9 +6,9 @@ import fcntl
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import yaml
+from vault_registry import read_registry
 
 
 def existing_vault(path: Path) -> Path:
@@ -18,18 +18,6 @@ def existing_vault(path: Path) -> Path:
     if not root.is_dir():
         raise ValueError(f"vault is not a directory: {root}")
     return root
-
-
-def read_registry(registry: Path) -> dict[str, Any]:
-    data = yaml.safe_load(registry.read_text()) if registry.exists() else None
-    if data is None:
-        data = {}
-    if not isinstance(data, dict):
-        raise ValueError(f"expected a YAML mapping in {registry}")
-    roots = data.get("vaults", [])
-    if not isinstance(roots, list) or any(not isinstance(p, str) or not p.strip() for p in roots):
-        raise ValueError(f"expected a list of nonempty paths under 'vaults' in {registry}")
-    return data
 
 
 def register_vault(vault: Path, registry: Path) -> bool:
