@@ -6,6 +6,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 from lib.vault_index.index_worker import foreground_reindex
 
 
@@ -82,3 +84,22 @@ def test_deadline_kills_work_that_holds_the_gil(tmp_path):
     assert process.returncode == -9
     assert time.monotonic() - started < 18
     assert "reindex: killed" in stderr
+
+
+@pytest.mark.parametrize("command, expected", [("_hook", 0), ("read", 2)])
+def test_optional_hook_failure_does_not_fail_host(command, expected, monkeypatch, capsys):
+    from lib.vault_index import cli
+
+    exits = []
+    monkeypatch.setattr(cli.sys, "argv", ["obsidian-knowledge", command])
+    monkeypatch.setattr(cli, "_exit_hard", exits.append)
+
+    def fail():
+        raise ValueError("operation failed")
+
+    monkeypatch.setattr(cli, "main", fail)
+    cli.cli_main()
+    assert exits == [expected]
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "operation failed" in output.err

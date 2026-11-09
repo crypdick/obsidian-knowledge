@@ -362,7 +362,7 @@ def test_private_hook_entrypoint_runs_existing_hook(tmp_path: Path):
     assert result.stdout == ""
 
 
-def test_removed_hook_agent_selector_is_rejected():
+def test_removed_hook_agent_selector_is_rejected_without_blocking_host():
     result = subprocess.run(
         [sys.executable, "-m", "lib.vault_index.cli", "_hook", "post-tool-use", "--agent", "codex"],
         input="{}",
@@ -371,7 +371,7 @@ def test_removed_hook_agent_selector_is_rejected():
         timeout=10,
         check=False,
     )
-    assert result.returncode == 2
+    assert result.returncode == 0
     assert "unrecognized arguments: --agent codex" in result.stderr
     assert result.stdout == ""
 

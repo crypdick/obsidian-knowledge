@@ -952,7 +952,8 @@ def cli_main() -> None:
             traceback.print_exc()
         code = 1
     finally:
-        _exit_hard(code)
+        # NOTE: docs/hooks.md defines optional-hook failure policy. Guards use a separate CLI.
+        _exit_hard(0 if sys.argv[1:2] == ["_hook"] else code)
 
 
 if __name__ == "__main__":
