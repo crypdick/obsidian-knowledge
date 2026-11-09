@@ -26,6 +26,7 @@ import yaml
 from pydantic import BaseModel, Field
 from vault_preferences import load_preferences, preferences_path
 
+from lib.vault_index.index_generations import active_cache
 from lib.vault_index.models import Hit, IndexBusyError
 from lib.vault_index.registration import existing_vault, read_registry, register_vault
 from lib.vault_index.search_budget import command_deadline
@@ -389,7 +390,7 @@ def package_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claude") -> int:
+def run_hook_entrypoint(event: str, kind: str | None = None) -> int:
     """Dispatch private hook entry points to the existing hook scripts."""
     scripts = {
         ("post-tool-use", "reflect-nudge"): "reflect-nudge.py",
@@ -413,15 +414,12 @@ def run_hook_entrypoint(event: str, kind: str | None = None, agent: str = "claud
         return 2
     script = hook_script_path(script_name)
     payload = sys.stdin.read()
-    env = os.environ.copy()
-    env["OBSIDIAN_KNOWLEDGE_HOOK_AGENT"] = agent
     proc = subprocess.run(
         [sys.executable, str(script)],
         input=payload,
         text=True,
         capture_output=True,
         cwd=Path.cwd(),
-        env=env,
         check=False,
     )
     if proc.stdout:
@@ -459,10 +457,9 @@ def setup(vault: Path, *, skip_claude_plugin: bool = False, skip_guards: bool = 
 
     from lib.vault_index.config import load_config
     from lib.vault_index.index_worker import foreground_reindex
-    from lib.vault_index.indexer import Indexer, default_cache_dir
 
     vault = existing_vault(vault)
-    cfg = load_config()
+    load_config()
     # 1. Validate and atomically update vaults.yaml.
     vaults_yaml = vaults_config_path()
     vault_str = str(vault)
@@ -492,14 +489,6 @@ def setup(vault: Path, *, skip_claude_plugin: bool = False, skip_guards: bool = 
 
     # 3. Initial reindex
     print(f"\nreindexing {vault_str} (may take a minute on first run)…")
-    cache = default_cache_dir(vault)
-    cache.mkdir(parents=True, exist_ok=True)
-    idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
-    if not idx.vector_enabled:
-        print(f"Search mode: keyword-only ({idx.vector_status}).")
-        print(
-            "To enable semantic search, resolve the reported embedding access or model issue, then reindex."
-        )
     try:
         stats = foreground_reindex(vault)
     except IndexBusyError:
@@ -600,7 +589,9 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
 
     vault = resolve_vault(args.vault)
     cfg = load_config()
-    cache = default_cache_dir(vault)
+    cache = active_cache(default_cache_dir(vault))
+    if cache is None:
+        raise ValueError("vault index absent; run obsidian-knowledge reindex")
     idx = Indexer(vault_root=vault, cache_dir=cache, config=cfg)
     if args.cmd == "doctor":
         code, report = run_search_doctor(
@@ -718,16 +709,6 @@ def main() -> int:
     p_search.add_argument("--vault", type=Path, default=None)
     p_search.add_argument("--top-k", type=positive_int, default=None)
     p_search.add_argument(
-        "--no-rebuild",
-        action="store_true",
-        help="Legacy no-op; searches never start index maintenance.",
-    )
-    p_search.add_argument(
-        "--no-wait",
-        action="store_true",
-        help="Legacy no-op; searches always use committed snapshots without waiting for writers.",
-    )
-    p_search.add_argument(
         "--json", action="store_true", help="Print hits and retrieval mode as one JSON object"
     )
     p_search.add_argument(
@@ -784,7 +765,6 @@ def main() -> int:
     for name in ("post-tool-use", "session-start", "stop"):
         p = hook_sub.add_parser(name, help=argparse.SUPPRESS)
         p.add_argument("--kind", default=None)
-        p.add_argument("--agent", choices=("claude", "codex"), default="claude")
 
     sub.add_parser("garden", help="audit and repair vault structure, links and reports")
     args = parser.parse_args()
@@ -831,7 +811,7 @@ def run_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
             return 2
         print(f"Installed i-insist rules: {path}")
     elif args.cmd == "_hook":
-        return run_hook_entrypoint(args.hook_event, kind=args.kind, agent=args.agent)
+        return run_hook_entrypoint(args.hook_event, kind=args.kind)
     elif args.cmd == "init-vault-index":
         init_vault_index(preferences_path())
     elif args.cmd in {"read", "write"}:
@@ -869,15 +849,13 @@ def run_reindex(args: argparse.Namespace) -> int:
             from lib.vault_index.indexer import Indexer
 
             vault = resolve_vault(args.vault)
-            from lib.vault_index.index_generations import active_cache
-
             cache = active_cache(default_cache_dir_for_vault(vault))
-            if args.paths and not (cache / "index.sqlite").exists():
+            if args.paths and (cache is None or not (cache / "index.sqlite").exists()):
                 # Building a new index is a full sync's job, not a file update's.
                 print("reindex: deferred (index not built yet)", file=sys.stderr)
                 return 3
-            cache.mkdir(parents=True, exist_ok=True)
             if args.paths:
+                assert cache is not None
                 idx = Indexer(vault_root=vault, cache_dir=cache, config=load_config())
                 return index_selected_paths(idx, args.paths)
             if sys.stderr.isatty():

@@ -2,7 +2,9 @@
 
 import asyncio
 
+from lib.vault_index.index_generations import active_cache
 from lib.vault_index.index_worker import IndexWorker
+from lib.vault_index.indexer import SyncStats
 
 
 def test_edit_cancels_active_file_then_indexes_quiet_file(tmp_path, monkeypatch):
@@ -29,6 +31,7 @@ def test_edit_cancels_active_file_then_indexes_quiet_file(tmp_path, monkeypatch)
                     cancelled.append(relative)
             else:
                 completed.append(relative)
+                return SyncStats(1, 0, 0)
 
         monkeypatch.setattr(worker, "index_one", index)
         operation = asyncio.create_task(worker.process_next())
@@ -64,7 +67,7 @@ def test_worker_commits_changes_and_deletions(tmp_path, monkeypatch, fake_ollama
         assert await worker.process_next()
 
     asyncio.run(exercise())
-    instance = Indexer(tmp_path, worker.cache, VaultIndexConfig(), vector_enabled=False)
+    instance = Indexer(tmp_path, active_cache(worker.cache), VaultIndexConfig(), vector_enabled=False)
     assert instance.search("orchid") == []
 
 
@@ -92,12 +95,12 @@ def test_model_rebuild_serves_old_index_until_publish(tmp_path, monkeypatch, fak
         assert active_cache(worker.cache) == previous
 
     asyncio.run(exercise())
-    old = Indexer(tmp_path, worker.cache, VaultIndexConfig(), vector_enabled=False)
+    old = Indexer(tmp_path, active_cache(worker.cache), VaultIndexConfig(), vector_enabled=False)
     assert old.search("orchid")[0].path == "note.md"
     assert old.search("tulip") == []
     asyncio.run(worker.process_next())
     assert active_cache(worker.cache) == worker.target
-    new = Indexer(tmp_path, worker.cache, VaultIndexConfig(), vector_enabled=False)
+    new = Indexer(tmp_path, active_cache(worker.cache), VaultIndexConfig(), vector_enabled=False)
     assert new.search("tulip")[0].path == "note.md"
     # An existing reader keeps its selected generation after publication.
     assert old.search("orchid")[0].path == "note.md"

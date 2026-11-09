@@ -138,7 +138,7 @@ def test_indexer_falls_back_when_preferred_cache_is_unwritable(tmp_path, monkeyp
 
 
 @pytest.mark.parametrize("with_vector_table", [False, True])
-def test_pre_fingerprint_cache_requires_known_embedding_identity(tmp_path, with_vector_table):
+def test_missing_fingerprint_requires_known_embedding_identity(tmp_path, with_vector_table):
     cache = tmp_path / "cache"
     cache.mkdir()
     db = cache / "index.sqlite"
@@ -161,7 +161,9 @@ def test_pre_fingerprint_cache_requires_known_embedding_identity(tmp_path, with_
 def test_corrupt_vector_database_is_treated_as_missing_table(tmp_path):
     db = tmp_path / "index.sqlite"
     db.write_text("not sqlite")
-    assert indexer.Indexer._vector_table_exists(db) is False
+    from lib.vault_index.index_state import vector_table_exists
+
+    assert vector_table_exists(db) is False
 
 
 def test_embedding_api_key_is_forwarded_to_memweave(tmp_path, monkeypatch):

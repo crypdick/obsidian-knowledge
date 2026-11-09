@@ -29,3 +29,7 @@ their externally observable behavior.
 Search accepts an optional absolute monotonic deadline; the caller shares it across
 embedding and SQLite progress interruption. Read-only initialization no longer
 starts an independent fixed SQL timer.
+
+Rebuild checkpoints resume only when their serialized provider fingerprint exactly
+matches the current format. Do not restore older-target normalization; mismatches
+start a fresh rebuild.

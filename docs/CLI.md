@@ -43,7 +43,7 @@ Use these commands to configure, search, and maintain the vault:
 | `papercut DESCRIPTION` | Append avoidable or fixable workflow friction to the repository's vault log, or the global log if no repository is identified. |
 | `doctor [--query TEXT] [--top-k N] [--digest-only]` | Report index rows, semantic availability, and sample retrieval results. Repeat `--query` for multiple checks. |
 | `garden OPERATION [--vault PATH]` | Audit vault structure and conventions, recover links, edit reviewed indexes, report questions, or repair frontmatter. See [vault maintenance](#vault-maintenance). |
-| `_hook EVENT [--kind KIND] [--agent claude\|codex]` | Private JSON-on-stdin interface for host hook manifests. |
+| `_hook EVENT [--kind KIND]` | Private JSON-on-stdin interface for host hook manifests. |
 
 `PATH`, `QUERY`, `TEXT`, `DESCRIPTION`, `EVENT`, and `KIND` are placeholders for
 command arguments. Replace `N` with a numeric value. Square brackets mark
@@ -110,7 +110,7 @@ rerunning with `--all`. This happens, for example, while a first build or
 rebuild has not yet reached digest notes. It is `0` otherwise, including for
 hybrid retrieval and `--all` searches.
 
-Warnings and background reindex notices go to stderr. Failed searches exit nonzero and
+Search warnings go to stderr. Failed searches exit nonzero and
 do not emit a success object. Timeout and busy exit codes are described below.
 
 ## Search health and network access
@@ -227,8 +227,9 @@ requested number of hits.
 Hybrid searches read the last committed SQLite snapshot while indexing proceeds;
 they do not acquire the application writer lock. Keyword and vector retrieval
 share one read transaction. Missing/stale vectors report `vector index requires reindex`.
-Legacy `--no-rebuild` and `--no-wait` remain accepted; all searches now avoid
-rebuilding and waiting. Real SQLite failures still surface as errors.
+Searches never rebuild indexes or wait for application writers. The obsolete
+`--no-rebuild` and `--no-wait` flags are rejected. Real SQLite failures still
+surface as errors.
 
 ### Settled-file indexing worker
 
@@ -258,6 +259,9 @@ hidden directories, `_sources`, dependency directories (`node_modules`, `venv`, 
 Backend failures surface immediately and leave work pending; foreground commands
 do not retry indefinitely. If embeddings are unavailable, keyword-only recovery
 uses the existing full-sync path under the same worker ownership lock.
+`--force` publishes a replacement generation even offline; existing readers
+retain their previous generation. Non-forced offline recovery updates the current
+keyword index in place.
 MCP refresh always queues reconciliation and requires a worker or foreground
 `reindex` to make progress.
 
@@ -273,14 +277,14 @@ published paths, staged paths, and current files, so notes deleted during downti
 cannot survive only in a resumed generation.
 
 Embedding identity includes provider, model, endpoint, and chunking settings;
-credentials are not part of identity. Legacy fingerprints without endpoint identity
-require a rebuild; keyword retrieval remains available during migration. Worker,
-query fallback, and MCP readiness use the same persisted-readiness contract.
+credentials are not part of identity. Only published generation caches are read;
+databases at a cache root are ignored. Run `reindex` to build a current generation.
+Fingerprint mismatches require a rebuild. Worker, query fallback, and MCP readiness
+use the same persisted-readiness contract.
 
 Foreground online indexing deliberately uses the same per-file worker pipeline,
 not cross-file embedding batches. This trades batching throughput for one recovery
-and publication contract; offline keyword recovery retains the legacy full-sync
-pipeline.
+and publication contract; offline keyword recovery uses the full-sync pipeline.
 
 The worker warms Ollama with an empty `/api/embed` request at startup and every
 five minutes, with a separate 120-second timeout and a 60-second retry on HTTP
@@ -541,7 +545,7 @@ internal links. The vault-organizer skill describes triage and index review.
 ## Verification
 
 Run `python scripts/cli_smoke_test.py` from the checkout to exercise every
-subcommand and both hook agent modes against a temporary vault. It uses the
+subcommand and the host-neutral hook interface against a temporary vault. It uses the
 installed CLI and configured embedding service; it does not alter your vault or
 install Claude plugins. Run `obsidian-knowledge doctor` separately for your real
 vault. CI also runs the full smoke test against a freshly installed wheel with

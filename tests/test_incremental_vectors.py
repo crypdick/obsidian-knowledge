@@ -15,6 +15,8 @@ from types import SimpleNamespace
 import pytest
 
 from lib.vault_index.config import VaultIndexConfig
+from lib.vault_index.index_generations import active_cache, prepare_generation, publish_generation
+from lib.vault_index.index_state import embedding_fingerprint
 from lib.vault_index.indexer import Indexer, default_cache_dir
 from lib.vault_index.mcp_server import create_server
 from obsidian_knowledge_vendor.memweave.embedding import checkpoint
@@ -47,10 +49,18 @@ def run_cli(*arguments: str | Path, stdin: str | None = None, timeout: float = 3
     )
 
 
-def build_index(vault: Path, cache: Path) -> None:
-    instance = Indexer(vault, cache, CONFIG)
-    instance.full_reindex()
-    close(instance)
+def build_index(vault: Path, cache: Path, *, vector_enabled: bool = True) -> Path:
+    cache.mkdir(parents=True, exist_ok=True)
+    generation = active_cache(cache)
+    if generation is None:
+        generation, _ = prepare_generation(cache, embedding_fingerprint())
+    instance = Indexer(vault, generation, CONFIG, vector_enabled=vector_enabled)
+    try:
+        instance.full_reindex()
+    finally:
+        close(instance)
+    publish_generation(cache, generation)
+    return generation
 
 
 @pytest.fixture
@@ -83,8 +93,9 @@ def test_first_search_embeds_nothing_and_reports_first_init(tmp_path, fake_ollam
 def test_cli_search_leaves_indexing_to_worker(tmp_path, fake_ollama, cache_root, drain_index):
     vault = make_vault(tmp_path)
     result = run_cli("search", "orchid", "--json", "--vault", vault)
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["degraded_reason"] == "vector index requires reindex"
+    assert result.returncode == 2
+    assert "vault index absent; run obsidian-knowledge reindex" in result.stderr
+    assert result.stdout == ""
     assert fake_ollama.texts == []
     assert not (default_cache_dir(vault) / "background-reindex.log").exists()
     asyncio.run(drain_index(vault))
@@ -99,8 +110,9 @@ def test_cli_search_does_not_start_second_reindex_while_writer_runs(tmp_path, fa
     with (cache / ".index.sqlite.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         result = run_cli("search", "orchid", "--json", "--vault", vault)
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["degraded_reason"] == "vector index requires reindex"
+    assert result.returncode == 2
+    assert "vault index absent; run obsidian-knowledge reindex" in result.stderr
+    assert result.stdout == ""
     assert "already running" not in result.stderr
     assert not (cache / "background-reindex.log").exists()
 
@@ -174,7 +186,7 @@ def test_interrupted_slow_reindex_keeps_completed_embeddings(tmp_path, monkeypat
 def test_offline_sync_backfills_only_missing_vectors(tmp_path, monkeypatch, fake_ollama):
     vault = make_vault(tmp_path)
     cache = tmp_path / "cache"
-    build_index(vault, cache)
+    cache = build_index(vault, cache)
 
     (vault / "wiki/note0.md").write_text("# Note 0\n\nEdited offline about cacti.\n")
     offline = Indexer(vault, cache, CONFIG, vector_enabled=False)
@@ -217,7 +229,7 @@ def test_offline_sync_backfills_only_missing_vectors(tmp_path, monkeypatch, fake
 def test_write_indexes_only_the_written_note(tmp_path, fake_ollama, cache_root, drain_index):
     vault = make_vault(tmp_path)
     cache = default_cache_dir(vault)
-    build_index(vault, cache)
+    cache = build_index(vault, cache)
     fake_ollama.texts.clear()
 
     note = "# Fresh\n\nPelargonium cuttings root in perlite.\n"
@@ -249,7 +261,7 @@ def test_write_succeeds_and_defers_indexing_when_index_unavailable(
 ):
     vault = make_vault(tmp_path)
     cache = default_cache_dir(vault)
-    build_index(vault, cache)
+    cache = build_index(vault, cache)
     lock = (cache / ".index.sqlite.lock").open("w")
     if failure == "lock":
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -289,20 +301,20 @@ def test_mcp_write_indexes_written_note(tmp_path, fake_ollama, cache_root, drain
     assert "Aloe" in fake_ollama.texts[0]
 
 
-def test_upgrade_resumes_rebuild_started_by_previous_release(tmp_path, fake_ollama):
+@pytest.mark.parametrize("extra, indexed", [({}, 0), ({"unexpected": True}, 3)])
+def test_rebuild_resumes_only_current_target(tmp_path, fake_ollama, extra, indexed):
     vault = make_vault(tmp_path)
     cache = tmp_path / "cache"
-    build_index(vault, cache)
+    cache = build_index(vault, cache)
     with sqlite3.connect(cache / "index.sqlite") as connection:
         (meta,) = connection.execute("SELECT value FROM meta WHERE key = 'memory_index_meta_v1'").fetchone()
-        # Earlier releases recorded vector mode in the rebuild target.
-        target = json.dumps({**json.loads(meta), "vector_enabled": True}, sort_keys=True)
+        target = json.dumps({**json.loads(meta), **extra}, sort_keys=True)
         connection.execute("INSERT INTO meta VALUES ('memory_index_rebuild_v1', ?)", (target,))
         connection.execute("INSERT INTO index_rebuild_files SELECT path FROM files")
     instance = Indexer(vault, cache, CONFIG)
     try:
         assert instance.vector_issue == "index rebuild incomplete"
-        assert instance.full_reindex().indexed == 0
+        assert instance.full_reindex().indexed == indexed
         assert instance.vector_issue is None
     finally:
         close(instance)
@@ -311,9 +323,7 @@ def test_upgrade_resumes_rebuild_started_by_previous_release(tmp_path, fake_olla
 def test_reindex_path_defers_until_vectors_ready_and_ignores_unknown_files(tmp_path, fake_ollama, cache_root):
     vault = make_vault(tmp_path)
     cache = default_cache_dir(vault)
-    offline = Indexer(vault, cache, CONFIG, vector_enabled=False)
-    offline.full_reindex()
-    close(offline)
+    build_index(vault, cache, vector_enabled=False)
 
     result = run_cli("reindex", "--path", "wiki/note0.md", "--vault", vault)
     assert result.returncode == 3
@@ -355,7 +365,7 @@ def test_write_survives_a_wedged_index_process(tmp_path, monkeypatch, capsys):
 def test_model_change_during_offline_sync_still_rebuilds_vectors(tmp_path, monkeypatch, fake_ollama):
     vault = make_vault(tmp_path)
     cache = tmp_path / "cache"
-    build_index(vault, cache)
+    cache = build_index(vault, cache)
     fake_ollama.models = ("other-embed:latest",)
     monkeypatch.setenv("MEMWEAVE_EMBEDDING_MODEL", "ollama/other-embed")
     offline = Indexer(vault, cache, CONFIG, vector_enabled=False)
@@ -372,7 +382,9 @@ def test_model_change_during_offline_sync_still_rebuilds_vectors(tmp_path, monke
 
 
 def indexed(vault: Path) -> list[str]:
-    instance = Indexer(vault, default_cache_dir(vault), CONFIG)
+    cache = active_cache(default_cache_dir(vault))
+    assert cache is not None
+    instance = Indexer(vault, cache, CONFIG)
     try:
         return sorted(instance.indexed_paths())
     finally:

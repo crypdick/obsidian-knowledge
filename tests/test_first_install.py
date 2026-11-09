@@ -36,7 +36,7 @@ def test_keyword_index_never_requests_embeddings(vault, tmp_path, embed, vector_
     idx = Indexer(vault, tmp_path / "cache", VaultIndexConfig(), vector_enabled=vector_enabled)
     try:
         assert idx.full_reindex().indexed == 1
-        assert idx.sync().skipped == 1
+        assert idx.full_reindex().skipped == 1
         assert idx.full_reindex(force=True).indexed == 1
         assert idx.search("Python")[0].path == "example.md"
         embed.assert_not_awaited()
@@ -120,20 +120,20 @@ def test_offline_updates_are_embedded_when_ollama_returns(vault, tmp_path, monke
 
     (vault / "example.md").write_text("# Rust\nRust is a systems programming language.\n")
     idx = Indexer(vault, cache, VaultIndexConfig(), vector_enabled=False)
-    idx.sync()
+    idx.full_reindex()
     asyncio.run(idx._store.close())
 
     embed.reset_mock()
     idx = Indexer(vault, cache, VaultIndexConfig())
     try:
-        assert idx.sync().indexed == 1
+        assert idx.full_reindex().indexed == 1
         assert any("Rust" in text for call in embed.call_args_list for text in call.args[0])
     finally:
         asyncio.run(idx._store.close())
 
 
 @pytest.mark.parametrize("skip_guards", [False, True])
-def test_setup_without_ollama_finishes_and_explains_search_mode(
+def test_setup_without_ollama_publishes_keyword_recovery(
     vault, tmp_path, monkeypatch, capsys, embed, skip_guards
 ):
     registry = tmp_path / "config" / "vaults.yaml"
@@ -149,7 +149,9 @@ def test_setup_without_ollama_finishes_and_explains_search_mode(
     setup(vault, skip_guards=skip_guards)
     assert installed == ([] if skip_guards else [Path.home()])
     output = capsys.readouterr().out
-    assert "Search mode: keyword-only" in output
+    from lib.vault_index.mcp_index import read_index_status
+
+    assert read_index_status(vault).degraded_reason == "index built in keyword-only mode"
     assert "Setup complete." in output
     assert str(vault) in registry.read_text()
     embed.assert_not_awaited()

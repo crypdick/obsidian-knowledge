@@ -92,7 +92,7 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   remain unknown. Missing or unreadable indexes report a reason without creating
   or repairing the index.
 - `vault_search_update()` durably queues reconciliation of the fixed vault.
-  Returns `status="queued"` with null counts. Repeated requests coalesce;
+  Returns only `status="queued"`; synchronous result counts are not exposed. Repeated requests coalesce;
   completion depends on the separate worker and per-file quiet periods.
 
 Paths are relative to the server's fixed vault. Absolute paths and symlink or

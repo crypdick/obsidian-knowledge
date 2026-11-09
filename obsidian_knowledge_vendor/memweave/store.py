@@ -117,15 +117,6 @@ _META_KEY = "memory_index_meta_v1"
 _REBUILD_KEY = "memory_index_rebuild_v1"
 
 
-def _same_rebuild_target(pending: str | None, target: str) -> bool:
-    """Compare rebuild targets, ignoring the vector mode older releases recorded."""
-    try:
-        recorded = json.loads(pending) if pending else None
-    except json.JSONDecodeError:
-        return False
-    if isinstance(recorded, dict):
-        recorded.pop("vector_enabled", None)
-    return recorded == json.loads(target)
 
 
 class MemWeave:
@@ -777,7 +768,7 @@ class MemWeave:
         completed: set[str] = set()
         if rebuilding:
             force = True
-            if not _same_rebuild_target(pending, target):
+            if pending != target:
                 # Only an online pass starts a vector generation. Offline, the
                 # stale vectors stay until the embedder can replace them.
                 if self._vector_available:
@@ -839,8 +830,7 @@ class MemWeave:
             await self._store.delete_file(stale_path)
 
         # Changed/deleted files can leave vectors whose chunk IDs no longer
-        # exist. Reconcile before publishing a complete generation, including
-        # leftovers produced by older library versions.
+        # exist. Reconcile before publishing a complete generation.
         if self._vector_available:
             table = await (
                 await self._db.execute("SELECT 1 FROM sqlite_master WHERE name = 'chunks_vec'")

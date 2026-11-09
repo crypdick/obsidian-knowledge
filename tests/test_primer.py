@@ -4,23 +4,22 @@ import sys
 from pathlib import Path
 
 import pytest
+from hookslib.primer import KNOWLEDGE_BASE_INDEX_MAX_CHARS, build_primer
 from hookslib.repo_memory import MemoryTarget
-
-from lib.vault_index.primer import KNOWLEDGE_BASE_INDEX_MAX_CHARS, build_primer
 
 
 def test_build_primer_mentions_vault_root(tmp_path: Path):
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
     assert str(tmp_path) in text
 
 
 def test_build_primer_mentions_wiki_path(tmp_path: Path):
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
     assert "wiki" in text.lower()
 
 
 def test_build_primer_anchors_utility_outside_wiki(tmp_path: Path):
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
 
     assert f"Vault root: {tmp_path}/" in text
     assert f"Plugin state: {tmp_path / 'Utility' / 'obsidian-knowledge'}/" in text
@@ -28,14 +27,14 @@ def test_build_primer_anchors_utility_outside_wiki(tmp_path: Path):
 
 
 def test_build_primer_instructs_agents_to_log_papercuts(tmp_path: Path):
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
 
     assert "obsidian-knowledge papercut" in text
     assert "/improve-harness" not in text
 
 
 def test_build_primer_defers_access_recovery_to_skill(tmp_path: Path):
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
 
     assert "obsidian-knowledge skill" in text
     assert "references/access-errors.md" in text
@@ -45,7 +44,7 @@ def test_build_primer_defers_access_recovery_to_skill(tmp_path: Path):
 
 
 def test_build_primer_routes_write_guidance_before_writing(tmp_path: Path):
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
 
     assert "obsidian-knowledge skill" in text
     assert "remember-conversations" not in text
@@ -62,7 +61,7 @@ def test_build_primer_injects_knowledge_base_index_with_cap(tmp_path: Path):
     index.parent.mkdir(parents=True)
     index.write_text("# Knowledge Base\n\n[[agent-operating-profile]]")
 
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
 
     assert "Knowledge-base memory index" in text
     assert "[[agent-operating-profile]]" in text
@@ -74,7 +73,7 @@ def test_build_primer_truncates_large_knowledge_base_index(tmp_path: Path):
     index.parent.mkdir(parents=True)
     index.write_text("x" * (KNOWLEDGE_BASE_INDEX_MAX_CHARS + 100))
 
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
 
     injected = text.split("Knowledge-base memory index", 1)[1]
 
@@ -96,7 +95,7 @@ def test_build_primer_treats_missing_repo_memory_as_empty(
     )
     monkeypatch.setattr("hookslib.primer.resolve_target", lambda _cwd: target)
 
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
 
     assert "No MEMORY.md exists yet" in text
     assert "treat repo memory as empty" in text
@@ -120,7 +119,7 @@ def test_build_primer_reads_existing_repo_memory(
     memory_file.write_text("- durable fact\n")
     monkeypatch.setattr("hookslib.primer.resolve_target", lambda _cwd: target)
 
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin")
+    text = build_primer(vault_root=tmp_path)
 
     assert f"Read {memory_file} at session start" in text
     assert "No MEMORY.md exists yet" not in text
@@ -133,7 +132,7 @@ def test_build_primer_uses_canonical_module_without_path_mutation(
     hooks_dir = str(Path(__file__).parents[1] / "hooks")
     monkeypatch.setattr(sys, "path", [entry for entry in sys.path if entry != hooks_dir])
 
-    text = build_primer(vault_root=tmp_path, plugin_root=tmp_path / "plugin", cwd=str(tmp_path))
+    text = build_primer(vault_root=tmp_path, cwd=str(tmp_path))
 
     assert hooks_dir not in sys.path
     assert "Agent memory for this host" in text

@@ -59,11 +59,9 @@ from typing import Any
 import platformdirs
 
 from lib.vault_index.config import VaultIndexConfig
-from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE as DEFAULT_EMBEDDING_API_BASE
 from lib.vault_index.embeddings import make_embedding_provider
 from lib.vault_index.embeddings import ollama_probe as _ollama_probe
 from lib.vault_index.filters import path_passes
-from lib.vault_index.index_generations import active_cache
 from lib.vault_index.index_lock import index_lock
 from lib.vault_index.index_policy import index_path, indexable
 from lib.vault_index.index_state import (
@@ -73,9 +71,7 @@ from lib.vault_index.index_state import (
     embedding_fingerprint,
     embedding_settings,
     vector_issue,
-    vector_table_exists,
 )
-from lib.vault_index.index_state import DEFAULT_EMBEDDING_MODEL as DEFAULT_EMBEDDING_MODEL
 from lib.vault_index.models import Hit, IndexBusyError, Progress, SearchReport
 from lib.vault_index.search_budget import semantic_deadline
 from lib.vault_index.snippets import with_snippets
@@ -141,6 +137,8 @@ class Indexer:
     All memweave calls are async internally; this class exposes a synchronous
     interface via ``asyncio.run()``.
 
+    ``cache_dir`` names one concrete generation, never a cache root or pointer.
+
     A single ``MemWeave`` instance is created at construction and reused for
     all operations. ``full_reindex()`` closes and recreates it with updated
     ``extra_paths`` so memweave's deletion detection sees exactly the
@@ -157,10 +155,8 @@ class Indexer:
         skip_probe: bool = False,
     ):
         self.vault_root = vault_root.resolve()
-        cache_dir = active_cache(cache_dir)
         self.cache_dir = cache_dir
         self.config = config
-        self._vector_enabled_requested = vector_enabled
         self._vector_enabled = vector_enabled
         self.vector_status = "disabled-by-caller"
         try:
@@ -171,7 +167,7 @@ class Indexer:
             self.cache_dir = cache_dir
 
         if vector_enabled and not skip_probe:
-            model, api_base, _ = self._embedding_settings()
+            model, api_base, _ = embedding_settings()
             ok, msg = _ollama_probe(api_base, model)
             self.vector_status = msg
             if not ok:
@@ -179,7 +175,7 @@ class Indexer:
 
         # Why persisted vectors cannot serve searches yet, or None when ready.
         # Search never repairs this inline; the independent worker owns updates.
-        self.vector_issue = self._vector_issue() if self._vector_enabled else None
+        self.vector_issue = vector_issue(self.cache_dir) if self._vector_enabled else None
 
         # Start with an empty-extra_paths store for read-only queries.
         # full_reindex() will replace this with the full allowed-paths store.
@@ -199,10 +195,6 @@ class Indexer:
             store.register_strategy("hybrid", IndexedHybridSearch(config.query.hybrid))
         return store
 
-    def _embedder_fingerprint(self) -> str:
-        """Identify provider, model, endpoint, and chunking consistently."""
-        return embedding_fingerprint()
-
     def _fingerprint_path(self) -> Path:
         return self.cache_dir / FINGERPRINT_FILENAME
 
@@ -210,26 +202,13 @@ class Indexer:
         # An offline sync that indexed files leaves their chunks without
         # vectors; mark it so the next online sync is reported as catching up.
         if self._vector_enabled:
-            fingerprint = self._embedder_fingerprint()
+            fingerprint = embedding_fingerprint()
         elif indexed:
             fingerprint = "keyword-only"
         else:
             return
         with contextlib.suppress(OSError):
             self._fingerprint_path().write_text(fingerprint)
-
-    def _vector_issue(self) -> str | None:
-        return vector_issue(self.cache_dir)
-
-    @staticmethod
-    def _vector_table_exists(db_path: Path) -> bool:
-        """Return True when the cache already contains memweave's vector table."""
-        return vector_table_exists(db_path)
-
-    @staticmethod
-    def _embedding_settings() -> tuple[str, str, str | None]:
-        """Resolve (model, api_base, api_key) from env with bge-m3/Ollama defaults."""
-        return embedding_settings()
 
     def _make_config(
         self,
@@ -248,7 +227,7 @@ class Indexer:
           ``http://127.0.0.1:11434``. Override via ``MEMWEAVE_EMBEDDING_MODEL``,
           ``MEMWEAVE_EMBEDDING_API_BASE``, ``MEMWEAVE_EMBEDDING_API_KEY``.
         """
-        model, api_base, api_key = self._embedding_settings()
+        model, api_base, api_key = embedding_settings()
         embedding_kwargs: dict[str, Any] = {"model": model, "api_base": api_base}
         if api_key is not None:
             embedding_kwargs["api_key"] = api_key
@@ -387,7 +366,7 @@ class Indexer:
         self._store = self._make_store(extra_paths=allowed)
         result = asyncio.run(self._store.index(force=force, progress_callback=progress))
         self._write_fingerprint(indexed=result.files_indexed)
-        self.vector_issue = self._vector_issue() if self._vector_enabled else None
+        self.vector_issue = vector_issue(self.cache_dir) if self._vector_enabled else None
         return SyncStats(
             indexed=result.files_indexed,
             skipped=result.files_skipped,
@@ -439,10 +418,6 @@ class Indexer:
         finally:
             await self._store.close()
 
-    def sync(self) -> SyncStats:
-        """Incremental re-index. Same as full_reindex without force."""
-        return self.full_reindex(force=False)
-
     def search(
         self,
         query: str,
@@ -450,7 +425,6 @@ class Indexer:
         top_k: int | None = None,
         min_score: float | None = None,
         override_digest_filter: bool = False,
-        wait_for_writer: bool = True,
     ) -> list[Hit]:
         """Return ranked hits; see search_report for retrieval metadata."""
         return self.search_report(
@@ -458,7 +432,6 @@ class Indexer:
             top_k=top_k,
             min_score=min_score,
             override_digest_filter=override_digest_filter,
-            wait_for_writer=wait_for_writer,
         ).hits
 
     def _retrieve(self, query: str, candidate_count: int, top_k: int) -> list[memweave.SearchResult]:
@@ -492,7 +465,6 @@ class Indexer:
         top_k: int | None = None,
         min_score: float | None = None,
         override_digest_filter: bool = False,
-        wait_for_writer: bool = True,
     ) -> SearchReport:
         """Run retrieval and report its actual mode, including query fallbacks.
 

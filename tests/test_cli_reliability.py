@@ -135,6 +135,13 @@ guards.install_rules = lambda base: base / ".i-insist/obsidian-knowledge.toml"
 def stall(*args, **kwargs):
     time.sleep(30)
 indexer.Indexer = stall
+from pathlib import Path
+from lib.vault_index.cli import default_cache_dir_for_vault
+from lib.vault_index.index_generations import publish_generation
+root = default_cache_dir_for_vault(Path({str(tmp_path)!r}))
+generation = root / "generation-a"
+generation.mkdir(parents=True)
+publish_generation(root, generation)
 sys.argv = ['obsidian-knowledge', *{args!r}]
 cli_main()
 """
@@ -270,7 +277,7 @@ def test_hook_entrypoint_rejects_unsupported_dispatch(event, kind, capsys):
     assert "unsupported hook event/kind" in capsys.readouterr().err
 
 
-def test_hook_entrypoint_forwards_output_and_agent(tmp_path, monkeypatch, capsys):
+def test_hook_entrypoint_forwards_payload_and_output(tmp_path, monkeypatch, capsys):
     script = tmp_path / "hook.py"
     script.write_text("")
     observed = {}
@@ -282,10 +289,12 @@ def test_hook_entrypoint_forwards_output_and_agent(tmp_path, monkeypatch, capsys
         return SimpleNamespace(stdout="out", stderr="err", returncode=7)
 
     monkeypatch.setattr(cli.subprocess, "run", run)
-    assert cli.run_hook_entrypoint("session-start", agent="codex") == 7
+    assert cli.run_hook_entrypoint("session-start") == 7
     captured = capsys.readouterr()
     assert (captured.out, captured.err) == ("out", "err")
-    assert observed["kwargs"]["env"]["OBSIDIAN_KNOWLEDGE_HOOK_AGENT"] == "codex"
+    assert observed["command"] == [sys.executable, str(script)]
+    assert observed["kwargs"]["input"] == "payload"
+    assert observed["kwargs"]["cwd"] == Path.cwd()
 
 
 def test_setup_reports_existing_registration_no_claude_and_busy(tmp_path, monkeypatch, capsys):
@@ -294,28 +303,14 @@ def test_setup_reports_existing_registration_no_claude_and_busy(tmp_path, monkey
     monkeypatch.setattr("lib.vault_index.guard_install.install_rules", lambda _home: tmp_path / "rules")
     monkeypatch.setattr("shutil.which", lambda _name: None)
 
-    class BusyIndexer:
-        vector_enabled = False
-        vector_status = "offline"
-
-        def __init__(self, **_kwargs):
-            pass
-
-        def full_reindex(self, **_kwargs):
-            raise IndexBusyError("busy")
-
-    monkeypatch.setattr("lib.vault_index.indexer.Indexer", BusyIndexer)
-
     def busy(_vault):
         raise IndexBusyError("busy")
 
     monkeypatch.setattr("lib.vault_index.index_worker.foreground_reindex", busy)
-    monkeypatch.setattr("lib.vault_index.indexer.default_cache_dir", lambda _vault: tmp_path / "cache")
     cli.setup(tmp_path)
     output = capsys.readouterr().out
     assert "already registered" in output
     assert "claude: not found" in output
-    assert "keyword-only (offline)" in output
     assert "another index operation" in output
 
 
@@ -328,22 +323,10 @@ def test_setup_success_modes(tmp_path, monkeypatch, capsys, plugin_mode):
     monkeypatch.setattr("shutil.which", lambda _name: "/bin/claude")
     monkeypatch.setattr(cli.subprocess, "run", lambda command, **_kwargs: calls.append(command))
 
-    class HealthyIndexer:
-        vector_enabled = True
-        vector_status = "ok"
-
-        def __init__(self, **_kwargs):
-            pass
-
-        def full_reindex(self, **_kwargs):
-            return SimpleNamespace(indexed=2, skipped=1, deleted=0)
-
-    monkeypatch.setattr("lib.vault_index.indexer.Indexer", HealthyIndexer)
     monkeypatch.setattr(
         "lib.vault_index.index_worker.foreground_reindex",
         lambda _vault: SimpleNamespace(indexed=2, skipped=1, deleted=0),
     )
-    monkeypatch.setattr("lib.vault_index.indexer.default_cache_dir", lambda _vault: tmp_path / "cache")
     cli.setup(tmp_path, skip_claude_plugin=plugin_mode == "skip")
     output = capsys.readouterr().out
     assert "Indexed: 2, Skipped: 1, Deleted: 0" in output
@@ -398,6 +381,7 @@ def test_retrieval_commands_report_public_results(tmp_path, monkeypatch, capsys,
             return SearchReport(mode="keyword", degraded_reason="offline", hits=self.search(*args, **kwargs))
 
     monkeypatch.setattr("lib.vault_index.indexer.Indexer", Index)
+    monkeypatch.setattr("lib.vault_index.cli.active_cache", lambda _root: tmp_path / "cache")
     monkeypatch.setattr("lib.vault_index.indexer.default_cache_dir", lambda _vault: tmp_path / "cache")
     args = Namespace(
         cmd=command,
@@ -486,3 +470,13 @@ def test_vault_file_commands_read_write_and_errors(tmp_path, monkeypatch, capsys
     monkeypatch.setattr(cli, "resolve_vault", lambda _vault: (_ for _ in ()).throw(ValueError("bad vault")))
     with pytest.raises(SystemExit):
         cli.run_vault_file_command(read_args, ArgumentParser())
+
+
+@pytest.mark.parametrize("command", ["search", "remember", "doctor"])
+def test_retrieval_requires_published_generation(tmp_path, command):
+    from lib.vault_index.cli import default_cache_dir_for_vault
+
+    cache = default_cache_dir_for_vault(tmp_path)
+    with pytest.raises(ValueError, match="vault index absent; run obsidian-knowledge reindex"):
+        cli.run_retrieval_command(Namespace(cmd=command, vault=tmp_path))
+    assert not cache.exists()

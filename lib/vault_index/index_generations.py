@@ -13,13 +13,13 @@ class GenerationState(BaseModel):
     fingerprint: str = Field(min_length=1)
 
 
-def active_cache(root: Path) -> Path:
-    """Legacy caches remain readable until the first generation is published."""
+def active_cache(root: Path) -> Path | None:
+    """Return published generation, or None before the first publication."""
     pointer = root / "current-generation"
     try:
         name = pointer.read_text().strip()
     except FileNotFoundError:
-        return root
+        return None
     if not name.startswith("generation-") or Path(name).name != name:
         raise ValueError("invalid index generation")
     return root / name

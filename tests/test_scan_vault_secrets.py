@@ -137,13 +137,13 @@ def test_scan_policy_requires_readable_current_version(tmp_path, hook_module):
     assert hook_module.scan_policy_is_current(baseline)
 
 
-def test_saved_baseline_stays_current_for_legacy_hooks(tmp_path, hook_module):
-    # Hooks from before revision 2 full-rescan unless vault_scan_policy == 1.
-    # Rewriting that value would make old and new sessions undo each other.
+def test_saved_baseline_contains_only_current_scan_policy(tmp_path, hook_module):
     (tmp_path / "note.md").write_text("plain\n")
     baseline = tmp_path / ".secrets.baseline"
     hook_module.run_scan(baseline, str(tmp_path), ["note.md"], ["note.md"])
-    assert json.loads(baseline.read_text())["vault_scan_policy"] == 1
+    data = json.loads(baseline.read_text())
+    assert "vault_scan_policy" not in data
+    assert data["vault_filter_revision"] == hook_module.SCAN_POLICY_VERSION
 
 
 def test_baseline_staging_never_creates_visible_vault_entries(tmp_path, hook_module, monkeypatch):

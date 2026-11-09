@@ -74,7 +74,7 @@ def test_manifests_register_one_capture_hook() -> None:
         if "capture" in hook["command"] or "changelog" in hook["command"] or "convos" in hook["command"]
     ]
 
-    assert codex_commands == ["obsidian-knowledge _hook stop --kind capture-session --agent codex"]
+    assert codex_commands == ["obsidian-knowledge _hook stop --kind capture-session"]
     assert claude_commands == ["uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/capture-session.py"]
 
 

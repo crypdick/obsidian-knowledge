@@ -54,6 +54,8 @@ def test_index_admission_agrees_across_entrypoints(tmp_path, monkeypatch, fake_o
                     pass
 
             asyncio.run(drain())
+            asyncio.run(index._store.close())
+            index = Indexer(vault, active_cache(default_cache_dir(vault)), config, vector_enabled=False)
         assert index.indexed_paths() == ["note.md"]
         assert not any("private" in text for text in fake_ollama.texts)
     finally:
@@ -103,7 +105,7 @@ def test_restart_removes_deleted_staged_only_note_before_publication(tmp_path, m
 
     asyncio.run(drain())
     assert active_cache(worker.cache) == restarted.target
-    index = Indexer(tmp_path, worker.cache, VaultIndexConfig(), vector_enabled=False)
+    index = Indexer(tmp_path, active_cache(worker.cache), VaultIndexConfig(), vector_enabled=False)
     assert index.indexed_paths() == []
 
 
@@ -147,7 +149,7 @@ def test_foreground_reindex_uses_generations_and_preserves_old_reader(tmp_path, 
     assert seen[0][0] == 0
     cache = default_cache_dir(tmp_path)
     previous = active_cache(cache)
-    old = Indexer(tmp_path, cache, VaultIndexConfig(), vector_enabled=False)
+    old = Indexer(tmp_path, active_cache(cache), VaultIndexConfig(), vector_enabled=False)
     assert foreground_reindex(tmp_path).skipped == 1
     note.write_text("tulip")
     forced = foreground_reindex(tmp_path, force=True)
@@ -166,7 +168,10 @@ def test_foreground_offline_recovery_remains_keyword_only(tmp_path, monkeypatch)
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path / "cache"))
     (tmp_path / "note.md").write_text("orchid")
     assert foreground_reindex(tmp_path).indexed == 1
-    index = Indexer(tmp_path, default_cache_dir(tmp_path), VaultIndexConfig(), vector_enabled=False)
+    generation = active_cache(default_cache_dir(tmp_path))
+    assert foreground_reindex(tmp_path).skipped == 1
+    assert active_cache(default_cache_dir(tmp_path)) == generation
+    index = Indexer(tmp_path, generation, VaultIndexConfig(), vector_enabled=False)
     assert index.search("orchid")[0].path == "note.md"
     assert read_index_status(tmp_path).degraded_reason == "index built in keyword-only mode"
 
@@ -189,7 +194,7 @@ def test_foreground_backend_failure_surfaces_without_publishing(tmp_path, monkey
     assert worker.queue.pending_count() == 1
 
 
-def test_legacy_fingerprint_requires_rebuild_in_worker_and_status(tmp_path, monkeypatch, fake_ollama):
+def test_mismatched_fingerprint_requires_rebuild_in_worker_and_status(tmp_path, monkeypatch, fake_ollama):
     from lib.vault_index.index_worker import foreground_reindex
     from lib.vault_index.indexer import default_cache_dir
 
@@ -197,7 +202,7 @@ def test_legacy_fingerprint_requires_rebuild_in_worker_and_status(tmp_path, monk
     (tmp_path / "note.md").write_text("orchid")
     foreground_reindex(tmp_path)
     cache = default_cache_dir(tmp_path)
-    (active_cache(cache) / "embedder-fingerprint.txt").write_text("ollama/bge-m3@320/64")
+    (active_cache(cache) / "embedder-fingerprint.txt").write_text("different-embedding-identity")
     assert IndexWorker(tmp_path).building
     assert not read_index_status(tmp_path).vector_index_ready
     assert foreground_reindex(tmp_path).indexed == 1
@@ -257,3 +262,49 @@ def test_content_signature_represents_deletion(tmp_path):
     from lib.vault_index.index_worker import content_signature
 
     assert content_signature(tmp_path / "missing.md") == "deleted"
+
+
+def test_cache_root_database_is_not_a_published_generation(tmp_path, monkeypatch):
+    from lib.vault_index.index_worker import foreground_reindex
+    from lib.vault_index.indexer import default_cache_dir
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "note.md").write_text("orchid current")
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path / "cache"))
+    root = default_cache_dir(vault)
+    root.mkdir(parents=True)
+    unreferenced = root / "index.sqlite"
+    unreferenced.write_bytes(b"not a current generation")
+    assert active_cache(root) is None
+    assert not read_index_status(vault).index_exists
+    assert foreground_reindex(vault).indexed == 1
+    generation = active_cache(root)
+    assert generation is not None and generation != root
+    assert generation.parent == root
+    assert unreferenced.read_bytes() == b"not a current generation"
+    index = Indexer(vault, generation, VaultIndexConfig(), vector_enabled=False)
+    assert index.search("orchid")[0].path == "note.md"
+
+
+@pytest.mark.parametrize("initial_force", [False, True])
+def test_offline_forced_rebuild_preserves_published_reader(tmp_path, monkeypatch, initial_force):
+    from lib.vault_index.index_worker import foreground_reindex
+    from lib.vault_index.indexer import default_cache_dir
+
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path / "cache"))
+    note = tmp_path / "note.md"
+    note.write_text("orchid original")
+    foreground_reindex(tmp_path, force=initial_force)
+    cache = default_cache_dir(tmp_path)
+    previous = active_cache(cache)
+    old = Indexer(tmp_path, previous, VaultIndexConfig(), vector_enabled=False)
+    assert old.search("orchid")[0].path == "note.md"
+    note.write_text("tulip replacement")
+    result = foreground_reindex(tmp_path, force=True)
+    assert result.indexed == 1
+    assert active_cache(cache) != previous
+    current = Indexer(tmp_path, active_cache(cache), VaultIndexConfig(), vector_enabled=False)
+    assert current.search("tulip")[0].path == "note.md"
+    assert old.search("orchid")[0].path == "note.md"
+    assert old.search("tulip") == []

@@ -14,6 +14,7 @@ import pytest
 import sqlite_vec
 
 from lib.vault_index.config import VaultIndexConfig
+from lib.vault_index.index_generations import publish_generation
 from lib.vault_index.indexer import Indexer, default_cache_dir
 from lib.vault_index.mcp_server import create_server
 
@@ -23,11 +24,14 @@ def vector_vault(tmp_path, monkeypatch, fake_ollama):
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path / "cache"))
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki/orchid.md").write_text("# Orchid\nPurple greenhouse orchids\n")
-    instance = Indexer(tmp_path, default_cache_dir(tmp_path), VaultIndexConfig(), skip_probe=True)
+    root = default_cache_dir(tmp_path)
+    cache = root / "generation-a"
+    instance = Indexer(tmp_path, cache, VaultIndexConfig(), skip_probe=True)
     instance.full_reindex()
     asyncio.run(instance._store.close())
+    publish_generation(root, cache)
     fake_ollama.requests = 0
-    return tmp_path, default_cache_dir(tmp_path), fake_ollama
+    return tmp_path, cache, fake_ollama
 
 
 def test_cli_hybrid_reads_committed_index_during_uncommitted_write(vector_vault):
@@ -52,8 +56,6 @@ def test_cli_hybrid_reads_committed_index_during_uncommitted_write(vector_vault)
                 "greenhouse",
                 "--vault",
                 str(vault),
-                "--no-rebuild",
-                "--no-wait",
                 "--json",
             ],
             capture_output=True,
@@ -91,7 +93,7 @@ def test_mcp_hybrid_ignores_writer_application_lock(vector_vault):
     asyncio.run(exercise())
 
 
-def test_no_wait_still_bounds_slow_query_embedding(vector_vault, monkeypatch):
+def test_search_bounds_slow_query_embedding(vector_vault, monkeypatch):
     vault, _cache, endpoint = vector_vault
     endpoint.delay = 10
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_SEARCH_TTL_SECONDS", "4")
@@ -104,8 +106,6 @@ def test_no_wait_still_bounds_slow_query_embedding(vector_vault, monkeypatch):
             "greenhouse",
             "--vault",
             str(vault),
-            "--no-rebuild",
-            "--no-wait",
             "--json",
         ],
         capture_output=True,
@@ -121,7 +121,8 @@ def test_no_wait_still_bounds_slow_query_embedding(vector_vault, monkeypatch):
     assert "budget" in report["degraded_reason"]
 
 
-def test_legacy_no_wait_works_without_no_rebuild(tmp_path):
+@pytest.mark.parametrize("flag", ["--no-wait", "--no-rebuild"])
+def test_removed_search_flags_are_rejected(tmp_path, flag):
     result = subprocess.run(
         [
             sys.executable,
@@ -131,15 +132,16 @@ def test_legacy_no_wait_works_without_no_rebuild(tmp_path):
             "query",
             "--vault",
             str(tmp_path),
-            "--no-wait",
+            flag,
         ],
         capture_output=True,
         text=True,
         timeout=15,
         check=False,
     )
-    assert result.returncode == 0
-    assert "(no results)" in result.stdout
+    assert result.returncode == 2
+    assert f"unrecognized arguments: {flag}" in result.stderr
+    assert result.stdout == ""
 
 
 def test_hybrid_snapshot_survives_writer_commit(vector_vault):

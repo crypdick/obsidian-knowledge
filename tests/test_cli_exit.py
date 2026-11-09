@@ -2,22 +2,18 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 import subprocess
 import sys
 
-from lib.vault_index.config import VaultIndexConfig
-from lib.vault_index.indexer import Indexer, default_cache_dir
+from lib.vault_index.index_worker import foreground_reindex
 
 
 def test_search_exits_when_stdout_reader_is_gone(tmp_path, monkeypatch, fake_ollama):
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", str(tmp_path / "cache"))
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki/orchid.md").write_text("# Orchid\n\nPurple greenhouse orchids\n")
-    instance = Indexer(tmp_path, default_cache_dir(tmp_path), VaultIndexConfig())
-    instance.full_reindex()
-    asyncio.run(instance._store.close())
+    foreground_reindex(tmp_path)
 
     # A killed parent leaves the pipe without a reader; flushing then raises
     # BrokenPipeError. That must not skip the hard exit and wait on threads.

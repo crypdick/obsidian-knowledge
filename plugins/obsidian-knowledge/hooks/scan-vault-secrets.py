@@ -144,9 +144,6 @@ KNOWN_LEAKED_FILENAME = ".secrets.known-leaked"
 BASELINE_FILENAME = ".secrets.baseline"
 # Increment when detector/filter semantics change so unchanged files are rechecked.
 SCAN_POLICY_VERSION = 3
-# Hooks before revision 2 full-rescan unless `vault_scan_policy` is exactly 1.
-# Keep writing 1 so mixed-version sessions don't undo each other's rescans.
-LEGACY_SCAN_POLICY = 1
 
 
 class BaselineScanPolicy(BaseModel):
@@ -276,7 +273,7 @@ def run_scan(
             try:
                 old_data = ds_baseline.load_from_file(str(baseline_path))
                 old_sc = SecretsCollection.load_from_baseline(old_data)
-            except Exception:  # allow: exception-handling  (corrupt/legacy baseline → rescan from scratch)
+            except Exception:  # allow: exception-handling  (invalid baseline → rescan from scratch)
                 old_sc = None
 
         result_sc = SecretsCollection(root=vault_root)
@@ -339,7 +336,6 @@ def _save_if_changed(result_sc: SecretsCollection, baseline_path: Path, ds_basel
     try:
         ds_baseline.save_to_file(result_sc, str(tmp_path))
         new_data = json.loads(tmp_path.read_text())
-        new_data["vault_scan_policy"] = LEGACY_SCAN_POLICY
         new_data["vault_filter_revision"] = SCAN_POLICY_VERSION
         old_data: dict[str, Any] = {}
         if baseline_path.exists():

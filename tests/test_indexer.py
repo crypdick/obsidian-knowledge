@@ -86,7 +86,7 @@ def test_sync_reports_busy_when_index_lock_is_held(vault: Path, cfg, tmp_path: P
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         idx = make_indexer(vault_root=vault, cache_dir=cache_dir, config=cfg)
         with pytest.raises(IndexBusyError):
-            idx.sync()
+            idx.full_reindex()
     finally:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         lock_file.close()
