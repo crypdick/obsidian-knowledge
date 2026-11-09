@@ -116,19 +116,17 @@ def exercise(executable: str, root: Path) -> None:
     assert "Disposable CLI smoke test" in log.read_text()
 
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "true"}})
-    for agent in ("claude", "codex"):
-        for event in ("post-tool-use", "session-start"):
-            output = run("_hook", event, "--agent", agent, content=payload)
-            if event == "session-start":
-                assert (
-                    "obsidian-knowledge harness"
-                    in json.loads(output)["hookSpecificOutput"]["additionalContext"]
-                )
-        for kind in ("capture-session", "nudge-index-sync"):
-            stop_payload = json.dumps({"session_id": f"{root.name}-{agent}-{kind}"})
-            output = run("_hook", "stop", "--kind", kind, "--agent", agent, content=stop_payload)
-            if kind == "capture-session":
-                assert json.loads(output)["decision"] == "block"
+    for event in ("post-tool-use", "session-start"):
+        output = run("_hook", event, content=payload)
+        if event == "session-start":
+            assert (
+                "obsidian-knowledge harness" in json.loads(output)["hookSpecificOutput"]["additionalContext"]
+            )
+    for kind in ("capture-session", "nudge-index-sync"):
+        stop_payload = json.dumps({"session_id": f"{root.name}-{kind}"})
+        output = run("_hook", "stop", "--kind", kind, content=stop_payload)
+        if kind == "capture-session":
+            assert json.loads(output)["decision"] == "block"
     run("_hook", "stop", "--kind", "invalid", content="{}", expected=2)
     exercise_garden(vault, config, run)
     print(f"All {checks} installed CLI checks passed.")

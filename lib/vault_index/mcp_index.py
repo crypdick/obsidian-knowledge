@@ -25,10 +25,7 @@ class IndexStatus(BaseModel):
 
 
 class IndexUpdate(BaseModel):
-    status: Literal["updated", "busy", "queued"]
-    indexed: int | None = None
-    skipped: int | None = None
-    deleted: int | None = None
+    status: Literal["queued"]
 
 
 def read_index_status(vault: Path) -> IndexStatus:
@@ -38,8 +35,8 @@ def read_index_status(vault: Path) -> IndexStatus:
     not walk the vault, probe the network, or trigger index repair.
     """
     cache = active_cache(default_cache_dir_for_vault(vault))
-    database = cache / "index.sqlite"
-    if not database.is_file():
+    database = cache / "index.sqlite" if cache is not None else None
+    if database is None or not database.is_file():
         return IndexStatus(
             index_exists=False, indexed_files=None, vector_index_ready=False, degraded_reason="index absent"
         )
@@ -56,7 +53,7 @@ def read_index_status(vault: Path) -> IndexStatus:
             vector_index_ready=False,
             degraded_reason=f"index unreadable: {exc}",
         )
-    issue = vector_issue(cache)
+    issue = vector_issue(database.parent)
     reasons = {
         "index not built yet": "index empty",
         "index rebuild incomplete": "vector index rebuild incomplete; update required",

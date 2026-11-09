@@ -6,13 +6,16 @@ from contextlib import closing
 import pytest
 
 from lib.vault_index.cli import default_cache_dir_for_vault
+from lib.vault_index.index_generations import publish_generation
 from lib.vault_index.index_state import embedding_fingerprint
 from lib.vault_index.mcp_index import read_index_status
 
 
 def make_index(vault, *, vector=False, fingerprint=None, count=2):
-    cache = default_cache_dir_for_vault(vault)
+    root = default_cache_dir_for_vault(vault)
+    cache = root / "generation-a"
     cache.mkdir(parents=True)
+    publish_generation(root, cache)
     with closing(sqlite3.connect(cache / "index.sqlite")) as connection:
         connection.execute("CREATE TABLE files (path TEXT)")
         connection.executemany("INSERT INTO files VALUES (?)", [(f"note-{i}.md",) for i in range(count)])
@@ -84,8 +87,10 @@ def test_pending_rebuild_is_not_ready_despite_matching_fingerprint(tmp_path):
 
 
 def test_corrupt_index_reports_unknown_count_without_repair(tmp_path):
-    cache = default_cache_dir_for_vault(tmp_path)
+    root = default_cache_dir_for_vault(tmp_path)
+    cache = root / "generation-a"
     cache.mkdir(parents=True)
+    publish_generation(root, cache)
     database = cache / "index.sqlite"
     database.write_bytes(b"not sqlite")
     result = read_index_status(tmp_path)
@@ -112,3 +117,24 @@ def test_index_status_accepts_relative_cache_root(tmp_path, monkeypatch):
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CACHE_ROOT", "relative-cache")
     make_index(tmp_path)
     assert read_index_status(tmp_path).indexed_files == 2
+
+
+def test_unpublished_root_database_is_not_a_search_index(tmp_path):
+    root = default_cache_dir_for_vault(tmp_path)
+    root.mkdir(parents=True)
+    database = root / "index.sqlite"
+    database.write_bytes(b"unpublished cache")
+    result = read_index_status(tmp_path)
+    assert not result.index_exists
+    assert result.degraded_reason == "index absent"
+    assert database.read_bytes() == b"unpublished cache"
+    assert not (root / "current-generation").exists()
+
+
+def test_published_generation_without_database_reports_absent(tmp_path):
+    cache = make_index(tmp_path)
+    (cache / "index.sqlite").unlink()
+    result = read_index_status(tmp_path)
+    assert not result.index_exists
+    assert result.degraded_reason == "index absent"
+    assert not (cache / "index.sqlite").exists()

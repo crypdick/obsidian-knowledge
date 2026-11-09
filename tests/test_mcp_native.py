@@ -11,6 +11,8 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from lib.vault_index.config import VaultIndexConfig
+from lib.vault_index.index_generations import active_cache
+from lib.vault_index.index_worker import foreground_reindex
 from lib.vault_index.indexer import Indexer, default_cache_dir
 from lib.vault_index.mcp_index import refresh_index
 from lib.vault_index.mcp_native import register_native_tools
@@ -281,7 +283,9 @@ def test_invalid_native_properties_rejected(native_server):
 
 
 def indexed_paths(vault):
-    instance = Indexer(vault, default_cache_dir(vault), VaultIndexConfig())
+    cache = active_cache(default_cache_dir(vault))
+    assert cache is not None
+    instance = Indexer(vault, cache, VaultIndexConfig())
     try:
         return sorted(instance.indexed_paths())
     finally:
@@ -290,9 +294,7 @@ def indexed_paths(vault):
 
 def test_mutations_keep_the_index_consistent(native_server, fake_ollama, drain_index):
     server, vault, _ = native_server
-    instance = Indexer(vault, default_cache_dir(vault), VaultIndexConfig())
-    instance.full_reindex()
-    asyncio.run(instance._store.close())
+    foreground_reindex(vault)
     fake_ollama.texts.clear()
 
     appended = call(server, "vault_append", {"path": "folder/note.md", "content": "Bromeliads"})

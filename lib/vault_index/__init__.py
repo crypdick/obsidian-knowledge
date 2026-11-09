@@ -1,11 +1,10 @@
-"""Shared retrieval and primer library for obsidian-knowledge plugins."""
+"""Shared retrieval library for obsidian-knowledge plugins."""
 
 from typing import TYPE_CHECKING, Any
 
 from lib.vault_index.config import VaultIndexConfig, load_config
 from lib.vault_index.filters import apply_filters, score_path
 from lib.vault_index.models import Hit
-from lib.vault_index.primer import build_primer
 
 if TYPE_CHECKING:
     from lib.vault_index.indexer import Indexer
@@ -25,7 +24,6 @@ __all__ = [
     "Indexer",
     "VaultIndexConfig",
     "apply_filters",
-    "build_primer",
     "load_config",
     "score_path",
 ]

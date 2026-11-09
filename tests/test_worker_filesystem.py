@@ -6,6 +6,7 @@ import sys
 import time
 
 from lib.vault_index.config import VaultIndexConfig
+from lib.vault_index.index_generations import active_cache
 from lib.vault_index.indexer import Indexer, default_cache_dir
 
 
@@ -18,9 +19,10 @@ def test_real_watcher_embeds_only_settled_revision(tmp_path, monkeypatch, fake_o
     log = tmp_path / "worker.log"
 
     def hits(query):
-        return Indexer(vault, default_cache_dir(vault), VaultIndexConfig(), vector_enabled=False).search(
-            query
-        )
+        cache = active_cache(default_cache_dir(vault))
+        if cache is None:
+            return []
+        return Indexer(vault, cache, VaultIndexConfig(), vector_enabled=False).search(query)
 
     def wait_for(query):
         deadline = time.monotonic() + 10

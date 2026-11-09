@@ -55,8 +55,7 @@ def test_index_update_makes_new_note_searchable(tmp_path, monkeypatch, fake_olla
             "vault_write", {"path": "wiki/orchid.md", "content": "# Orchid\nPurple greenhouse orchids"}
         )
         updated = await server.call_tool("vault_search_update", {})
-        assert updated[1]["status"] == "queued"
-        assert updated[1]["indexed"] is None
+        assert updated[1] == {"status": "queued"}
         await drain_index(tmp_path)
         after = await server.call_tool("vault_search_status", {})
         assert after[1]["index_exists"] is True

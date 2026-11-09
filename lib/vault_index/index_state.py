@@ -35,11 +35,7 @@ def embedding_fingerprint() -> str:
 
 
 def vector_issue(cache: Path) -> str | None:
-    """One persisted-readiness contract shared by queries, workers, and MCP.
-
-    Legacy fingerprints cannot establish endpoint identity. Rebuild them while
-    retaining keyword retrieval, rather than assuming their vectors compatible.
-    """
+    """One persisted-readiness contract shared by queries, workers, and MCP."""
     database = cache / "index.sqlite"
     if not database.exists() or indexed_file_count(database) == 0:
         return "index not built yet"

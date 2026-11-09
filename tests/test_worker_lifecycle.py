@@ -177,7 +177,7 @@ def test_forced_rebuild_coalesces_and_publishes(tmp_path, fake_ollama, drain_ind
 
 
 def test_generation_manifest_validation_and_resume(tmp_path):
-    assert active_cache(tmp_path) == tmp_path
+    assert active_cache(tmp_path) is None
     target, created = prepare_generation(tmp_path, "model")
     assert created
     assert prepare_generation(tmp_path, "model") == (target, False)

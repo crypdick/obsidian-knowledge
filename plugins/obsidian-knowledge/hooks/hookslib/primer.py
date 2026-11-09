@@ -24,7 +24,6 @@ def _read_capped(path: Path, limit: int) -> str:
 
 def build_primer(
     vault_root: Path,
-    plugin_root: Path,
     cwd: str | None = None,
 ) -> str:
     """Build the harness primer text injected into every session.

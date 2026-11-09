@@ -11,6 +11,7 @@ import pytest
 
 from lib.vault_index import cli, indexer
 from lib.vault_index.config import VaultIndexConfig
+from lib.vault_index.index_generations import publish_generation
 from lib.vault_index.models import Hit, SearchReport
 from obsidian_knowledge_vendor import memweave
 
@@ -19,8 +20,11 @@ from obsidian_knowledge_vendor import memweave
 def keyword_index(tmp_path):
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki/orchid.md").write_text("# Orchids\n\nPurple orchids grow in the greenhouse.\n")
-    instance = indexer.Indexer(tmp_path, tmp_path / "cache", VaultIndexConfig(), vector_enabled=False)
+    root = indexer.default_cache_dir(tmp_path)
+    cache = root / "generation-a"
+    instance = indexer.Indexer(tmp_path, cache, VaultIndexConfig(), vector_enabled=False)
     instance.full_reindex()
+    publish_generation(root, cache)
     try:
         yield instance
     finally:
@@ -44,9 +48,7 @@ def test_keyword_report_contains_hits_and_empty_results(keyword_index):
 
 
 @pytest.mark.parametrize("json_output", [False, True])
-def test_no_rebuild_search_serves_keywords_from_stale_vector_index(
-    keyword_index, monkeypatch, capsys, json_output
-):
+def test_search_serves_keywords_from_stale_vector_index(keyword_index, monkeypatch, capsys, json_output):
     keyword_index._vector_enabled = True
     keyword_index.vector_issue = "index rebuild incomplete"
 
@@ -55,7 +57,6 @@ def test_no_rebuild_search_serves_keywords_from_stale_vector_index(
         "obsidian-knowledge",
         "search",
         "greenhouse",
-        "--no-rebuild",
         "--vault",
         str(keyword_index.vault_root),
     ]
@@ -184,6 +185,7 @@ def test_retrieval_with_healthy_vector_index(tmp_path, monkeypatch, capsys):
             )
 
     monkeypatch.setattr("lib.vault_index.indexer.Indexer", HealthyIndex)
+    monkeypatch.setattr("lib.vault_index.cli.active_cache", lambda _root: tmp_path / "cache")
     monkeypatch.setattr("lib.vault_index.indexer.default_cache_dir", lambda _vault: tmp_path / "cache")
     args = Namespace(cmd="search", vault=tmp_path, query="q", top_k=1, all=False)
     assert cli.run_retrieval_command(args) == 0

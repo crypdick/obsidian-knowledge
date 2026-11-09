@@ -14,7 +14,7 @@ CHECK = Path(__file__).resolve().parents[1] / "scripts/prek_hooks/check_architec
     [
         ("lib/vault_index/indexer.py", "from lib.vault_index.models import Hit", True),
         ("lib/vault_index/indexer.py", "from hookslib.repo_memory import resolve_target", False),
-        ("lib/vault_index/primer.py", "from hookslib.primer import build_primer", True),
+        ("lib/vault_index/primer.py", "from hookslib.primer import build_primer", False),
         ("lib/vault_index/primer.py", "from hookslib import capture", False),
         ("hooks/hookslib/capture.py", "import lib.vault_index", False),
         ("hooks/hookslib/capture.py", "from . import vault_config", True),

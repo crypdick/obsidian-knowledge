@@ -19,6 +19,7 @@ from lib.vault_index.dirty_paths import DirtyPaths
 from lib.vault_index.embeddings import OllamaEmbeddingProvider
 from lib.vault_index.index_generations import active_cache, prepare_generation, publish_generation
 from lib.vault_index.index_policy import index_path, indexable
+from lib.vault_index.index_state import embedding_fingerprint, vector_issue
 from lib.vault_index.indexer import Indexer, SyncStats, default_cache_dir
 from lib.vault_index.models import IndexBusyError, Progress
 from lib.vault_index.vault_listing import visible_name
@@ -85,13 +86,15 @@ class IndexWorker:
         self.wake = asyncio.Event()
         with (self.cache / ".worker.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            probe = Indexer(self.vault, self.cache, self.config, skip_probe=True)
-            self.fingerprint = probe._embedder_fingerprint()
-            self.building = probe.vector_issue is not None
-            self.target = active_cache(self.cache)
+            self.fingerprint = embedding_fingerprint()
+            published = active_cache(self.cache)
+            self.building = published is None or vector_issue(published) is not None
             manifest = self.cache / "building-generation.json"
             if self.building or manifest.exists():
                 self.prepare_rebuild()
+            else:
+                assert published is not None
+                self.target = published
         self.initial_scan = False
 
     def prepare_rebuild(self) -> bool:
@@ -119,8 +122,12 @@ class IndexWorker:
 
     async def scan(self) -> None:
         """Discover current files and deletions without extending unchanged deadlines."""
-        instance = Indexer(self.vault, self.cache, self.config, vector_enabled=False)
-        paths = set(instance.indexed_paths())
+        published = active_cache(self.cache)
+        paths = (
+            set(Indexer(self.vault, published, self.config, vector_enabled=False).indexed_paths())
+            if published is not None
+            else set()
+        )
         staged = set(Indexer(self.vault, self.target, self.config, vector_enabled=False).indexed_paths())
         paths.update(staged)
         for directory, folders, files in os.walk(self.vault):
@@ -203,10 +210,9 @@ class IndexWorker:
                         await task
                     return True
             result = await task
-            if result is not None:
-                self.stats.indexed += result.indexed
-                self.stats.skipped += result.skipped
-                self.stats.deleted += result.deleted
+            self.stats.indexed += result.indexed
+            self.stats.skipped += result.skipped
+            self.stats.deleted += result.deleted
             self.queue.complete(relative, revision)
         except (OSError, ValueError, MemWeaveError, IndexBusyError):
             logger.exception("Indexing deferred", extra={"path": relative})
@@ -254,17 +260,25 @@ def foreground_reindex(vault: Path, *, force: bool = False, progress: Progress |
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise IndexBusyError("another index worker is running") from exc
-        probe = Indexer(vault, cache, worker.config)
+        if force and not worker.building:
+            worker.prepare_rebuild()
+        published = active_cache(cache)
+        probe = Indexer(vault, published or worker.target, worker.config)
         try:
             before = set(probe.indexed_paths())
             if not probe.vector_enabled:
-                return probe.full_reindex(force=force, progress=progress)
+                if force and published is not None:
+                    asyncio.run(probe._store.close())
+                    probe = Indexer(vault, worker.target, worker.config, vector_enabled=False)
+                result = probe.full_reindex(force=force, progress=progress)
+                result.deleted = max(result.deleted, len(before - set(probe.indexed_paths())))
+                if published is None or force:
+                    publish_generation(cache, worker.target)
+                return result
         finally:
             asyncio.run(probe._store.close())
 
         async def drain() -> SyncStats:
-            if force and not worker.building:
-                worker.prepare_rebuild()
             await worker.scan()
             total = worker.queue.pending_count()
             done = 0
@@ -279,7 +293,9 @@ def foreground_reindex(vault: Path, *, force: bool = False, progress: Progress |
                     await asyncio.sleep(0.1)
                 else:
                     break
-            after = set(Indexer(vault, cache, worker.config, vector_enabled=False).indexed_paths())
+            published = active_cache(cache)
+            assert published is not None
+            after = set(Indexer(vault, published, worker.config, vector_enabled=False).indexed_paths())
             worker.stats.skipped = max(worker.stats.skipped, len(after) - worker.stats.indexed)
             worker.stats.deleted = max(worker.stats.deleted, len(before - after))
             return worker.stats

@@ -86,7 +86,8 @@ def test_search_real_cli(tmp_path, monkeypatch):
     spawn = asyncio.create_subprocess_exec
 
     async def bounded_search(*command, **kwargs):
-        assert "--no-rebuild" in command
+        assert "--no-rebuild" not in command
+        assert "--no-wait" not in command
         return await spawn(*command, **kwargs)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", bounded_search)

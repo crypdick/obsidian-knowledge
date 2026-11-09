@@ -109,13 +109,9 @@ def check_ollama(vault_root: str) -> str | None:
     if os.environ.get("OBSIDIAN_KNOWLEDGE_SKIP_OLLAMA_PROBE"):
         return None
     try:
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-        from vault_index.indexer import (  # type: ignore[import-not-found]
-            DEFAULT_EMBEDDING_API_BASE,
-            DEFAULT_EMBEDDING_MODEL,
-            _ollama_probe,
-            default_cache_dir,
-        )
+        from lib.vault_index.embeddings import DEFAULT_EMBEDDING_API_BASE, ollama_probe
+        from lib.vault_index.index_state import DEFAULT_EMBEDDING_MODEL
+        from lib.vault_index.indexer import default_cache_dir
     except ImportError:
         return None
     cache_dir = str(default_cache_dir(Path(vault_root)))
@@ -131,7 +127,7 @@ def check_ollama(vault_root: str) -> str | None:
 
     model = os.environ.get("MEMWEAVE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
     api_base = os.environ.get("MEMWEAVE_EMBEDDING_API_BASE", DEFAULT_EMBEDDING_API_BASE)
-    ok, msg = _ollama_probe(api_base, model)
+    ok, msg = ollama_probe(api_base, model)
 
     try:
         os.makedirs(cache_dir, exist_ok=True)

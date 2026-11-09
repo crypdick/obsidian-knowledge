@@ -19,10 +19,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hookslib import (
-    recall_init_lib,
-    vault_config,
-)
+from hookslib import vault_config
+from hookslib.primer import build_primer
 from hookslib.stop_hook import read_input, session_debounce
 
 
@@ -65,8 +63,7 @@ def run() -> int:
         return 0
 
     vault_root = Path(vault_roots[0])
-    plugin_root = Path(__file__).resolve().parent.parent
-    primer = recall_init_lib.build_primer(vault_root, plugin_root, cwd=os.getcwd())
+    primer = build_primer(vault_root, cwd=os.getcwd())
     emit_message(primer)
 
     return 0
