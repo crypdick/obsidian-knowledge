@@ -6,6 +6,7 @@ import asyncio
 from pathlib import Path
 
 from lib.vault_index.config import DigestFilter, VaultIndexConfig
+from lib.vault_index.index_generations import publish_generation
 from lib.vault_index.indexer import Indexer
 
 CONFIG = VaultIndexConfig(digest=DigestFilter(allow_regex=["^wiki/"]))
@@ -58,8 +59,11 @@ def test_empty_digest_result_reports_matches_outside_digest(tmp_path, monkeypatc
     vault = tmp_path / "vault"
     (vault / "Utility").mkdir(parents=True)
     (vault / "Utility/run.md").write_text("# Run\n\nA papercut appeared.\n")
-    instance = Indexer(vault, tmp_path / "cache", CONFIG, vector_enabled=False)
+    cache = cli.default_cache_dir_for_vault(vault)
+    generation = cache / "generation-a"
+    instance = Indexer(vault, generation, CONFIG, vector_enabled=False)
     instance.full_reindex()
+    publish_generation(cache, generation)
     try:
         report = instance.search_report("papercut")
         assert (report.hits, report.outside_digest_matches) == ([], 1)

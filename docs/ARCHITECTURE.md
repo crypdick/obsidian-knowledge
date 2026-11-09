@@ -68,7 +68,7 @@ Preserve these boundaries:
   to `gardener.cli`.
 - `hooks/hookslib` imports neither `lib`, `vault_index`, nor `gardener`.
   It may import the shared `vault_registry` and `vault_preferences` modules.
-- Hook entrypoints import `hookslib` and may import `vault_index` for the doctor.
+- Hook entrypoints import `hookslib` and may import `lib.vault_index` for the doctor.
 - Keep `lib` free of import cycles. Put shared result types in `models.py`.
 
 Gardener commands reuse hook convention checks and the confined, verified vault

@@ -110,7 +110,7 @@ rerunning with `--all`. This happens, for example, while a first build or
 rebuild has not yet reached digest notes. It is `0` otherwise, including for
 hybrid retrieval and `--all` searches.
 
-Warnings and background reindex notices go to stderr. Failed searches exit nonzero and
+Search warnings go to stderr. Failed searches exit nonzero and
 do not emit a success object. Timeout and busy exit codes are described below.
 
 ## Search health and network access
