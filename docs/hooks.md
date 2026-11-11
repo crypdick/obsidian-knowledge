@@ -134,12 +134,12 @@ for memory location, read/write conventions, and session-start recall.
 
 ## Secret scanning
 
-Claude's Stop hook scans for unaudited secrets in the background, without
-blocking the conversation. New findings arrive on the next turn. One scan runs
+Claude's Stop hook scans Markdown notes for unaudited secrets in the background,
+without blocking the conversation. Other file types are not scanned. New findings arrive on the next turn. One scan runs
 per vault on this host; an overlapping Stop hook skips instead of waiting.
 Manual scans wait for the lock and report synchronously.
 
-The first scan covers the vault; subsequent scans hash eligible file content and
+The first scan covers eligible notes across the vault; subsequent scans hash their content and
 run detectors only for pending or changed versions. The scanner checkpoints
 completed batches in the host's `obsidian-knowledge/secret-scan/` cache, beside
 the per-vault lock. Interrupted scans resume without repeating committed batches.

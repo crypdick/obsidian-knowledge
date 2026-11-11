@@ -94,7 +94,7 @@ class DetectorTimeout(Exception):
     """A detector did not finish scanning this file."""
 
 
-def detector_timeout(signum: int, frame: object) -> None:
+def detector_timeout(_signum: int, _frame: object) -> None:
     raise DetectorTimeout
 
 

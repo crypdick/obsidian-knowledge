@@ -189,7 +189,7 @@ def test_incomplete_discovery_preserves_baseline_and_checkpoint(tmp_path, hook_m
 @pytest.mark.parametrize("after_baseline_write", [False, True])
 def test_interruption_keeps_prior_scan_batches(tmp_path, hook_module, monkeypatch, after_baseline_write):
     configure_vault(hook_module, monkeypatch, tmp_path)
-    monkeypatch.setattr(hook_module, "CHECKPOINT_FILES", 1)
+    monkeypatch.setattr(hook_module, "SCAN_BATCH_SIZE", 1)
     for name in ("first.md", "second.md"):
         (tmp_path / name).write_text(WEAK)
     monkeypatch.setattr(hook_module, "find_files", lambda root: ["first.md", "second.md"])

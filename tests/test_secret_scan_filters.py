@@ -173,11 +173,11 @@ def test_report_digest_field_requires_sha256_length(tmp_path, scanner, value):
     assert collection.data
 
 
-def test_long_json_word_does_not_stall_metadata_filter(tmp_path, scanner, monkeypatch):
+def test_long_word_does_not_stall_metadata_filter(tmp_path, scanner, monkeypatch):
     from hookslib import secret_progress
 
     monkeypatch.setattr(secret_progress, "DETECTOR_TIMEOUT_SECONDS", 1)
-    path = tmp_path / "state.json"
+    path = tmp_path / "note.md"
     padding = "x" * 100_000
     path.write_text(json.dumps({"padding": padding, "sha256": DIGEST, "token": OPAQUE}))
     baseline = tmp_path / ".secrets.baseline"
