@@ -171,7 +171,7 @@ def test_find_files_filters_noise_without_timestamp_cutoff(tmp_path, hook_module
         directory = tmp_path / folder
         directory.mkdir()
         (directory / "ignored.md").write_text("ignored")
-    os.mkfifo(tmp_path / "pipe")
+    os.mkfifo(tmp_path / "pipe.md")
     assert set(hook_module.find_files(str(tmp_path))) == {"new.md", "old.md"}
 
 
