@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 class ScanProgress(BaseModel):
     revision: int = 0
-    baseline: str = ""
-    files: dict[str, str] = Field(default_factory=dict)
+    files: dict[str, tuple[str, str]] = Field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path) -> ScanProgress:
@@ -50,9 +51,27 @@ def content_version(path: Path) -> tuple[str, int, int, int] | None:
         return None
 
 
-def content_digest(path: Path) -> str:
-    version = content_version(path)
-    return version[0] if version else ""
+class BaselineResults(BaseModel):
+    results: dict[str, list[dict[str, Any]]]
+
+
+def finding_versions(path: Path) -> dict[str, str] | None:
+    """Fingerprint each file's findings; alert metadata must not invalidate scan progress."""
+    try:
+        baseline = BaselineResults.model_validate_json(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return fingerprint_findings(baseline.results)
+
+
+def fingerprint_findings(results: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
+    return {
+        name: hashlib.sha256(
+            json.dumps(sorted(json.dumps(item, sort_keys=True) for item in findings)).encode()
+        ).hexdigest()
+        for name, findings in results.items()
+        if findings
+    }
 
 
 class ScanDiagnostics(logging.Handler):

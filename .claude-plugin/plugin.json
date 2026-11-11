@@ -22,7 +22,8 @@
           },
           {
             "type": "command",
-            "command": "uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/scan-vault-secrets.py"
+            "command": "uv run --script ${CLAUDE_PLUGIN_ROOT}/hooks/scan-vault-secrets.py --background",
+            "async": true
           },
           {
             "type": "command",
