@@ -163,13 +163,15 @@ def test_find_files_filters_noise_without_timestamp_cutoff(tmp_path, hook_module
     (tmp_path / "old.md").write_text("old")
     os.utime(tmp_path / "old.md", (0, 0))
     (tmp_path / "image.png").write_bytes(b"image")
+    (tmp_path / "sheet.xls").write_bytes(b"binary")
+    (tmp_path / "data.xml").write_text("<a/>")
     (tmp_path / ".secrets.baseline").write_text("state")
     (tmp_path / ".secrets.known-leaked").write_text("secret")
     for folder in (".hidden", "_sources"):
         directory = tmp_path / folder
         directory.mkdir()
         (directory / "ignored.md").write_text("ignored")
-    os.mkfifo(tmp_path / "pipe")
+    os.mkfifo(tmp_path / "pipe.md")
     assert set(hook_module.find_files(str(tmp_path))) == {"new.md", "old.md"}
 
 

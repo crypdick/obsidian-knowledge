@@ -134,8 +134,9 @@ for memory location, read/write conventions, and session-start recall.
 
 ## Secret scanning
 
-The Stop hook scans for unaudited secrets. The first scan covers the vault;
-subsequent scans hash eligible file content and run detectors only for changed
+The Stop hook scans Markdown notes for unaudited secrets; other file types are
+not scanned. The first scan covers the vault in batches, checkpointing progress
+after each batch so an interrupted scan resumes; subsequent scans hash file content and run detectors only for changed
 versions. Host-local completion state beside the per-vault lock is independent
 of baseline timestamps, so audit/alert writes and sync-preserved mtimes cannot
 hide content changes. Files changed during scanning or backend warning/error diagnostics remain pending;

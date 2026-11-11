@@ -125,27 +125,15 @@ from hookslib.vault_config import is_in_vault, load_vault_roots, matching_vault_
 # originals (tax, legal); not scannable by hook policy anyway.
 SKIP_NAMED_DIRS = {"_sources", "node_modules"}
 
-EXCLUDE_EXTS = {
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".webp",
-    ".svg",
-    ".pdf",
-    ".mp4",
-    ".mp3",
-    ".zip",
-    ".tar",
-    ".gz",
-    ".woff",
-    ".woff2",
-}
+# Only notes carry prose secrets; scanning bulk binary/data files (xls, zip, ...) takes minutes.
+SCANNED_EXT = ".md"
+# Files per baseline save: a killed scan keeps the progress of completed batches.
+SCAN_BATCH_SIZE = 200
 
 KNOWN_LEAKED_FILENAME = ".secrets.known-leaked"
 BASELINE_FILENAME = ".secrets.baseline"
 # Increment when detector/filter semantics change so unchanged files are rechecked.
-SCAN_POLICY_VERSION = 3
+SCAN_POLICY_VERSION = 4
 
 
 class BaselineScanPolicy(BaseModel):
@@ -212,7 +200,7 @@ DETECT_SECRETS_CFG = {
 
 
 def find_files(root: str) -> list[str]:
-    """Enumerate eligible regular files completely; failed discovery cannot mean deletion."""
+    """Enumerate markdown files completely; failed discovery cannot mean deletion."""
 
     def abort(error: OSError) -> None:
         raise error
@@ -221,8 +209,7 @@ def find_files(root: str) -> list[str]:
     for dirpath, dirnames, filenames in os.walk(root, onerror=abort):
         dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in SKIP_NAMED_DIRS]
         for fn in filenames:
-            ext = os.path.splitext(fn)[1].lower()
-            if ext in EXCLUDE_EXTS or fn in {BASELINE_FILENAME, KNOWN_LEAKED_FILENAME}:
+            if os.path.splitext(fn)[1].lower() != SCANNED_EXT:
                 continue
             absolute = os.path.join(dirpath, fn)
             try:
@@ -477,20 +464,27 @@ def scan_and_track(
             for path, version in versions.items()
             if version is not None and (reset or progress.files.get(path) != version[0])
         ]
-        scanned = run_scan(baseline_path, vault_root, scan_paths, all_paths)
         completed = (
             {} if reset else {path: digest for path, digest in progress.files.items() if path in all_paths}
         )
-        for path in scan_paths:
-            version = versions[path]
-            if (
-                path in scanned
-                and version is not None
-                and content_version(Path(vault_root) / path) == version
-            ):
-                completed[path] = version[0]
-            else:
-                completed.pop(path, None)
+        # An empty selection still runs once: run_scan also prunes baseline entries of deleted files.
+        batches = [scan_paths[i : i + SCAN_BATCH_SIZE] for i in range(0, len(scan_paths), SCAN_BATCH_SIZE)]
+        for batch in batches or [[]]:
+            scanned = run_scan(baseline_path, vault_root, batch, all_paths)
+            for path in batch:
+                version = versions[path]
+                if (
+                    path in scanned
+                    and version is not None
+                    and content_version(Path(vault_root) / path) == version
+                ):
+                    completed[path] = version[0]
+                else:
+                    completed.pop(path, None)
+            # Checkpoint per batch so a killed or timed-out hook resumes instead of restarting.
+            ScanProgress(
+                revision=SCAN_POLICY_VERSION, baseline=content_digest(baseline_path), files=completed
+            ).save(progress_path)
         unaudited = count_unaudited(baseline_path)
         new_count, new_sample, unaudited_paths = record_alerts(baseline_path, UNAUDITED_SAMPLE_LIMIT)
         sync_needs_attention(vault_root, unaudited_paths)
