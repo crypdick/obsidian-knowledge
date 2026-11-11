@@ -186,3 +186,37 @@ def test_incomplete_discovery_preserves_baseline_and_checkpoint(tmp_path, hook_m
     assert baseline.read_bytes() == baseline_before
     assert progress.read_bytes() == progress_before
     assert ScanProgress.load(progress).files
+
+
+def test_interrupted_scan_keeps_completed_batches(tmp_path, hook_module, monkeypatch):
+    from hookslib.secret_progress import ScanProgress
+
+    configure_vault(hook_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(hook_module, "SCAN_BATCH_SIZE", 1)
+    for name in ("a.md", "b.md"):
+        (tmp_path / name).write_text("plain\n")
+    real_scan = hook_module.run_scan
+    calls = []
+
+    def die_on_second_batch(baseline, root, paths, all_paths):
+        calls.append(paths)
+        if len(calls) == 2:
+            raise KeyboardInterrupt
+        return real_scan(baseline, root, paths, all_paths)
+
+    monkeypatch.setattr(hook_module, "run_scan", die_on_second_batch)
+    with pytest.raises(KeyboardInterrupt):
+        run_stop(hook_module)
+    with hook_module.baseline_lock(str(tmp_path)) as lock:
+        progress = ScanProgress.load(Path(lock).with_suffix(".json"))
+    assert list(progress.files) == [calls[0][0]]
+
+    scanned = []
+
+    def record_scan(baseline, root, paths, all_paths):
+        scanned.append(paths)
+        return real_scan(baseline, root, paths, all_paths)
+
+    monkeypatch.setattr(hook_module, "run_scan", record_scan)
+    run_stop(hook_module)
+    assert scanned == [[calls[1][0]]]
