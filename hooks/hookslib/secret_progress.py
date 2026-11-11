@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import signal
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,18 @@ class ScanDiagnostics(logging.Handler):
         self.failed = True
 
 
+# NOTE: docs/hooks.md describes files that stay pending after detector timeout.
+DETECTOR_TIMEOUT_SECONDS = 10
+
+
+class DetectorTimeout(Exception):
+    """A detector did not finish scanning this file."""
+
+
+def detector_timeout(_signum: int, _frame: object) -> None:
+    raise DetectorTimeout
+
+
 def scan_completed(scan_file: Callable[[str], None], path: str) -> bool:
     """Any backend warning/error prevents claiming this file version complete."""
     diagnostics = ScanDiagnostics()
@@ -93,9 +106,15 @@ def scan_completed(scan_file: Callable[[str], None], path: str) -> bool:
     # The library defaults to ERROR, suppressing its own swallowed-read warnings.
     backend.setLevel(logging.WARNING)
     backend.addHandler(diagnostics)
+    previous_handler = signal.signal(signal.SIGALRM, detector_timeout)
+    signal.setitimer(signal.ITIMER_REAL, DETECTOR_TIMEOUT_SECONDS)
     try:
         scan_file(path)
+    except DetectorTimeout:
+        return False
     finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
         backend.removeHandler(diagnostics)
         backend.setLevel(previous_level)
     return not diagnostics.failed

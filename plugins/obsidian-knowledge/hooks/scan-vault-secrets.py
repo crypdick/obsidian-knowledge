@@ -9,7 +9,7 @@ Vault detection: cwd must be inside a configured vault root from
 ~/.config/obsidian-knowledge/vaults.yaml. Cooldown: at most one scan
 per session per 5 minutes, tracked via a /tmp marker's mtime.
 
-First run (or missing baseline) does a full scan of the vault.
+First run (or missing baseline) scans Markdown notes across the vault.
 Subsequent runs hash eligible content and rescan only changed file versions.
 Host-local completion state is independent of baseline audit/alert writes. Findings merge into the baseline at
 <vault>/.secrets.baseline, preserving audit decisions on findings that
@@ -131,28 +131,13 @@ from hookslib.vault_config import is_in_vault, load_vault_roots, matching_vault_
 # originals (tax, legal); not scannable by hook policy anyway.
 SKIP_NAMED_DIRS = {"_sources", "node_modules"}
 
-EXCLUDE_EXTS = {
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".webp",
-    ".svg",
-    ".pdf",
-    ".mp4",
-    ".mp3",
-    ".zip",
-    ".tar",
-    ".gz",
-    ".woff",
-    ".woff2",
-}
+SCANNED_EXT = ".md"
+SCAN_BATCH_SIZE = 200
 
 KNOWN_LEAKED_FILENAME = ".secrets.known-leaked"
 BASELINE_FILENAME = ".secrets.baseline"
 # Increment when detector/filter semantics change so unchanged files are rechecked.
-SCAN_POLICY_VERSION = 3
-CHECKPOINT_FILES = 128
+SCAN_POLICY_VERSION = 4
 
 
 class BaselineScanPolicy(BaseModel):
@@ -219,7 +204,7 @@ DETECT_SECRETS_CFG = {
 
 
 def find_files(root: str) -> list[str]:
-    """Enumerate eligible regular files completely; failed discovery cannot mean deletion."""
+    """Enumerate Markdown files completely; failed discovery cannot mean deletion."""
 
     def abort(error: OSError) -> None:
         raise error
@@ -228,8 +213,7 @@ def find_files(root: str) -> list[str]:
     for dirpath, dirnames, filenames in os.walk(root, onerror=abort):
         dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in SKIP_NAMED_DIRS]
         for fn in filenames:
-            ext = os.path.splitext(fn)[1].lower()
-            if ext in EXCLUDE_EXTS or fn in {BASELINE_FILENAME, KNOWN_LEAKED_FILENAME}:
+            if os.path.splitext(fn)[1].lower() != SCANNED_EXT:
                 continue
             absolute = os.path.join(dirpath, fn)
             try:
@@ -467,7 +451,7 @@ def scan_known_leaked(
 
 def scan_and_track(
     baseline_path: Path, vault_root: str, *, manual: bool, full: bool = False
-) -> tuple[int, list[str], list[str], list[str]]:
+) -> tuple[int, list[str], list[str], int, int]:
     """Select and complete exact file versions under the host lock, then track alerts."""
     # NOTE: docs/hooks.md documents content progress and conservative rescan triggers.
     with baseline_lock(vault_root, wait=manual) as lock_path:
@@ -488,8 +472,8 @@ def scan_and_track(
             for path, version in versions.items()
             if version is not None and completed.get(path, ("", ""))[0] != version[0]
         ]
-        for start in range(0, max(1, len(scan_paths)), CHECKPOINT_FILES):
-            batch = scan_paths[start : start + CHECKPOINT_FILES]
+        for start in range(0, max(1, len(scan_paths)), SCAN_BATCH_SIZE):
+            batch = scan_paths[start : start + SCAN_BATCH_SIZE]
             scanned = run_scan(baseline_path, vault_root, batch, all_paths)
             for path in batch:
                 version = versions[path]
@@ -506,7 +490,7 @@ def scan_and_track(
         new_count, new_sample, unaudited_paths = record_alerts(baseline_path, UNAUDITED_SAMPLE_LIMIT)
         sync_needs_attention(vault_root, unaudited_paths)
     count, sample = unaudited if manual else (new_count, new_sample)
-    return count, sample, scan_paths, all_paths
+    return count, sample, all_paths, len(scan_paths), len(all_paths) - len(completed)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -577,7 +561,7 @@ def main(argv: list[str] | None = None) -> None:
 
     baseline_path = Path(vault_root) / BASELINE_FILENAME
     try:
-        count, sample, scan_paths, all_paths = scan_and_track(
+        count, sample, all_paths, attempted, pending = scan_and_track(
             baseline_path, vault_root, manual=args.manual, full=args.full
         )
     except BlockingIOError:
@@ -588,11 +572,12 @@ def main(argv: list[str] | None = None) -> None:
     messages = scan_messages(vault_root, all_paths, count, sample)
 
     if args.manual:
+        if pending:
+            messages.append(f"detect-secrets: {pending} file(s) remain pending; scan incomplete.")
         if not messages:
-            print(
-                f"detect-secrets: clean. Scanned {len(scan_paths)} file(s) out of {len(all_paths)} in vault."
+            messages.append(
+                f"detect-secrets: clean. Scanned {attempted} file(s) out of {len(all_paths)} in vault."
             )
-            sys.exit(0)
         print("\n\n".join(messages))
         sys.exit(0)
 

@@ -27,7 +27,17 @@ PLACEHOLDER = re.compile(
 DIGEST_HEX = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64}|[0-9a-fA-F]{128})")
 DIGEST_KEY = r"(?:\w+_)?(?:sha(?:1|256|512)?|commit)"
 ID_KEY = re.compile(r"(?:\w+_)?ids?")
-QUOTED_FIELD = re.compile(r"""["']?(?P<key>[\w:]+)["']?\s*[:=]\s*["'](?P<value>[^"']*)["']""")
+# Do not retry from each character of a long word when no assignment follows.
+QUOTED_FIELD = re.compile(r"""(?<![\w:])["']?(?P<key>[\w:]+)["']?\s*[:=]\s*["'](?P<value>[^"']*)["']""")
+
+
+@lru_cache(maxsize=1)
+def quoted_field_keys(line: str) -> dict[str, set[str]]:
+    """Index assignments once when several detectors find candidates on one line."""
+    keys: dict[str, set[str]] = {}
+    for match in QUOTED_FIELD.finditer(line):
+        keys.setdefault(match["value"], set()).add(match["key"])
+    return keys
 
 
 @dataclass(frozen=True)
@@ -38,10 +48,7 @@ class Candidate:
     filename: str
 
     def has_field(self, key_pattern: str) -> bool:
-        return any(
-            match["value"] == self.value and re.fullmatch(key_pattern, match["key"])
-            for match in QUOTED_FIELD.finditer(self.line)
-        )
+        return any(re.fullmatch(key_pattern, key) for key in quoted_field_keys(self.line).get(self.value, ()))
 
 
 def is_metadata(candidate: Candidate) -> bool:
@@ -49,10 +56,9 @@ def is_metadata(candidate: Candidate) -> bool:
         return False
     # NOTE: docs/hooks.md's Secret scanning section defines this audit checksum field.
     if candidate.has_field("sha256_utf8_read_content"):
-        return bool(re.fullmatch(r"[0-9a-fA-F]{64}", candidate.value)) and not any(
-            match["value"] == candidate.value and match["key"] != "sha256_utf8_read_content"
-            for match in QUOTED_FIELD.finditer(candidate.line)
-        )
+        return bool(re.fullmatch(r"[0-9a-fA-F]{64}", candidate.value)) and quoted_field_keys(candidate.line)[
+            candidate.value
+        ] == {"sha256_utf8_read_content"}
     if candidate.has_field(DIGEST_KEY):
         return bool(DIGEST_HEX.fullmatch(candidate.value))
     if candidate.filename.endswith(".json") and candidate.has_field("list_id"):
