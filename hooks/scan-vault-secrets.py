@@ -467,7 +467,7 @@ def scan_known_leaked(
 
 def scan_and_track(
     baseline_path: Path, vault_root: str, *, manual: bool, full: bool = False
-) -> tuple[int, list[str], list[str], list[str]]:
+) -> tuple[int, list[str], list[str], int, int]:
     """Select and complete exact file versions under the host lock, then track alerts."""
     # NOTE: docs/hooks.md documents content progress and conservative rescan triggers.
     with baseline_lock(vault_root, wait=manual) as lock_path:
@@ -506,7 +506,7 @@ def scan_and_track(
         new_count, new_sample, unaudited_paths = record_alerts(baseline_path, UNAUDITED_SAMPLE_LIMIT)
         sync_needs_attention(vault_root, unaudited_paths)
     count, sample = unaudited if manual else (new_count, new_sample)
-    return count, sample, scan_paths, all_paths
+    return count, sample, all_paths, len(scan_paths), len(all_paths) - len(completed)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -577,7 +577,7 @@ def main(argv: list[str] | None = None) -> None:
 
     baseline_path = Path(vault_root) / BASELINE_FILENAME
     try:
-        count, sample, scan_paths, all_paths = scan_and_track(
+        count, sample, all_paths, attempted, pending = scan_and_track(
             baseline_path, vault_root, manual=args.manual, full=args.full
         )
     except BlockingIOError:
@@ -588,11 +588,12 @@ def main(argv: list[str] | None = None) -> None:
     messages = scan_messages(vault_root, all_paths, count, sample)
 
     if args.manual:
+        if pending:
+            messages.append(f"detect-secrets: {pending} file(s) remain pending; scan incomplete.")
         if not messages:
-            print(
-                f"detect-secrets: clean. Scanned {len(scan_paths)} file(s) out of {len(all_paths)} in vault."
+            messages.append(
+                f"detect-secrets: clean. Scanned {attempted} file(s) out of {len(all_paths)} in vault."
             )
-            sys.exit(0)
         print("\n\n".join(messages))
         sys.exit(0)
 

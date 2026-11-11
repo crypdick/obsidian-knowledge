@@ -173,6 +173,22 @@ def test_report_digest_field_requires_sha256_length(tmp_path, scanner, value):
     assert collection.data
 
 
+def test_long_json_word_does_not_stall_metadata_filter(tmp_path, scanner, monkeypatch):
+    from hookslib import secret_progress
+
+    monkeypatch.setattr(secret_progress, "DETECTOR_TIMEOUT_SECONDS", 1)
+    path = tmp_path / "state.json"
+    padding = "x" * 100_000
+    path.write_text(json.dumps({"padding": padding, "sha256": DIGEST, "token": OPAQUE}))
+    baseline = tmp_path / ".secrets.baseline"
+    completed = scanner.run_scan(baseline, str(tmp_path), [path.name], [path.name])
+    assert path.name in completed
+    findings = json.loads(baseline.read_text())["results"][path.name]
+    assert {finding["hashed_secret"] for finding in findings} == {
+        PotentialSecret("Secret Keyword", path.name, OPAQUE).secret_hash,
+    }
+
+
 def test_mime_only_filters_image_payload_and_invalidates_cache(tmp_path, scanner):
     path = tmp_path / "export.mht"
     # Synthetic regex match; never a real issued token.

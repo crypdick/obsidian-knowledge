@@ -274,3 +274,32 @@ def test_manual_scan_reports_io_failure(tmp_path, hook_module, monkeypatch):
     monkeypatch.setattr(hook_module, "scan_and_track", unavailable)
     with pytest.raises(BlockingIOError, match="state unavailable"):
         hook_module.main(["--manual"])
+
+
+def test_timed_out_detector_leaves_pending_file_without_blocking_later_files(
+    tmp_path, hook_module, monkeypatch, capsys
+):
+    import time
+
+    from detect_secrets.core.secrets_collection import SecretsCollection
+    from hookslib import secret_progress
+
+    configure_vault(hook_module, monkeypatch, tmp_path)
+    (tmp_path / "slow.md").write_text("slow")
+    (tmp_path / "later.md").write_text("plain")
+    monkeypatch.setattr(hook_module, "find_files", lambda root: ["slow.md", "later.md"])
+    monkeypatch.setattr(secret_progress, "DETECTOR_TIMEOUT_SECONDS", 0.15)
+    original = SecretsCollection.scan_file
+
+    def scan(collection, path):
+        if path == "slow.md":
+            time.sleep(2)
+        original(collection, path)
+
+    monkeypatch.setattr(SecretsCollection, "scan_file", scan)
+    with pytest.raises(SystemExit) as stopped:
+        hook_module.main(["--manual"])
+    assert stopped.value.code == 0
+    assert "1 file(s) remain pending" in capsys.readouterr().out
+    with hook_module.baseline_lock(str(tmp_path)) as lock:
+        assert set(ScanProgress.load(lock.with_suffix(".json")).files) == {"later.md"}

@@ -146,8 +146,9 @@ the per-vault lock. Interrupted scans resume without repeating committed batches
 Progress binds each file's content hash to its own baseline findings. Alert
 bookkeeping, baseline timestamps, and changes to another file's findings do not
 invalidate it. Missing completion state, a missing baseline, or a scanner policy
-change requires rescanning. Files changed during scanning or backend warnings
-remain pending; failed rescans retain previous findings. Incomplete discovery
+change requires rescanning. Files changed during scanning, backend warnings,
+and files whose detectors exceed 10 seconds remain pending; failed rescans
+retain previous findings. Manual output reports pending files. Incomplete discovery
 aborts updates instead of treating inaccessible files as deleted. Ask `vault-organizer` to scan the vault for
 secrets, or request a full rescan of all eligible files while preserving audit
 decisions. Both Claude and Codex use the skill's

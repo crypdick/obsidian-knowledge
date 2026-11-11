@@ -258,7 +258,7 @@ def _stub_main_scan(hook_module, monkeypatch, tmp_path, *, count=0, leaked=0):
     monkeypatch.setattr(hook_module, "is_in_vault", lambda cwd: True)
     monkeypatch.setattr(hook_module, "matching_vault_root", lambda cwd, roots: str(tmp_path))
     monkeypatch.setattr(hook_module, "load_vault_roots", lambda: [str(tmp_path)])
-    monkeypatch.setattr(hook_module, "find_files", lambda root: ["note.md"])
+    monkeypatch.setattr(hook_module, "find_files", lambda root: [])
     monkeypatch.setattr(hook_module, "scan_policy_is_current", lambda path: False)
     monkeypatch.setattr(hook_module, "run_scan", lambda *args: {})
     monkeypatch.setattr(hook_module, "count_unaudited", lambda path: (count, ["note.md:1 (Synthetic)"]))
