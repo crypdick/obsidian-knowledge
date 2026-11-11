@@ -109,7 +109,13 @@ from pydantic import BaseModel
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hookslib.secret_alerts import ALERTED_KEY, baseline_lock, record_alerts, sync_needs_attention
-from hookslib.secret_progress import ScanProgress, content_digest, content_version, scan_completed
+from hookslib.secret_progress import (
+    ScanProgress,
+    content_version,
+    finding_versions,
+    fingerprint_findings,
+    scan_completed,
+)
 from hookslib.stop_hook import emit_block, in_cooldown, read_input
 from hookslib.vault_config import is_in_vault, load_vault_roots, matching_vault_root
 
@@ -146,6 +152,7 @@ KNOWN_LEAKED_FILENAME = ".secrets.known-leaked"
 BASELINE_FILENAME = ".secrets.baseline"
 # Increment when detector/filter semantics change so unchanged files are rechecked.
 SCAN_POLICY_VERSION = 3
+CHECKPOINT_FILES = 128
 
 
 class BaselineScanPolicy(BaseModel):
@@ -239,7 +246,7 @@ def run_scan(
     vault_root: str,
     scan_paths: list[str],
     all_paths: list[str],
-) -> list[str]:
+) -> dict[str, str]:
     """Scan `scan_paths` and merge into baseline at `baseline_path`.
 
     All path arguments are vault-relative. `scan_paths` are files
@@ -295,8 +302,8 @@ def run_scan(
             result_sc.merge(old_sc)
         _drop_same_value_duplicates(result_sc)
 
-        _save_if_changed(result_sc, baseline_path, ds_baseline)
-        return completed
+        findings = _save_if_changed(result_sc, baseline_path, ds_baseline)
+        return {path: findings.get(path, "") for path in completed}
 
 
 def _drop_same_value_duplicates(result_sc: SecretsCollection) -> None:
@@ -311,7 +318,9 @@ def _drop_same_value_duplicates(result_sc: SecretsCollection) -> None:
         result_sc.data[filename] = set(by_hash.values())
 
 
-def _save_if_changed(result_sc: SecretsCollection, baseline_path: Path, ds_baseline: ModuleType) -> None:
+def _save_if_changed(
+    result_sc: SecretsCollection, baseline_path: Path, ds_baseline: ModuleType
+) -> dict[str, str]:
     """Write baseline only if findings differ from existing on disk.
 
     detect_secrets stamps `generated_at` on every save_to_file call. With
@@ -345,10 +354,10 @@ def _save_if_changed(result_sc: SecretsCollection, baseline_path: Path, ds_basel
                 old_data = {}
         if ALERTED_KEY in old_data:
             new_data[ALERTED_KEY] = old_data[ALERTED_KEY]
-        if old_data and _normalize(old_data) == _normalize(new_data):
-            return
-        tmp_path.write_text(json.dumps(new_data, indent=2) + "\n")
-        tmp_path.replace(baseline_path)
+        if not old_data or _normalize(old_data) != _normalize(new_data):
+            tmp_path.write_text(json.dumps(new_data, indent=2) + "\n")
+            tmp_path.replace(baseline_path)
+        return fingerprint_findings(new_data["results"])
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
@@ -461,42 +470,41 @@ def scan_and_track(
 ) -> tuple[int, list[str], list[str], list[str]]:
     """Select and complete exact file versions under the host lock, then track alerts."""
     # NOTE: docs/hooks.md documents content progress and conservative rescan triggers.
-    with baseline_lock(vault_root) as lock_path:
-        progress_path = Path(lock_path).with_suffix(".json")
+    with baseline_lock(vault_root, wait=manual) as lock_path:
+        progress_path = lock_path.with_suffix(".json")
         progress = ScanProgress.load(progress_path)
         all_paths = find_files(vault_root)
         versions = {path: content_version(Path(vault_root) / path) for path in all_paths}
-        reset = (
-            full
-            or not scan_policy_is_current(baseline_path)
-            or progress.revision != SCAN_POLICY_VERSION
-            or progress.baseline != content_digest(baseline_path)
-        )
+        findings = finding_versions(baseline_path)
+        if full or progress.revision != SCAN_POLICY_VERSION or not scan_policy_is_current(baseline_path):
+            findings = None
+        completed = {
+            path: entry
+            for path, entry in progress.files.items()
+            if path in versions and findings is not None and entry[1] == findings.get(path, "")
+        }
         scan_paths = [
             path
             for path, version in versions.items()
-            if version is not None and (reset or progress.files.get(path) != version[0])
+            if version is not None and completed.get(path, ("", ""))[0] != version[0]
         ]
-        scanned = run_scan(baseline_path, vault_root, scan_paths, all_paths)
-        completed = (
-            {} if reset else {path: digest for path, digest in progress.files.items() if path in all_paths}
-        )
-        for path in scan_paths:
-            version = versions[path]
-            if (
-                path in scanned
-                and version is not None
-                and content_version(Path(vault_root) / path) == version
-            ):
-                completed[path] = version[0]
-            else:
-                completed.pop(path, None)
+        for start in range(0, max(1, len(scan_paths)), CHECKPOINT_FILES):
+            batch = scan_paths[start : start + CHECKPOINT_FILES]
+            scanned = run_scan(baseline_path, vault_root, batch, all_paths)
+            for path in batch:
+                version = versions[path]
+                if (
+                    path in scanned
+                    and version is not None
+                    and content_version(Path(vault_root) / path) == version
+                ):
+                    completed[path] = (version[0], scanned[path])
+                else:
+                    completed.pop(path, None)
+            ScanProgress(revision=SCAN_POLICY_VERSION, files=completed).save(progress_path)
         unaudited = count_unaudited(baseline_path)
         new_count, new_sample, unaudited_paths = record_alerts(baseline_path, UNAUDITED_SAMPLE_LIMIT)
         sync_needs_attention(vault_root, unaudited_paths)
-        ScanProgress(
-            revision=SCAN_POLICY_VERSION, baseline=content_digest(baseline_path), files=completed
-        ).save(progress_path)
     count, sample = unaudited if manual else (new_count, new_sample)
     return count, sample, scan_paths, all_paths
 
@@ -515,7 +523,32 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Manual mode: rescan all eligible files, preserving audit decisions.",
     )
+    parser.add_argument("--background", action="store_true", help="Report findings on the next Claude turn.")
     return parser.parse_args(argv)
+
+
+def scan_messages(vault_root: str, all_paths: list[str], count: int, sample: list[str]) -> list[str]:
+    # Known-leaked literals: walk every file in the vault, not just
+    # changed-content ones, so a literal added to .secrets.known-leaked
+    # surfaces existing occurrences immediately.
+    literals = load_known_leaked(vault_root)
+    leaked_count, leaked_files, leaked_sample = scan_known_leaked(vault_root, all_paths, literals)
+
+    messages: list[str] = []
+    if count > 0:
+        sample_block = "\n".join(f"  {s}" for s in sample)
+        messages.append(REMINDER_TEMPLATE.format(count=count, sample=sample_block))
+    if leaked_count > 0:
+        leaked_block = "\n".join(f"  {s}" for s in leaked_sample)
+        messages.append(
+            KNOWN_LEAKED_REMINDER_TEMPLATE.format(
+                count=leaked_count,
+                file_count=leaked_files,
+                sample=leaked_block,
+            )
+        )
+
+    return messages
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -543,32 +576,16 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(0)
 
     baseline_path = Path(vault_root) / BASELINE_FILENAME
-    count, sample, scan_paths, all_paths = scan_and_track(
-        baseline_path, vault_root, manual=args.manual, full=args.full
-    )
-
-    # Known-leaked literals: walk every file in the vault, not just
-    # changed-content ones, so a literal added to .secrets.known-leaked
-    # surfaces existing occurrences immediately.
-    literals = load_known_leaked(vault_root)
-    if literals:
-        leaked_count, leaked_files, leaked_sample = scan_known_leaked(vault_root, all_paths, literals)
-    else:
-        leaked_count, leaked_files, leaked_sample = 0, 0, []
-
-    messages: list[str] = []
-    if count > 0:
-        sample_block = "\n".join(f"  {s}" for s in sample)
-        messages.append(REMINDER_TEMPLATE.format(count=count, sample=sample_block))
-    if leaked_count > 0:
-        leaked_block = "\n".join(f"  {s}" for s in leaked_sample)
-        messages.append(
-            KNOWN_LEAKED_REMINDER_TEMPLATE.format(
-                count=leaked_count,
-                file_count=leaked_files,
-                sample=leaked_block,
-            )
+    try:
+        count, sample, scan_paths, all_paths = scan_and_track(
+            baseline_path, vault_root, manual=args.manual, full=args.full
         )
+    except BlockingIOError:
+        if args.manual:
+            raise
+        sys.exit(0)  # Another session owns this scan.
+
+    messages = scan_messages(vault_root, all_paths, count, sample)
 
     if args.manual:
         if not messages:
@@ -581,7 +598,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if not messages:
         sys.exit(0)
-    emit_block("\n\n".join(messages))
+    reason = "\n\n".join(messages)
+    if args.background:
+        json.dump({"systemMessage": reason}, sys.stdout)
+    else:
+        emit_block(reason)
 
 
 if __name__ == "__main__":

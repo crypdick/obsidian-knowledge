@@ -176,6 +176,45 @@ def test_foreground_offline_recovery_remains_keyword_only(tmp_path, monkeypatch)
     assert read_index_status(tmp_path).degraded_reason == "index built in keyword-only mode"
 
 
+@pytest.mark.parametrize("force", [False, True])
+def test_offline_recovery_preserves_interrupted_vector_reindex(tmp_path, monkeypatch, fake_ollama, force):
+    from lib.vault_index.embeddings import ollama_probe
+    from lib.vault_index.index_worker import foreground_reindex
+
+    monkeypatch.setattr("lib.vault_index.indexer._ollama_probe", ollama_probe)
+
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("orchid completed")
+    second.write_text("tulip pending")
+    if force:
+        foreground_reindex(tmp_path)
+        fake_ollama.texts.clear()
+
+    def interrupt(done, total):
+        if done == 1:
+            raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        foreground_reindex(tmp_path, force=force, progress=interrupt)
+    worker = IndexWorker(tmp_path)
+    staged = worker.target
+    assert (staged / "index.sqlite").exists()
+    assert len(fake_ollama.texts) == 1
+
+    fake_ollama.models = ()
+    foreground_reindex(tmp_path, force=force)
+    assert active_cache(worker.cache) != staged
+    assert IndexWorker(tmp_path).target == staged
+
+    fake_ollama.models = ("bge-m3:latest",)
+    fake_ollama.texts.clear()
+    assert foreground_reindex(tmp_path, force=force).indexed == 1
+    assert active_cache(worker.cache) == staged
+    assert len(fake_ollama.texts) == 1
+    assert "tulip pending" in fake_ollama.texts[0]
+
+
 def test_foreground_backend_failure_surfaces_without_publishing(tmp_path, monkeypatch, fake_ollama):
     from lib.vault_index.index_worker import foreground_reindex
     from lib.vault_index.indexer import default_cache_dir

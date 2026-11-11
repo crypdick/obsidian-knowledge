@@ -134,15 +134,21 @@ for memory location, read/write conventions, and session-start recall.
 
 ## Secret scanning
 
-The Stop hook scans for unaudited secrets. The first scan covers the vault;
-subsequent scans hash eligible file content and run detectors only for changed
-versions. Host-local completion state beside the per-vault lock is independent
-of baseline timestamps, so audit/alert writes and sync-preserved mtimes cannot
-hide content changes. Files changed during scanning or backend warning/error diagnostics remain pending;
-failed rescans retain previous findings. Incomplete directory discovery aborts
-baseline/checkpoint updates instead of treating inaccessible files as deleted. Missing
-completion state or an externally replaced baseline triggers a conservative full
-rescan. Ask `vault-organizer` to scan the vault for
+Claude's Stop hook scans for unaudited secrets in the background, without
+blocking the conversation. New findings arrive on the next turn. One scan runs
+per vault on this host; an overlapping Stop hook skips instead of waiting.
+Manual scans wait for the lock and report synchronously.
+
+The first scan covers the vault; subsequent scans hash eligible file content and
+run detectors only for pending or changed versions. The scanner checkpoints
+completed batches in the host's `obsidian-knowledge/secret-scan/` cache, beside
+the per-vault lock. Interrupted scans resume without repeating committed batches.
+Progress binds each file's content hash to its own baseline findings. Alert
+bookkeeping, baseline timestamps, and changes to another file's findings do not
+invalidate it. Missing completion state, a missing baseline, or a scanner policy
+change requires rescanning. Files changed during scanning or backend warnings
+remain pending; failed rescans retain previous findings. Incomplete discovery
+aborts updates instead of treating inaccessible files as deleted. Ask `vault-organizer` to scan the vault for
 secrets, or request a full rescan of all eligible files while preserving audit
 decisions. Both Claude and Codex use the skill's
 [manual scan workflow](https://github.com/crypdick/obsidian-knowledge/blob/main/skills/vault-organizer/SKILL.md#secret-scans).

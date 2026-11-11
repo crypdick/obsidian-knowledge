@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
+from hookslib.secret_progress import ScanProgress
 
 from tests.secret_scanner import WEAK, configure_vault, run_stop
 from tests.secret_scanner import hook_module as hook_module
@@ -66,17 +67,16 @@ def test_edit_during_scan_remains_pending_and_unchanged_scan_is_incremental(
 def test_progress_tracks_only_readable_stable_versions(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
-    from hookslib.secret_progress import ScanProgress, content_digest, content_version
+    from hookslib.secret_progress import content_version
 
     state = tmp_path / "progress.json"
     assert ScanProgress.load(state).files == {}
     state.write_text("invalid json")
     assert ScanProgress.load(state).files == {}
-    progress = ScanProgress(revision=1, baseline="digest", files={"note.md": "content-digest"})
+    progress = ScanProgress(revision=1, files={"note.md": ("content-digest", "findings-digest")})
     progress.save(state)
     assert ScanProgress.load(state) == progress
     assert content_version(tmp_path / "missing.md") is None
-    assert content_digest(tmp_path / "missing.md") == ""
     note = tmp_path / "note.md"
     note.write_text("plain")
     states = iter(
@@ -150,14 +150,12 @@ def test_backend_partial_findings_do_not_replace_previous_scan(tmp_path, hook_mo
         logging.getLogger("detect-secrets").warning("synthetic backend failure after partial findings")
 
     monkeypatch.setattr(SecretsCollection, "scan_file", partial_failure)
-    assert hook_module.run_scan(baseline, str(tmp_path), ["note.md"], ["note.md"]) == []
+    assert hook_module.run_scan(baseline, str(tmp_path), ["note.md"], ["note.md"]) == {}
     assert "note.md" not in json.loads(baseline.read_text())["results"]
 
 
 @pytest.mark.parametrize("failure", ["stat", "walk"])
 def test_incomplete_discovery_preserves_baseline_and_checkpoint(tmp_path, hook_module, monkeypatch, failure):
-    from hookslib.secret_progress import ScanProgress
-
     configure_vault(hook_module, monkeypatch, tmp_path)
     note = tmp_path / "note.md"
     baseline = tmp_path / ".secrets.baseline"
@@ -186,3 +184,93 @@ def test_incomplete_discovery_preserves_baseline_and_checkpoint(tmp_path, hook_m
     assert baseline.read_bytes() == baseline_before
     assert progress.read_bytes() == progress_before
     assert ScanProgress.load(progress).files
+
+
+@pytest.mark.parametrize("after_baseline_write", [False, True])
+def test_interruption_keeps_prior_scan_batches(tmp_path, hook_module, monkeypatch, after_baseline_write):
+    configure_vault(hook_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(hook_module, "CHECKPOINT_FILES", 1)
+    for name in ("first.md", "second.md"):
+        (tmp_path / name).write_text(WEAK)
+    monkeypatch.setattr(hook_module, "find_files", lambda root: ["first.md", "second.md"])
+    real_scan = hook_module.run_scan
+    attempted = []
+
+    def interrupted(baseline, root, paths, all_paths):
+        attempted.extend(paths)
+        if paths != ["second.md"]:
+            return real_scan(baseline, root, paths, all_paths)
+        if after_baseline_write:
+            real_scan(baseline, root, paths, all_paths)
+        raise InterruptedError("stopped")
+
+    monkeypatch.setattr(hook_module, "run_scan", interrupted)
+    with pytest.raises(InterruptedError):
+        run_stop(hook_module)
+    assert attempted == ["first.md", "second.md"]
+    with hook_module.baseline_lock(str(tmp_path)) as lock:
+        assert set(ScanProgress.load(lock.with_suffix(".json")).files) == {"first.md"}
+
+    attempted.clear()
+
+    def resume(baseline, root, paths, all_paths):
+        attempted.extend(paths)
+        return real_scan(baseline, root, paths, all_paths)
+
+    monkeypatch.setattr(hook_module, "run_scan", resume)
+    run_stop(hook_module)
+    assert attempted == ["second.md"]
+    assert set(json.loads((tmp_path / ".secrets.baseline").read_text())["results"]) == {
+        "first.md",
+        "second.md",
+    }
+
+
+def test_background_stop_reports_on_next_turn_without_waiting_for_lock(
+    tmp_path, hook_module, monkeypatch, capsys
+):
+    configure_vault(hook_module, monkeypatch, tmp_path)
+    (tmp_path / "note.md").write_text(WEAK)
+    with hook_module.baseline_lock(str(tmp_path)):
+        with pytest.raises(SystemExit) as stopped:
+            hook_module.main(["--background"])
+        assert stopped.value.code == 0
+    assert not (tmp_path / ".secrets.baseline").exists()
+    hook_module.main(["--background"])
+    report = json.loads(capsys.readouterr().out)
+    assert set(report) == {"systemMessage"}
+    assert "note.md:1" in report["systemMessage"]
+
+
+def test_external_baseline_change_only_retries_affected_file(tmp_path, hook_module, monkeypatch):
+    configure_vault(hook_module, monkeypatch, tmp_path)
+    (tmp_path / "first.md").write_text(WEAK)
+    (tmp_path / "second.md").write_text(WEAK)
+    monkeypatch.setattr(hook_module, "find_files", lambda root: ["first.md", "second.md"])
+    run_stop(hook_module)
+    baseline = tmp_path / ".secrets.baseline"
+    data = json.loads(baseline.read_text())
+    del data["results"]["second.md"]
+    baseline.write_text(json.dumps(data))
+    real_scan = hook_module.run_scan
+    attempted = []
+
+    def resume(baseline, root, paths, all_paths):
+        attempted.extend(paths)
+        return real_scan(baseline, root, paths, all_paths)
+
+    monkeypatch.setattr(hook_module, "run_scan", resume)
+    run_stop(hook_module)
+    assert attempted == ["second.md"]
+    assert set(json.loads(baseline.read_text())["results"]) == {"first.md", "second.md"}
+
+
+def test_manual_scan_reports_io_failure(tmp_path, hook_module, monkeypatch):
+    configure_vault(hook_module, monkeypatch, tmp_path)
+
+    def unavailable(*args, **kwargs):
+        raise BlockingIOError("state unavailable")
+
+    monkeypatch.setattr(hook_module, "scan_and_track", unavailable)
+    with pytest.raises(BlockingIOError, match="state unavailable"):
+        hook_module.main(["--manual"])

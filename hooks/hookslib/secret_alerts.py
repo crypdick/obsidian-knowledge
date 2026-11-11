@@ -10,7 +10,6 @@ import fcntl
 import hashlib
 import json
 import os
-import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -21,16 +20,19 @@ NEEDS_ATTENTION_HEADING = "## Secret scan findings"
 
 
 @contextlib.contextmanager
-def baseline_lock(vault_root: str) -> Iterator[str]:
+def baseline_lock(vault_root: str, *, wait: bool = True) -> Iterator[Path]:
     """Serialize scan/merge/save across concurrent sessions on this host.
 
     Yields the lock path. The lock lives outside the vault so sync tools never see it.
     """
     # NOTE: host-local lock only; sync peers writing the baseline can still race.
     digest = hashlib.sha256(os.path.realpath(vault_root).encode()).hexdigest()[:16]
-    lock_path = os.path.join(tempfile.gettempdir(), f".obsidian-knowledge-secrets-{digest}.lock")
-    with open(lock_path, "a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    state = cache / "obsidian-knowledge" / "secret-scan"
+    state.mkdir(mode=0o700, parents=True, exist_ok=True)
+    lock_path = state / f"{digest}.lock"
+    with lock_path.open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX if wait else fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
             yield lock_path
         finally:

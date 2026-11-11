@@ -38,6 +38,7 @@ def _isolated_preferences(tmp_path, monkeypatch):
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CONFIG", str(tmp_path / "preferences.yaml"))
     # Tests exercise HOME-based discovery; caller overrides must not supersede it.
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / ".cache"))
     monkeypatch.delenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", raising=False)
 
 

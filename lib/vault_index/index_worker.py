@@ -18,7 +18,12 @@ from lib.vault_index.cache_paths import default_cache_dir
 from lib.vault_index.config import VaultIndexConfig, load_config
 from lib.vault_index.dirty_paths import DirtyPaths
 from lib.vault_index.embeddings import OllamaEmbeddingProvider
-from lib.vault_index.index_generations import active_cache, prepare_generation, publish_generation
+from lib.vault_index.index_generations import (
+    active_cache,
+    generation_manifest,
+    prepare_generation,
+    publish_generation,
+)
 from lib.vault_index.index_policy import index_path, indexable
 from lib.vault_index.index_state import embedding_fingerprint, vector_issue
 from lib.vault_index.indexer import Indexer, SyncStats
@@ -92,7 +97,7 @@ class IndexWorker:
             self.fingerprint = embedding_fingerprint()
             published = active_cache(self.cache)
             self.building = published is None or vector_issue(published) is not None
-            manifest = self.cache / "building-generation.json"
+            manifest = generation_manifest(self.cache, keyword_only=False)
             if self.building or manifest.exists():
                 self.prepare_rebuild()
             else:
@@ -278,6 +283,39 @@ class IndexWorker:
                             await asyncio.wait_for(self.wake.wait(), timeout=1)
 
 
+def foreground_keyword_reindex(
+    worker: IndexWorker,
+    published: Path | None,
+    before: set[str],
+    *,
+    force: bool,
+    progress: Progress | None,
+) -> SyncStats:
+    """Recover keyword search without touching the staged vector database."""
+    if not asyncio.run(worker.scan()):
+        raise OSError("cannot complete vault discovery; index update remains pending")
+    replacement = published is None or force
+    if replacement:
+        target, _ = prepare_generation(worker.cache, "keyword-only", keyword_only=True)
+    else:
+        assert published is not None
+        target = published
+    index = Indexer(worker.vault, target, worker.config, vector_enabled=False)
+    try:
+        result = index.full_reindex(progress=progress)
+        after = set(index.indexed_paths())
+        result.deleted = max(result.deleted, len(before - after))
+    finally:
+        asyncio.run(index._store.close())
+    asyncio.run(Indexer(worker.vault, target, worker.config, skip_probe=True).initialize_empty())
+    if replacement:
+        publish_generation(worker.cache, target, keyword_only=True)
+        if not after and not (worker.target / "index.sqlite").exists():
+            # Empty indexes need no vectors; do not leave an empty rebuild pending.
+            generation_manifest(worker.cache, keyword_only=False).unlink(missing_ok=True)
+    return result
+
+
 def foreground_reindex(vault: Path, *, force: bool = False, progress: Progress | None = None) -> SyncStats:
     """Drain the same queue/generation lifecycle without starting a daemon.
 
@@ -295,28 +333,16 @@ def foreground_reindex(vault: Path, *, force: bool = False, progress: Progress |
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise IndexBusyError("another index worker is running") from exc
-        if force and not worker.building:
-            worker.prepare_rebuild()
         published = active_cache(cache)
         probe = Indexer(vault, published or worker.target, worker.config)
         try:
             before = set(probe.indexed_paths())
             if not probe.vector_enabled:
-                if not asyncio.run(worker.scan()):
-                    raise OSError("cannot complete vault discovery; index update remains pending")
-                if force and published is not None:
-                    asyncio.run(probe._store.close())
-                    probe = Indexer(vault, worker.target, worker.config, vector_enabled=False)
-                result = probe.full_reindex(force=force, progress=progress)
-                asyncio.run(
-                    Indexer(vault, probe.cache_dir, worker.config, skip_probe=True).initialize_empty()
-                )
-                result.deleted = max(result.deleted, len(before - set(probe.indexed_paths())))
-                if published is None or force:
-                    publish_generation(cache, worker.target)
-                return result
+                return foreground_keyword_reindex(worker, published, before, force=force, progress=progress)
         finally:
             asyncio.run(probe._store.close())
+        if force and not worker.building:
+            worker.prepare_rebuild()
 
         async def drain() -> SyncStats:
             if not await worker.scan():

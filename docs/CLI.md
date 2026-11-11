@@ -269,9 +269,10 @@ authorization boundary.
 Backend failures surface immediately and leave work pending; foreground commands
 do not retry indefinitely. If embeddings are unavailable, keyword-only recovery
 uses the existing full-sync path under the same worker ownership lock.
-`--force` publishes a replacement generation even offline; existing readers
-retain their previous generation. Non-forced offline recovery updates the current
-keyword index in place.
+`--force` publishes a keyword-only replacement generation even offline; existing
+readers retain their previous generation. A first-time or forced offline build
+uses separate staging, so it never consumes an interrupted vector rebuild.
+Non-forced offline recovery updates the current keyword index in place.
 MCP refresh always queues reconciliation and requires a worker or foreground
 `reindex` to make progress.
 
