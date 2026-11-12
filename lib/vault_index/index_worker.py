@@ -166,7 +166,7 @@ class IndexWorker:
         readable = True
         for relative in sorted(paths):
             readable = self.observe(relative) and readable
-            if self.building and relative not in staged and (self.vault / relative).is_file():
+            if self.building and relative not in staged and indexable(self.vault, relative, self.config):
                 self.queue.require(relative)
             await asyncio.sleep(0)
         self.initial_scan = True
