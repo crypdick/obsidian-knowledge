@@ -128,3 +128,28 @@ def test_offline_embedder_leaves_work_pending(tmp_path, monkeypatch):
     assert worker.queue.pending_count() == 1
     assert worker.queue.ready() is None
     assert not (worker.cache / "current-generation").exists()
+
+
+def test_rebuild_restart_does_not_requeue_completed_excluded_notes(tmp_path, monkeypatch, fake_ollama):
+    from lib.vault_index.config import IndexFilter, VaultIndexConfig
+
+    config = VaultIndexConfig(index=IndexFilter(deny_regex=["^Journal/"]))
+    monkeypatch.setattr("lib.vault_index.index_worker.load_config", lambda: config)
+    (tmp_path / "Journal").mkdir()
+    (tmp_path / "Journal/excluded.md").write_text("excluded")
+    (tmp_path / "note.md").write_text("orchid")
+    worker = IndexWorker(tmp_path, quiet_seconds=0)
+
+    async def exercise():
+        await worker.scan()
+        assert worker.queue.ready()[0] == "Journal/excluded.md"
+        assert await worker.process_next()
+        assert worker.queue.pending_count() == 1
+
+        restarted = IndexWorker(tmp_path, quiet_seconds=0)
+        assert restarted.target == worker.target
+        await restarted.scan()
+        assert restarted.queue.pending_count() == 1
+        assert restarted.queue.ready()[0] == "note.md"
+
+    asyncio.run(exercise())
