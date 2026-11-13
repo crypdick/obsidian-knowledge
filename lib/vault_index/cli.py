@@ -34,7 +34,7 @@ from lib.vault_index.vault_files import read_vault_file, write_vault_file
 
 
 class ReindexProgress:
-    """Render completed files on a single terminal line."""
+    """Render completed operations on a single terminal line."""
 
     def __init__(self) -> None:
         self.last_update = 0.0
@@ -47,7 +47,7 @@ class ReindexProgress:
         width = 30
         filled = width * done // total if total else width
         print(
-            f"\rReindexing: [{'#' * filled}{'-' * (width - filled)}] {done}/{total}",
+            f"\rReindexing: [{'#' * filled}{'-' * (width - filled)}] {done}/{total} operations",
             end="",
             file=sys.stderr,
             flush=True,
@@ -819,6 +819,8 @@ def run_reindex(args: argparse.Namespace) -> int:
                 idx = Indexer(vault_root=vault, cache_dir=cache, config=load_config())
                 return index_selected_paths(idx, args.paths)
             if sys.stderr.isatty():
+                # NOTE: docs/CLI.md explains discovery and the foreground counter.
+                print("Reindexing: discovering files and preparing the index…", file=sys.stderr, flush=True)
                 progress = ReindexProgress()
                 try:
                     stats = foreground_reindex(vault, force=args.force, progress=progress)

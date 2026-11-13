@@ -310,8 +310,11 @@ Within each note, embedding batches target about five seconds of work, starting
 with four chunks and growing to at most 64. Completed batches are cached before
 file publication, so interrupted notes can reuse completed work when retried in
 the same generation. File text, vectors, and recorded revision publish together.
-Foreground progress counts queue operations, including reconciliation; it does
-not imply a replacement generation is visible before every pending file settles.
+Interactive foreground reindex announces discovery before showing completed
+operations. The counter includes reconciliation and removals, so it does not
+measure embedding throughput. It can stay unchanged while a large note embeds;
+completed batches are cached even before the counter advances. A replacement
+generation is visible only after every pending file settles.
 
 An offline foreground sync indexes changed files for keyword search. Once the
 embedder returns, a replacement generation restores vector coverage. Provider,

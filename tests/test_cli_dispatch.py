@@ -85,6 +85,7 @@ def test_reindex_progress_is_interactive_only(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.stderr.isatty", lambda: True)
 
     def reindex(vault, *, force, progress):
+        assert "discovering files" in capsys.readouterr().err
         progress(0, 2)
         progress(2, 2)
         return SimpleNamespace(indexed=2, skipped=0, deleted=0)
@@ -92,7 +93,7 @@ def test_reindex_progress_is_interactive_only(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("lib.vault_index.index_worker.foreground_reindex", reindex)
     assert run_main(monkeypatch, "reindex", "--vault", str(tmp_path)) == 0
     output = capsys.readouterr()
-    assert "2/2" in output.err
+    assert "2/2 operations" in output.err
     assert "Reindexing" not in output.out
     assert "Indexed: 2" in output.out
 
