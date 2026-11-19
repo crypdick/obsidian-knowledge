@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 from hookslib.capture import build_reason, capture_session_key, main, resolve_capture_vault
 
 ROOT = Path(__file__).parents[1]
+
+
+@pytest.mark.parametrize("source", ["startup", "resume", "compact", "clear"])
+def test_claude_session_events_register_recall_and_doctor(source: str) -> None:
+    config = json.loads(_read(".claude-plugin/plugin.json"))
+    commands = [
+        hook["command"]
+        for group in config["hooks"]["SessionStart"]
+        if re.fullmatch(group["matcher"], source)
+        for hook in group["hooks"]
+    ]
+    assert any("hooks/recall-init.py" in command for command in commands)
+    assert any("hooks/doctor.py" in command for command in commands)
 
 
 def _read(path: str) -> str:
