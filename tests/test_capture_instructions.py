@@ -25,6 +25,18 @@ def test_claude_session_events_register_recall_and_doctor(source: str) -> None:
     assert any("hooks/doctor.py" in command for command in commands)
 
 
+@pytest.mark.parametrize("source", ["startup", "resume", "compact", "clear"])
+def test_codex_session_events_register_recall(source: str) -> None:
+    config = json.loads(_read("hooks/codex-hooks.json"))
+    commands = [
+        hook["command"]
+        for group in config["hooks"]["SessionStart"]
+        if re.fullmatch(group["matcher"], source)
+        for hook in group["hooks"]
+    ]
+    assert any("--kind recall-init" in command for command in commands)
+
+
 def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 

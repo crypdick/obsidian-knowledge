@@ -80,9 +80,9 @@ These checks do not replace filesystem permissions or backups.
 
 ## Memory and recall
 
-Claude SessionStart recall and doctor hooks also run after `/clear`, so the new
-session receives vault and repository memory context. The Codex event matcher is
-maintained separately; this change does not add a Codex event source.
+SessionStart recall hooks also run after `/clear`, in Claude and in Codex,
+which reports it as SessionStart source `clear`, so the new session receives
+vault and repository memory context.
 
 The session primer gives the agent its memory location and search instructions.
 Repository memory lives in `wiki/repos/<owner>/<repo>/memory/`; outside a
