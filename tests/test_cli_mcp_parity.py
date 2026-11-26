@@ -53,6 +53,7 @@ HOST_ONLY = {
 # Additional confined MCP views of filesystem or official Obsidian operations.
 SCOPED_TOOLS = {
     "vault_managed_read",
+    "vault_managed_search",
     "vault_managed_write",
     "vault_garden_unresolved",
     "vault_garden_orphans",
