@@ -27,9 +27,11 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
+from vault_preferences import load_preferences
 
+from gardener.io import OrganizerPolicy
 from lib.vault_index.cli import positive_int, resolve_vault
-from lib.vault_index.mcp_garden import register_garden_tools
+from lib.vault_index.mcp_garden import register_garden_native_tools, register_garden_tools
 from lib.vault_index.mcp_index import (
     IndexStatus,
     IndexUpdate,
@@ -39,7 +41,7 @@ from lib.vault_index.mcp_index import (
 )
 from lib.vault_index.mcp_native import register_native_tools
 from lib.vault_index.models import SearchReport
-from lib.vault_index.native_vault import run_vault_mutation
+from lib.vault_index.native_vault import restricted_vault_path, run_vault_mutation
 from lib.vault_index.vault_files import ExpectedDigest, patch_vault_file, read_vault_file, write_vault_file
 from lib.vault_index.vault_listing import ListingReport, list_vault_files
 
@@ -239,6 +241,25 @@ def create_server(
         }
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    async def vault_managed_read(path: str) -> str:
+        """Read a visible, unprotected file without following symlinks."""
+        return await vault_read(restricted_vault_path(vault, path))
+
+    @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
+    async def vault_managed_write(path: str, content: str, replace: bool = False) -> dict[str, str]:
+        """Write an unprotected Markdown file in the vault's configured managed zones."""
+        relative = restricted_vault_path(vault, path)
+        policy_file = vault / ".claude/obsidian-knowledge.yaml"
+        preferences = load_preferences(policy_file).root
+        if not {"ai_managed", "ai_readonly_folders", "ai_readonly_root_files"} <= preferences.keys():
+            raise ValueError("vault-managed write policy is missing required path declarations")
+        policy = OrganizerPolicy.model_validate(preferences)
+        if Path(relative).suffix != ".md" or Path(relative).name in {"AGENTS.md", "CLAUDE.md"}:
+            raise ValueError("managed writes require an unprotected Markdown path")
+        policy.writable(vault, relative)
+        return await vault_write(relative, content, replace)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_list(
         path: str = "",
         recursive: bool = False,
@@ -288,6 +309,7 @@ def create_server(
     _register_search_tools(server, vault)
     register_native_tools(server, vault, file_lock, partial(refresh_index, vault))
     register_garden_tools(server, vault, file_lock)
+    register_garden_native_tools(server, vault, file_lock)
     return server
 
 

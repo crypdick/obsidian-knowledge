@@ -36,7 +36,7 @@ CLI_TO_MCP = {
     "info": {"vault_info"},
     "delete": {"vault_delete"},
     "move": {"vault_move"},
-    "garden audit": {"vault_garden_audit"},
+    "garden audit": {"vault_garden_audit", "vault_garden_audit_page"},
     "garden links": {"vault_garden_links"},
     "garden index": {"vault_garden_index"},
     "garden questions": {"vault_garden_questions"},
@@ -48,6 +48,17 @@ HOST_ONLY = {
     "install-rules",  # Install host guard configuration.
     "index-worker",  # Run a supervised process.
     "_hook",  # Private harness lifecycle protocol.
+}
+
+# Additional confined MCP views of filesystem or official Obsidian operations.
+SCOPED_TOOLS = {
+    "vault_managed_read",
+    "vault_managed_write",
+    "vault_garden_unresolved",
+    "vault_garden_orphans",
+    "vault_garden_backlinks",
+    "vault_garden_rename",
+    "vault_garden_move",
 }
 
 
@@ -66,7 +77,7 @@ def test_cli_and_mcp_discovery_have_parity(tmp_path):
     assert not CLI_TO_MCP.keys() & HOST_ONLY
 
     tool_names = {tool.name for tool in asyncio.run(create_server(tmp_path).list_tools())}
-    expected_tools = set().union(*CLI_TO_MCP.values())
+    expected_tools = SCOPED_TOOLS.union(*CLI_TO_MCP.values())
     assert tool_names == expected_tools, (
         f"unmapped MCP tools: {tool_names - expected_tools}; stale mappings: {expected_tools - tool_names}"
     )

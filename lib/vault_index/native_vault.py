@@ -75,6 +75,24 @@ def visible_vault_path(vault: Path, value: str, *, allow_root: bool = False) -> 
     return target.relative_to(vault).as_posix()
 
 
+def restricted_vault_path(vault: Path, value: str) -> str:
+    """Keep agent-managed file operations outside generated and protected areas."""
+    if "\\" in value or any(ord(character) < 32 for character in value):
+        raise ValueError("invalid vault path")
+    relative = visible_vault_path(vault, value)
+    parents = Path(relative).parents
+    protected = {
+        Path("wiki/wiki"),
+        Path("wiki/Utility"),
+        Path("Utility/obsidian-knowledge/reports/archive"),
+    }
+    if "automation-memory" in Path(relative).parts or any(
+        path == Path(relative) or path in parents for path in protected
+    ):
+        raise ValueError("path must name an unprotected vault entry")
+    return relative
+
+
 def _arguments(payload: dict[str, Any]) -> str:
     """Embed JSON as data, including object keys, rather than executable JavaScript."""
     return "const args=JSON.parse(" + json.dumps(json.dumps(payload, allow_nan=False)) + ");"

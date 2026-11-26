@@ -210,6 +210,8 @@ and `stderr`; inspect the exit code for operation failures or review findings.
 Preview is the default. Set `apply=True` to publish supported repairs.
 
 - `vault_garden_audit()` reports structure and convention findings.
+- `vault_garden_audit_page(offset=0, limit=100, snapshot="")` pages the same
+  report. Pass the returned snapshot and next offset for continuation.
 - `vault_garden_links(unresolved, include_stubs=False, output_format="tsv", apply=False)`
   reads unresolved-link objects and classifies candidate recoveries. Set
   `output_format="json"` for JSON output.
@@ -220,6 +222,14 @@ Preview is the default. Set `apply=True` to publish supported repairs.
   must include a timezone offset.
 - `vault_garden_frontmatter(paths)` reports possible stacked frontmatter
   and never changes files.
+
+For scoped clients, `vault_managed_read` rejects protected paths and symlinks.
+`vault_managed_write` additionally requires Markdown in zones explicitly
+allowed by the vault's `.claude/obsidian-knowledge.yaml`. Grant these tools
+without the unrestricted file tooling. `vault_garden_unresolved`,
+`vault_garden_orphans`, and `vault_garden_backlinks` expose native evidence.
+`vault_garden_rename` and `vault_garden_move` perform native link-updating
+operations and should be granted separately.
 
 ## Binary file delivery
 

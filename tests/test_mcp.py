@@ -23,6 +23,40 @@ def test_tools_and_verified_write(tmp_path):
     asyncio.run(exercise())
 
 
+def test_managed_tools_preserve_path_boundaries(tmp_path):
+    policy = tmp_path / ".claude"
+    policy.mkdir()
+    (policy / "obsidian-knowledge.yaml").write_text(
+        "ai_managed: [wiki]\nai_readonly_folders: [wiki/locked]\nai_readonly_root_files: []\n"
+    )
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "link.md").symlink_to(wiki / "managed.md")
+
+    async def exercise():
+        server = create_server(tmp_path)
+        await server.call_tool("vault_managed_write", {"path": "wiki/managed.md", "content": "# Note"})
+        result = await server.call_tool("vault_managed_read", {"path": "wiki/managed.md"})
+        assert result[0][0].text == "# Note"
+        for path in (
+            "outside.md",
+            "wiki/locked/nested/file.md",
+            "wiki/AGENTS.md",
+            "wiki/link.md",
+            "wiki/note.txt",
+        ):
+            with pytest.raises(ToolError):
+                await server.call_tool(
+                    "vault_managed_write", {"path": path, "content": "blocked", "replace": True}
+                )
+        for path in ("wiki/link.md", "wiki/_sources/hidden.md"):
+            with pytest.raises(ToolError):
+                await server.call_tool("vault_managed_read", {"path": path})
+        assert (wiki / "managed.md").read_text() == "# Note"
+
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize("path", ["../outside.md", "/tmp/outside.md"])
 def test_path_escape_rejected(tmp_path, path):
     async def exercise():
