@@ -29,6 +29,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from lib.vault_index.cli import positive_int, resolve_vault
+from lib.vault_index.mcp_garden import register_garden_tools
 from lib.vault_index.mcp_index import (
     IndexStatus,
     IndexUpdate,
@@ -36,9 +37,10 @@ from lib.vault_index.mcp_index import (
     refresh_index,
     run_index_command,
 )
-from lib.vault_index.mcp_native import register_native_tools, run_vault_mutation
+from lib.vault_index.mcp_native import register_native_tools
 from lib.vault_index.models import SearchReport
-from lib.vault_index.vault_files import patch_vault_file, read_vault_file, write_vault_file
+from lib.vault_index.native_vault import run_vault_mutation
+from lib.vault_index.vault_files import ExpectedDigest, patch_vault_file, read_vault_file, write_vault_file
 from lib.vault_index.vault_listing import ListingReport, list_vault_files
 
 # NOTE: docs/MCP.md documents this raw-byte ceiling and client handoff limits.
@@ -50,6 +52,11 @@ class DownloadMetadata(BaseModel):
     mime_type: str
     size_bytes: int
     sha256: str
+
+
+class DoctorReport(BaseModel):
+    passed: bool
+    report: str
 
 
 class BearerAuth(BaseHTTPMiddleware):
@@ -64,6 +71,90 @@ class BearerAuth(BaseHTTPMiddleware):
         if not secrets.compare_digest(supplied, self.authorization):
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
         return await call_next(request)
+
+
+def _register_search_tools(server: FastMCP, vault: Path) -> None:
+    # Search, memory lookup and live diagnostics share one query slot per server.
+    search_lock = asyncio.Lock()
+
+    async def vault_search(
+        query: Annotated[str, Field(min_length=1)],
+        top_k: Annotated[int | None, Field(gt=0)] = None,
+        all_paths: bool = False,
+    ) -> SearchReport:
+        """Search indexed notes; all_paths bypasses the configured digest filter."""
+        command = [
+            sys.executable,
+            "-m",
+            "lib.vault_index.cli",
+            "search",
+            "--vault",
+            str(vault),
+            "--json",
+            # NOTE: docs/MCP.md's search contract keeps rebuilds outside query deadlines.
+        ]
+        if top_k is not None:
+            command.extend(["--top-k", str(top_k)])
+        if all_paths:
+            command.append("--all")
+        command.extend(["--", query])
+        async with search_lock:
+            stdout, _ = await run_index_command(command, "search")
+        report = SearchReport.model_validate(json.loads(stdout))
+        return report
+
+    server.add_tool(vault_search, annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    async def vault_remember(
+        memory: Annotated[str, Field(min_length=1)],
+        top_k: Annotated[int | None, Field(gt=0)] = None,
+        all_paths: bool = False,
+    ) -> SearchReport:
+        """Suggest scored candidate homes for a memory without saving it."""
+        return await vault_search(memory, top_k, all_paths)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    async def vault_search_doctor(
+        queries: list[str] | None = None,
+        top_k: Annotated[int, Field(gt=0)] = 3,
+        digest_only: bool = False,
+    ) -> DoctorReport:
+        """Run live known-hit searches without exposing host filesystem locations."""
+        command = [
+            sys.executable,
+            "-m",
+            "lib.vault_index.cli",
+            "doctor",
+            "--vault",
+            str(vault),
+            "--top-k",
+            str(top_k),
+            "--no-host-paths",
+        ]
+        command.extend(f"--query={query}" for query in queries or ())
+        if digest_only:
+            command.append("--digest-only")
+        async with search_lock:
+            stdout, stderr = await run_index_command(command, "search doctor", accepted_exit_codes=(0, 2))
+        if not stdout:
+            raise ValueError(stderr.decode(errors="replace").strip() or "vault search doctor failed")
+        report = stdout.decode().rstrip()
+        return DoctorReport(passed=report.endswith("\nstatus: PASS"), report=report)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    async def vault_search_status() -> IndexStatus:
+        """Inspect persisted index readiness without rebuilding or probing the embedding service."""
+        async with search_lock:
+            return await asyncio.to_thread(read_index_status, vault)
+
+    @server.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=False))
+    async def vault_search_update(force: bool = False, paths: list[str] | None = None) -> IndexUpdate:
+        """Queue reconciliation, a forced rebuild, or selected paths for the indexing worker."""
+        from lib.vault_index.index_worker import queue_index_update
+
+        await asyncio.to_thread(queue_index_update, vault, force=force, paths=paths)
+        return IndexUpdate(status="queued")
 
 
 def create_server(
@@ -91,37 +182,19 @@ def create_server(
             allowed_origins=["http://127.0.0.1:*", "http://localhost:*", f"http://{host}:*"],
         ),
     )
-    # Serialize index access to avoid competing rebuilds from concurrent requests.
-    search_lock = asyncio.Lock()
-
     file_lock = threading.Lock()
 
-    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-    async def vault_search(
-        query: Annotated[str, Field(min_length=1)],
-        top_k: Annotated[int | None, Field(gt=0)] = None,
-        all_paths: bool = False,
-    ) -> SearchReport:
-        """Search indexed notes; all_paths bypasses the configured digest filter."""
-        command = [
-            sys.executable,
-            "-m",
-            "lib.vault_index.cli",
-            "search",
-            "--vault",
-            str(vault),
-            "--json",
-            # NOTE: docs/MCP.md's search contract keeps rebuilds outside query deadlines.
-        ]
-        if top_k is not None:
-            command.extend(["--top-k", str(top_k)])
-        if all_paths:
-            command.append("--all")
-        command.extend(["--", query])
-        async with search_lock:
-            stdout, _ = await run_index_command(command, "search")
-        report = SearchReport.model_validate(json.loads(stdout))
-        return report
+    @server.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=False))
+    async def vault_papercut(description: str, repository: str = "") -> dict[str, str]:
+        """Append workflow friction to an owner/repo log or the global log."""
+        from lib.vault_index.papercuts import record_papercut
+
+        record = await asyncio.to_thread(
+            run_vault_mutation,
+            file_lock,
+            partial(record_papercut, vault, description, cwd=vault, repository=repository),
+        )
+        return {"path": record.path.relative_to(vault).as_posix(), "status": "logged"}
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_read(path: str) -> str:
@@ -148,7 +221,7 @@ def create_server(
         path: str,
         old_str: Annotated[str, Field(min_length=1)],
         new_str: str,
-        expected_sha256: Annotated[str | None, Field(pattern=r"^[0-9a-f]{64}$")] = None,
+        expected_sha256: ExpectedDigest | None = None,
     ) -> dict[str, str]:
         """Replace exactly one text match, preserving other bytes; optionally require the original SHA-256."""
         target = await asyncio.to_thread(
@@ -183,20 +256,6 @@ def create_server(
             offset=offset,
         )
 
-    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-    async def vault_search_status() -> IndexStatus:
-        """Inspect persisted index readiness without rebuilding or probing the embedding service."""
-        async with search_lock:
-            return await asyncio.to_thread(read_index_status, vault)
-
-    @server.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=False))
-    async def vault_search_update() -> IndexUpdate:
-        """Queue reconciliation; repeated requests coalesce in the indexing worker."""
-        from lib.vault_index.index_worker import request_scan
-
-        await asyncio.to_thread(request_scan, vault)
-        return IndexUpdate(status="queued")
-
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
     async def download_file(path: str) -> Annotated[CallToolResult, DownloadMetadata]:
         """Deliver original file bytes as an embedded MCP resource, up to 6 MiB. Client handles saving."""
@@ -223,7 +282,9 @@ def create_server(
             ],
         )
 
+    _register_search_tools(server, vault)
     register_native_tools(server, vault, file_lock, partial(refresh_index, vault))
+    register_garden_tools(server, vault, file_lock)
     return server
 
 

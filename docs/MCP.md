@@ -31,6 +31,13 @@ sending a token across a network. Tunnel provisioning is separate from this serv
 
 ## Tools
 
+MCP supports the [CLI's vault operations](CLI.md#commands) against one fixed vault.
+Host setup, preferences initialization, guard installation, lifecycle hooks,
+and running the index worker stay CLI-only. MCP queues indexing rather than
+running a foreground rebuild. Local reads stream bytes to stdout; MCP delivers
+binary files as embedded resources.
+
+
 - `vault_search(query, top_k=None, all_paths=False)` returns a structured search
   report with `mode`, `degraded_reason`, and scored `hits`. `top_k` must be
   positive. `all_paths` bypasses the digest filter, retaining index exclusions.
@@ -41,6 +48,14 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   reason. Active indexing does not disable hybrid retrieval: searches use the
   last committed SQLite snapshot without acquiring the application writer lock.
   Run the separate [index worker](CLI.md#settled-file-indexing-worker).
+- `vault_remember(memory, top_k=None, all_paths=False)` returns the same ranked
+  search report as candidate homes for a memory. It does not save anything.
+- `vault_search_doctor(queries=None, top_k=3, digest_only=False)` runs live
+  known-hit checks, as `doctor` does. Returns `passed` and a text `report`
+  without host vault and cache locations. An absent index is a tool error.
+- `vault_papercut(description, repository="")` appends to the specified
+  `owner/repo` log or the global log. Remote callers have no working directory
+  on the server; the log records the bound vault as the working directory.
 - `vault_read(path)` returns UTF-8 file content.
 - `vault_append(path, content, inline=False)` atomically appends literal UTF-8
   content to an existing file without a running app. Adds one leading newline
@@ -91,13 +106,15 @@ sending a token across a network. Tunnel provisioning is separate from this serv
   schema and embedding settings only. Endpoint availability and file freshness
   remain unknown. Missing or unreadable indexes report a reason without creating
   or repairing the index.
-- `vault_search_update()` durably queues reconciliation of the fixed vault.
-  Returns only `status="queued"`; synchronous result counts are not exposed. Repeated requests coalesce;
-  completion depends on the separate worker and per-file quiet periods.
+- `vault_search_update(force=False, paths=None)` durably queues reconciliation
+  of the fixed vault. Set `force=True` for a new generation or pass a list of
+  vault-relative `paths` for selected updates; do not request both. Returns
+  `status="queued"` without waiting for the worker. Repeated requests coalesce.
 
 Paths are relative to the server's fixed vault. Absolute paths and symlink or
 parent-directory escapes are rejected. These tools share the CLI's file
-safeguards; agent lifecycle hooks and zone policies do not run on MCP calls.
+safeguards. Agent lifecycle hooks do not run on MCP calls. Gardener tools
+apply the same managed-zone policy as their CLI counterparts.
 The additional app tools below use the official Obsidian CLI.
 
 Writes, patches, and appends serialize within one server, including when a client cancels
@@ -182,6 +199,25 @@ until the native CLI wait finishes. Killing that client cannot cancel work
 already dispatched to the app: verify note state before retrying a failed
 mutation. Native operations retain the app's semantics, including its formatting and link handling, rather than the verified
 filesystem writer's guarantees.
+
+## Gardener tools
+
+These tools use the same [vault maintenance](CLI.md#vault-maintenance) code and
+policy as `obsidian-knowledge garden`. Each returns `exit_code`, `stdout`,
+and `stderr`; inspect the exit code for operation failures or review findings.
+Preview is the default. Set `apply=True` to publish supported repairs.
+
+- `vault_garden_audit()` reports structure and convention findings.
+- `vault_garden_links(unresolved, include_stubs=False, output_format="tsv", apply=False)`
+  reads unresolved-link objects and classifies candidate recoveries. Set
+  `output_format="json"` for JSON output.
+- `vault_garden_index(path, review, apply=False)` renders reviewed entries
+  into a managed `index.md`. Pass the same JSON object as the CLI accepts.
+- `vault_garden_questions(report=False, timestamp=None, apply=False)` lists
+  question callouts or renders the standard report. An optional ISO timestamp
+  must include a timezone offset.
+- `vault_garden_frontmatter(paths)` reports possible stacked frontmatter
+  and never changes files.
 
 ## Binary file delivery
 

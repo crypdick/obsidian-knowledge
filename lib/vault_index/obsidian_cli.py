@@ -3,27 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
-import signal
 from pathlib import Path
 
+from lib.vault_index.bounded_process import collect_bounded_output
 from lib.vault_index.search_budget import search_ttl_seconds
 
 # NOTE: docs/MCP.md documents the native bridge configuration and output ceiling.
 MAX_NATIVE_OUTPUT_BYTES = 6 * 1024 * 1024
-
-
-async def read_bounded(stream: asyncio.StreamReader) -> bytes:
-    chunks = []
-    size = 0
-    while chunk := await stream.read(64 * 1024):
-        size += len(chunk)
-        if size > MAX_NATIVE_OUTPUT_BYTES:
-            raise ValueError(f"native Obsidian CLI output exceeds {MAX_NATIVE_OUTPUT_BYTES} bytes")
-        chunks.append(chunk)
-    return b"".join(chunks)
 
 
 class NativeObsidian:
@@ -56,32 +44,12 @@ class NativeObsidian:
                 "cannot execute native Obsidian CLI; set OBSIDIAN_KNOWLEDGE_OBSIDIAN_CLI "
                 "to the official CLI binary and connect it to a running app"
             ) from exc
-        assert process.stdout is not None and process.stderr is not None
-        readers = [
-            asyncio.create_task(read_bounded(process.stdout)),
-            asyncio.create_task(read_bounded(process.stderr)),
-        ]
-        waiter = asyncio.create_task(process.wait())
-        output = asyncio.gather(*readers, waiter)
-        complete = False
-        timeout = max(1, search_ttl_seconds())
-        try:
-            try:
-                await asyncio.wait_for(output, timeout=timeout)
-                stdout, stderr = (reader.result() for reader in readers)
-                returncode = waiter.result()
-                complete = True
-            except TimeoutError as exc:
-                raise ValueError(f"native Obsidian CLI timed out after {timeout} seconds") from exc
-        finally:
-            if not complete:
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
-                for task in [*readers, waiter]:
-                    task.cancel()
-                await asyncio.gather(*readers, waiter, return_exceptions=True)
-                # A capped reader can leave its pipe paused; wait() alone then deadlocks.
-                await process.communicate()
+        stdout, stderr, returncode = await collect_bounded_output(
+            process,
+            label="native Obsidian CLI",
+            max_bytes=MAX_NATIVE_OUTPUT_BYTES,
+            deadline_seconds=max(1, search_ttl_seconds()),
+        )
         text = stdout.decode("utf-8", errors="replace")
         error = stderr.decode("utf-8", errors="replace").strip()
         if returncode:

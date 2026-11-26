@@ -27,14 +27,16 @@ import LiteLLM.
 `note_creation.py` reads the opt-in declarative creation defaults from a configured template
 and adds missing creation metadata before a new note's atomic write, without
 running Templater or changing existing notes.
-`vault_listing.py` provides bounded directory discovery. `mcp_index.py` reads
-persisted index status without rebuilding and queues maintenance notifications.
-`mcp_server.py` exposes these operations and bounded CLI search
-subprocesses over Streamable HTTP. `mcp_native.py` registers confined filesystem append and app-backed tools and
-shares mutation serialization with existing file writes. `obsidian_cli.py` runs
-the official CLI with fixed vault selection, filesystem identity checks, bounded
-output, and subprocess deadlines. Obsidian owns app operations and link rewriting;
-these tools require a live app. Importing `lib` enables beartype runtime checks.
+`vault_listing.py` provides bounded directory discovery. `mcp_index.py` supplies
+persisted index status and write notifications to both adapters.
+`cli_vault.py` and `mcp_server.py` expose these operations. MCP runs search and
+live diagnostics through bounded CLI subprocesses. `mcp_garden.py` runs fixed
+gardener commands with the server's vault, without accepting arbitrary argv or
+using host writer delegation. `native_vault.py` implements app-backed
+operations for both adapters, and `obsidian_cli.py` runs the official CLI with
+fixed vault selection and filesystem identity checks. Both native and gardener
+subprocesses use bounded output and deadlines. Obsidian owns app operations and
+link rewriting; these tools require a live app. Importing `lib` enables beartype runtime checks.
 
 `vector_search.py` registers a memweave hybrid strategy using sqlite-vec's native
 nearest-neighbor query. Memweave normalizes embeddings, so L2 candidate ordering
