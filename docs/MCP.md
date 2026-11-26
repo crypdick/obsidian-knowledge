@@ -212,6 +212,7 @@ Preview is the default. Set `apply=True` to publish supported repairs.
 - `vault_garden_audit()` reports structure and convention findings.
 - `vault_garden_audit_page(offset=0, limit=100, snapshot="")` pages the same
   report. Pass the returned snapshot and next offset for continuation.
+  Both audit tools have a 120-second deadline independent of search.
 - `vault_garden_links(unresolved, include_stubs=False, output_format="tsv", apply=False)`
   reads unresolved-link objects and classifies candidate recoveries. Set
   `output_format="json"` for JSON output.

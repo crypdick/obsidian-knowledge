@@ -21,6 +21,9 @@ from lib.vault_index.native_vault import restricted_vault_path, run_vault_mutati
 from lib.vault_index.obsidian_cli import NativeObsidian
 from lib.vault_index.search_budget import search_ttl_seconds
 
+# A full-vault audit walks files; its deadline is independent of search.
+AUDIT_DEADLINE_SECONDS = 120
+
 
 class GardenReport(BaseModel):
     exit_code: int
@@ -81,7 +84,9 @@ def register_garden_tools(server: FastMCP, vault: Path, file_lock: LockType) -> 
                     process,
                     label=f"garden {operation}",
                     max_bytes=6 * 1024 * 1024,
-                    deadline_seconds=max(1, search_ttl_seconds()) + 10,
+                    deadline_seconds=AUDIT_DEADLINE_SECONDS
+                    if operation == "audit"
+                    else max(1, search_ttl_seconds()) + 10,
                 )
             return GardenReport(exit_code=code, stdout=stdout.decode(), stderr=stderr.decode())
 

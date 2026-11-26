@@ -52,16 +52,17 @@ def has_visible_content(folder: Path, vault_root: Path) -> bool:
     )
 
 
-def links_entry(targets: set[str], entry: Path, folder: Path, vault_root: Path) -> bool:
+def linked_entries(targets: set[str], folder: Path, vault_root: Path) -> set[Path]:
     # NOTE: docs/CLI.md, Vault maintenance, describes conservative path resolution.
+    entries = set()
     for target in targets:
         try:
             candidate = resolve_target(vault_root, folder, target)
         except ValueError:
             continue
-        if candidate == entry:
-            return True
-    return False
+        if candidate is not None:
+            entries.add(candidate)
+    return entries
 
 
 def audit_folder(folder: Path, vault_root: Path) -> list[str]:
@@ -87,16 +88,16 @@ def audit_folder(folder: Path, vault_root: Path) -> list[str]:
         return issues
 
     index_text = index.read_text(encoding="utf-8", errors="replace")
-    linked_targets = extract_wikilink_targets(index_text)
+    linked = linked_entries(extract_wikilink_targets(index_text), folder, vault_root)
 
     for md in children_md:
         if is_skipped(md.name):
             continue
-        if not links_entry(linked_targets, md, folder, vault_root):
+        if md not in linked:
             issues.append(f"NOT_INDEXED\t{index}\tentry={md.name}")
 
     for d in children_dirs:
-        if not links_entry(linked_targets, d / "index.md", folder, vault_root):
+        if d / "index.md" not in linked:
             issues.append(f"NOT_INDEXED\t{index}\tentry={d.name}/")
 
     has_subfolders = len(children_dirs) > 0
