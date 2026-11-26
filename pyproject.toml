@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-knowledge"
-version = "3.30.37"
+version = "3.30.38"
 description = "Obsidian vault knowledge integration for Claude Code and Codex"
 requires-python = ">=3.12"
 dependencies = [
