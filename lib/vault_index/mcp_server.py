@@ -14,7 +14,7 @@ import sys
 import threading
 from functools import partial
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
 import uvicorn
@@ -203,12 +203,15 @@ def create_server(
         return content.decode("utf-8")
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
-    async def vault_write(path: str, content: str, replace: bool = False) -> dict[str, str]:
-        """Write atomically with opt-in configured creation defaults; existing files require replace=true."""
+    async def vault_write(
+        path: str, content: str, replace: bool = False, encoding: Literal["utf-8", "base64"] = "utf-8"
+    ) -> dict[str, str]:
+        """Write UTF-8 text or base64-encoded bytes atomically; existing files require replace=true."""
+        data = base64.b64decode(content, validate=True) if encoding == "base64" else content.encode("utf-8")
         target = await asyncio.to_thread(
             run_vault_mutation,
             file_lock,
-            partial(write_vault_file, vault, Path(path), content.encode("utf-8"), replace=replace),
+            partial(write_vault_file, vault, Path(path), data, replace=replace),
         )
         return {
             "path": target.relative_to(vault).as_posix(),

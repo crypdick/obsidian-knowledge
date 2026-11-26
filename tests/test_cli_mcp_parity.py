@@ -1,6 +1,7 @@
 """Public CLI commands and discovered MCP tools must stay in sync."""
 
 import asyncio
+import base64
 import hashlib
 import json
 import subprocess
@@ -83,6 +84,24 @@ def cli(vault, *args, data=None, check=True):
 
 def tool(vault, name, **arguments):
     return asyncio.run(create_server(vault).call_tool(name, arguments))[1]
+
+
+def test_binary_writes_match_cli(tmp_path):
+    data = b"\x00\xff\r\n\x01"
+    cli(tmp_path, "write", "local.bin", data=data)
+    remote = tmp_path / "remote.bin"
+    result = tool(
+        tmp_path,
+        "vault_write",
+        path=remote.name,
+        content=base64.b64encode(data).decode(),
+        encoding="base64",
+    )
+    assert result["status"] == "wrote and verified"
+    assert remote.read_bytes() == cli(tmp_path, "read", "local.bin").stdout == data
+    with pytest.raises(ToolError, match="base64"):
+        tool(tmp_path, "vault_write", path=remote.name, content="!!!", encoding="base64", replace=True)
+    assert remote.read_bytes() == data
 
 
 def test_file_edit_and_listing_parity(tmp_path):

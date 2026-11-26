@@ -69,9 +69,11 @@ binary files as embedded resources.
   metadata. Files above 6 MiB are rejected before encoding; the file reader
   reads at most the limit plus one byte. Empty files are supported. Unknown
   MIME types use `application/octet-stream`.
-- `vault_write(path, content, replace=False)` atomically writes UTF-8 content,
-  verifies final bytes, and returns the vault-relative path, success status,
-  and `index` result (see [indexing after writes](#indexing-after-writes)).
+- `vault_write(path, content, replace=False, encoding="utf-8")` atomically writes
+  content and verifies final bytes. Pass `encoding="base64"` and standard
+  base64 content to write exact binary bytes. The result includes the
+  vault-relative path, success status, and `index` result
+  (see [indexing after writes](#indexing-after-writes)).
   Blank content and existing files are rejected unless `replace=True` permits
   overwriting. Parent directories are created as needed. New Markdown notes
   apply the declarative [configured creation defaults](configuration.md#note-creation)
