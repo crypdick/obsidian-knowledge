@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import subprocess
 import sys
@@ -16,7 +17,8 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from lib.vault_index.bounded_process import collect_bounded_output
-from lib.vault_index.native_vault import run_vault_mutation
+from lib.vault_index.native_vault import restricted_vault_path, run_vault_mutation
+from lib.vault_index.obsidian_cli import NativeObsidian
 from lib.vault_index.search_budget import search_ttl_seconds
 
 
@@ -24,6 +26,28 @@ class GardenReport(BaseModel):
     exit_code: int
     stdout: str
     stderr: str
+
+
+def _page[T](items: list[T], offset: int, limit: int, snapshot: str) -> dict[str, Any]:
+    identity = hashlib.sha256(json.dumps(items, sort_keys=True).encode()).hexdigest()
+    if (offset and not snapshot) or (snapshot and identity != snapshot):
+        raise ValueError("missing or changed snapshot; restart at offset 0")
+    if offset > len(items):
+        raise ValueError("offset exceeds report size")
+    end = offset + limit
+    return {
+        "snapshot": identity,
+        "offset": offset,
+        "total": len(items),
+        "next_offset": end if end < len(items) else None,
+        "items": items[offset:end],
+    }
+
+
+class UnresolvedTarget(BaseModel):
+    link: str
+    count: int
+    sources: str
 
 
 def register_garden_tools(server: FastMCP, vault: Path, file_lock: LockType) -> None:
@@ -70,6 +94,18 @@ def register_garden_tools(server: FastMCP, vault: Path, file_lock: LockType) -> 
         """Audit vault structure and conventions without writing files."""
         return await run("audit")
 
+    @server.tool(annotations=readonly)
+    async def vault_garden_audit_page(
+        offset: Annotated[int, Field(ge=0)] = 0,
+        limit: Annotated[int, Field(ge=1, le=200)] = 100,
+        snapshot: str = "",
+    ) -> dict[str, Any]:
+        """Page the combined structural and convention audit using a snapshot ID."""
+        report = await vault_garden_audit()
+        if report.exit_code:
+            raise ValueError(report.stderr or "gardener audit failed")
+        return _page(report.stdout.splitlines(), offset, limit, snapshot)
+
     @server.tool(annotations=repair)
     async def vault_garden_links(
         unresolved: list[dict[str, Any]],
@@ -102,3 +138,70 @@ def register_garden_tools(server: FastMCP, vault: Path, file_lock: LockType) -> 
     async def vault_garden_frontmatter(paths: Annotated[list[str], Field(min_length=1)]) -> GardenReport:
         """Report ambiguous stacked frontmatter; never remove markers."""
         return await run("frontmatter", "--", *paths)
+
+
+def register_garden_native_tools(server: FastMCP, vault: Path, file_lock: LockType) -> None:
+    """Expose bounded link diagnostics and native organizer actions."""
+    readonly = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
+    repair = ToolAnnotations(destructiveHint=True, openWorldHint=False)
+    native = NativeObsidian(vault)
+
+    @server.tool(annotations=readonly)
+    async def vault_garden_unresolved(
+        offset: Annotated[int, Field(ge=0)] = 0,
+        limit: Annotated[int, Field(ge=1, le=20)] = 20,
+        link_contains: str = "",
+        snapshot: str = "",
+    ) -> dict[str, Any]:
+        """Page native unresolved link targets. Restart if the snapshot changes."""
+        raw = await native.run_json("unresolved", "verbose", "format=json")
+        if not isinstance(raw, list):
+            raise ValueError("unexpected native unresolved link report")
+        all_items = sorted(
+            (UnresolvedTarget.model_validate(item) for item in raw), key=lambda item: item.link
+        )
+        matching = [item.model_dump() for item in all_items if link_contains in item.link]
+        page = _page(matching, offset, limit, snapshot)
+        return {
+            **page,
+            "total_targets": len(all_items),
+            "total_references": sum(item.count for item in all_items),
+            "matching_targets": len(matching),
+        }
+
+    @server.tool(annotations=readonly)
+    async def vault_garden_orphans() -> dict[str, str]:
+        """Return native orphan evidence; filter excluded paths before maintenance."""
+        return {"orphans": await native.run("orphans", "format=json")}
+
+    @server.tool(annotations=readonly)
+    async def vault_garden_backlinks(path: str) -> dict[str, str]:
+        """Return native backlinks for one unprotected exact vault-relative path."""
+        relative = restricted_vault_path(vault, path)
+        return {"backlinks": await native.run("backlinks", f"path={relative}", "format=json")}
+
+    @server.tool(annotations=repair)
+    async def vault_garden_rename(path: str, new_name: str) -> dict[str, str]:
+        """Rename a visible file through Obsidian's native link updating."""
+        relative = restricted_vault_path(vault, path)
+        name = restricted_vault_path(vault, new_name)
+        if "/" in name:
+            raise ValueError("new_name must be a filename")
+        result = await asyncio.to_thread(
+            run_vault_mutation,
+            file_lock,
+            lambda: asyncio.run(native.run("rename", f"path={relative}", f"name={name}")),
+        )
+        return {"result": result}
+
+    @server.tool(annotations=repair)
+    async def vault_garden_move(path: str, destination: str) -> dict[str, str]:
+        """Move a visible file through Obsidian's native link updating."""
+        relative = restricted_vault_path(vault, path)
+        target = restricted_vault_path(vault, destination)
+        result = await asyncio.to_thread(
+            run_vault_mutation,
+            file_lock,
+            lambda: asyncio.run(native.run("move", f"path={relative}", f"to={target}")),
+        )
+        return {"result": result}

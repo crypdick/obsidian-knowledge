@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 
 from lib.vault_index import mcp_server
 from lib.vault_index.mcp_server import BearerAuth, create_server, main
+from lib.vault_index.obsidian_cli import NativeObsidian
 
 
 def test_tools_and_verified_write(tmp_path):
@@ -19,6 +20,118 @@ def test_tools_and_verified_write(tmp_path):
         assert (tmp_path / "wiki/note.md").read_text() == "# Orchid\n"
         result = await server.call_tool("vault_read", {"path": "wiki/note.md"})
         assert result[0][0].text == "# Orchid\n"
+
+    asyncio.run(exercise())
+
+
+def test_managed_tools_preserve_path_boundaries(tmp_path):
+    policy = tmp_path / ".claude"
+    policy.mkdir()
+    (policy / "obsidian-knowledge.yaml").write_text(
+        "ai_managed: [wiki]\nai_readonly_folders: [wiki/locked]\nai_readonly_root_files: [wiki/protected.md]\n"
+    )
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "link.md").symlink_to(wiki / "managed.md")
+
+    async def exercise():
+        server = create_server(tmp_path)
+        await server.call_tool("vault_managed_write", {"path": "wiki/managed.md", "content": "# Note"})
+        result = await server.call_tool("vault_managed_read", {"path": "wiki/managed.md"})
+        assert result[0][0].text == "# Note"
+        for path in (
+            "outside.md",
+            "wiki/locked/nested/file.md",
+            "wiki/AGENTS.md",
+            "wiki/link.md",
+            "wiki/note.txt",
+            "wiki/protected.md",
+        ):
+            with pytest.raises(ToolError):
+                await server.call_tool(
+                    "vault_managed_write", {"path": path, "content": "blocked", "replace": True}
+                )
+        for path in (
+            "wiki/link.md",
+            "wiki/_sources/hidden.md",
+            "wiki/back\\slash.md",
+            "Utility/obsidian-knowledge/reports/archive/old.md",
+        ):
+            with pytest.raises(ToolError):
+                await server.call_tool("vault_managed_read", {"path": path})
+        assert (wiki / "managed.md").read_text() == "# Note"
+        (policy / "obsidian-knowledge.yaml").unlink()
+        with pytest.raises(ToolError, match="ai_managed"):
+            await server.call_tool("vault_managed_write", {"path": "wiki/managed.md", "content": "blocked"})
+
+    asyncio.run(exercise())
+
+
+def test_shared_gardener_diagnostics_and_native_actions(tmp_path, monkeypatch):
+    native_calls = []
+    targets = [
+        {"link": "B", "count": "2", "sources": "wiki/b.md"},
+        {"link": "A", "count": "1", "sources": "wiki/a.md"},
+    ]
+
+    async def run_json(self, command, *arguments):
+        assert command == "unresolved"
+        assert arguments == ("verbose", "format=json")
+        return targets or {}
+
+    async def run(self, command, *arguments):
+        native_calls.append((command, arguments))
+        return "fixture"
+
+    monkeypatch.setattr(NativeObsidian, "run", run)
+    monkeypatch.setattr(NativeObsidian, "run_json", run_json)
+    config = tmp_path / "preferences.yaml"
+    config.write_text("ai_managed: []\n")
+    monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_CONFIG", str(config))
+
+    async def exercise():
+        server = create_server(tmp_path)
+
+        async def call(name, **arguments):
+            _, output = await server.call_tool(name, arguments)
+            return output
+
+        first = await call("vault_garden_unresolved", limit=1)
+        assert first["items"] == [{"link": "A", "count": 1, "sources": "wiki/a.md"}]
+        assert first["total_references"] == 3
+        second = await call(
+            "vault_garden_unresolved", offset=first["next_offset"], snapshot=first["snapshot"]
+        )
+        assert second["items"] == [{"link": "B", "count": 2, "sources": "wiki/b.md"}]
+        assert second["next_offset"] is None
+        assert (await call("vault_garden_unresolved", link_contains="B"))["matching_targets"] == 1
+        for arguments, message in [
+            ({"offset": 1}, "snapshot"),
+            ({"offset": 1, "snapshot": "stale"}, "snapshot"),
+            ({"offset": 3, "snapshot": first["snapshot"]}, "offset"),
+        ]:
+            with pytest.raises(ToolError, match=message):
+                await call("vault_garden_unresolved", **arguments)
+        targets.clear()
+        with pytest.raises(ToolError, match="unexpected native"):
+            await call("vault_garden_unresolved")
+        assert (await call("vault_garden_orphans"))["orphans"] == "fixture"
+        await call("vault_garden_backlinks", path="wiki/note.md")
+        await call("vault_garden_rename", path="wiki/note.md", new_name="renamed.md")
+        await call("vault_garden_move", path="wiki/renamed.md", destination="root.md")
+        with pytest.raises(ToolError, match="must be a filename"):
+            await call("vault_garden_rename", path="wiki/note.md", new_name="other/not-a-name.md")
+        assert native_calls == [
+            ("orphans", ("format=json",)),
+            ("backlinks", ("path=wiki/note.md", "format=json")),
+            ("rename", ("path=wiki/note.md", "name=renamed.md")),
+            ("move", ("path=wiki/renamed.md", "to=root.md")),
+        ]
+        audit = await call("vault_garden_audit_page")
+        assert audit["items"] == ["OK: no structural or convention issues found"]
+        config.write_text("ai_managed: malformed\n")
+        with pytest.raises(ToolError, match="ai_managed"):
+            await call("vault_garden_audit_page")
 
     asyncio.run(exercise())
 

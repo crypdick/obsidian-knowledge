@@ -27,9 +27,10 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
+from vault_preferences import load_preferences
 
 from lib.vault_index.cli import positive_int, resolve_vault
-from lib.vault_index.mcp_garden import register_garden_tools
+from lib.vault_index.mcp_garden import register_garden_native_tools, register_garden_tools
 from lib.vault_index.mcp_index import (
     IndexStatus,
     IndexUpdate,
@@ -39,7 +40,7 @@ from lib.vault_index.mcp_index import (
 )
 from lib.vault_index.mcp_native import register_native_tools
 from lib.vault_index.models import SearchReport
-from lib.vault_index.native_vault import run_vault_mutation
+from lib.vault_index.native_vault import restricted_vault_path, run_vault_mutation
 from lib.vault_index.vault_files import ExpectedDigest, patch_vault_file, read_vault_file, write_vault_file
 from lib.vault_index.vault_listing import ListingReport, list_vault_files
 
@@ -57,6 +58,20 @@ class DownloadMetadata(BaseModel):
 class DoctorReport(BaseModel):
     passed: bool
     report: str
+
+
+class ManagedWritePolicy(BaseModel):
+    ai_managed: tuple[str, ...]
+    ai_readonly_folders: tuple[str, ...]
+    ai_readonly_root_files: tuple[str, ...]
+
+    def check(self, relative: Path) -> None:
+        if not any(relative.is_relative_to(zone) for zone in self.ai_managed):
+            raise ValueError("outside managed vault zones")
+        if relative.as_posix() in self.ai_readonly_root_files or any(
+            relative.is_relative_to(folder) for folder in self.ai_readonly_folders
+        ):
+            raise ValueError("read-only vault path")
 
 
 class BearerAuth(BaseHTTPMiddleware):
@@ -196,13 +211,11 @@ def create_server(
         )
         return {"path": record.path.relative_to(vault).as_posix(), "status": "logged"}
 
-    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_read(path: str) -> str:
         """Read UTF-8 text from a vault-relative file. Paths cannot escape the vault."""
         content = await asyncio.to_thread(read_vault_file, vault, Path(path))
         return content.decode("utf-8")
 
-    @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
     async def vault_write(
         path: str, content: str, replace: bool = False, encoding: Literal["utf-8", "base64"] = "utf-8"
     ) -> dict[str, str]:
@@ -218,6 +231,9 @@ def create_server(
             "status": "wrote and verified",
             "index": await refresh_index(vault, [target.relative_to(vault).as_posix()]),
         }
+
+    server.add_tool(vault_read, annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    server.add_tool(vault_write, annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
 
     @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
     async def vault_patch(
@@ -237,6 +253,22 @@ def create_server(
             "status": "patched and verified",
             "index": await refresh_index(vault, [target.relative_to(vault).as_posix()]),
         }
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    async def vault_managed_read(path: str) -> str:
+        """Read a visible, unprotected file without following symlinks."""
+        return await vault_read(restricted_vault_path(vault, path))
+
+    @server.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False))
+    async def vault_managed_write(path: str, content: str, replace: bool = False) -> dict[str, str]:
+        """Write an unprotected Markdown file in the vault's configured managed zones."""
+        relative = restricted_vault_path(vault, path)
+        target = Path(relative)
+        if target.suffix != ".md" or target.name in {"AGENTS.md", "CLAUDE.md"}:
+            raise ValueError("managed writes require an unprotected Markdown path")
+        preferences = load_preferences(vault / ".claude/obsidian-knowledge.yaml")
+        ManagedWritePolicy.model_validate(preferences.root).check(target)
+        return await vault_write(relative, content, replace)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_list(
@@ -288,6 +320,7 @@ def create_server(
     _register_search_tools(server, vault)
     register_native_tools(server, vault, file_lock, partial(refresh_index, vault))
     register_garden_tools(server, vault, file_lock)
+    register_garden_native_tools(server, vault, file_lock)
     return server
 
 
