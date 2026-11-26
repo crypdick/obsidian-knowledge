@@ -8,7 +8,7 @@ import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 from starlette.testclient import TestClient
 
-from lib.vault_index import mcp_server
+from lib.vault_index import mcp_garden, mcp_server
 from lib.vault_index.mcp_server import BearerAuth, create_server, main
 from lib.vault_index.obsidian_cli import NativeObsidian
 
@@ -127,10 +127,31 @@ def test_shared_gardener_diagnostics_and_native_actions(tmp_path, monkeypatch):
             ("rename", ("path=wiki/note.md", "name=renamed.md")),
             ("move", ("path=wiki/renamed.md", "to=root.md")),
         ]
-        audit = await call("vault_garden_audit_page")
+        with pytest.raises(ToolError, match="audit snapshot"):
+            await call("vault_garden_audit_page", snapshot="unknown")
+        monkeypatch.setattr(mcp_garden, "AUDIT_POLL_SECONDS", 0)
+        started = await call("vault_garden_audit_page")
+        assert started["status"] == "running"
+        assert (await call("vault_garden_audit_page"))["snapshot"] == started["snapshot"]
+        monkeypatch.setattr(mcp_garden, "AUDIT_POLL_SECONDS", 5)
+        with pytest.raises(ToolError, match="audit snapshot"):
+            await call("vault_garden_audit_page", snapshot="stale")
+        audit = await call(
+            "vault_garden_audit_page", snapshot=started["snapshot"], offset=started["next_offset"]
+        )
+        assert audit["status"] == "ready"
         assert audit["items"] == ["OK: no structural or convention issues found"]
         config.write_text("ai_managed: malformed\n")
         with pytest.raises(ToolError, match="ai_managed"):
+            await call("vault_garden_audit_page")
+
+        async def failed_audit(process, **bounds):
+            await process.communicate()
+            assert bounds["deadline_seconds"] == 240
+            raise ValueError("fixture audit deadline")
+
+        monkeypatch.setattr(mcp_garden, "collect_bounded_output", failed_audit)
+        with pytest.raises(ToolError, match="fixture audit deadline"):
             await call("vault_garden_audit_page")
 
     asyncio.run(exercise())

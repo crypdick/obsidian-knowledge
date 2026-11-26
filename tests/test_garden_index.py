@@ -125,7 +125,7 @@ def test_only_index_filename_is_editable(tmp_path: Path, monkeypatch, capsys) ->
 
 @pytest.mark.parametrize("target", ["systems/accounts/note", "accounts/note", "note"])
 def test_audit_and_editor_agree_on_shortened_existing_entry(tmp_path: Path, target: str) -> None:
-    from gardener.audit import links_entry
+    from gardener.audit import linked_entries
 
     folder = tmp_path / "wiki/systems/accounts"
     folder.mkdir(parents=True)
@@ -133,7 +133,7 @@ def test_audit_and_editor_agree_on_shortened_existing_entry(tmp_path: Path, targ
     note.write_text("# Note\n")
     destination = folder / "index.md"
     before = f"# Accounts\n\n- [[{target}]] — old\n"
-    assert links_entry({target}, note, folder, tmp_path)
+    assert linked_entries({target}, folder, tmp_path) == {note}
     review = index.IndexReview(
         entries=(index.ReviewedEntry(target="wiki/systems/accounts/note", description="new"),)
     )
