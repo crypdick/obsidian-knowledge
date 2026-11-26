@@ -7,8 +7,13 @@ import os
 import stat
 import tempfile
 from pathlib import Path
+from typing import Annotated
+
+from pydantic import Field
 
 from lib.vault_index.note_creation import initialize_note
+
+ExpectedDigest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 def resolve_vault_file(vault_root: Path, relative_path: Path) -> Path:

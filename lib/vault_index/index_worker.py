@@ -44,11 +44,13 @@ def content_signature(path: Path) -> str:
 
 def enqueue_paths(vault: Path, paths: list[str]) -> None:
     """Coalesce notifications without waiting for embeddings."""
-    queue = DirtyPaths(default_cache_dir(vault) / "pending.sqlite")
-    for relative in paths:
-        path = index_path(vault, relative)
+    pending = [index_path(vault, relative) for relative in paths]
+    for path in pending:
         if not path.resolve().is_relative_to(vault.resolve()):
             raise ValueError("index path escapes vault")
+    queue = DirtyPaths(default_cache_dir(vault) / "pending.sqlite")
+    for path in pending:
+        relative = path.relative_to(vault).as_posix()
         if path.is_dir() or path.suffix != ".md":
             request_scan(vault)
         else:
@@ -62,6 +64,18 @@ def request_scan(vault: Path, *, rebuild: bool = False) -> None:
     """Durably request reconciliation; overlapping requests coalesce."""
     queue = DirtyPaths(default_cache_dir(vault) / "pending.sqlite", quiet_seconds=0)
     queue.mark("@rebuild" if rebuild else "@scan", str(time.time_ns()))
+
+
+def queue_index_update(vault: Path, *, force: bool = False, paths: list[str] | None = None) -> None:
+    """Queue a rebuild, selected path updates, or full reconciliation."""
+    if force and paths:
+        raise ValueError("force and paths are mutually exclusive")
+    if force:
+        request_scan(vault, rebuild=True)
+    elif paths:
+        enqueue_paths(vault, paths)
+    else:
+        request_scan(vault)
 
 
 def worker_running(vault: Path) -> bool:

@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from lib.vault_index.vault_files import resolve_vault_file
+
 PAPERCUTS_FILENAME = "PAPERCUTS.md"
 GLOBAL_PAPERCUTS_RELATIVE_PATH = Path("wiki/systems/knowledge-base") / PAPERCUTS_FILENAME
 REPO_PAPERCUTS_ROOT = Path("wiki/repos")
@@ -62,10 +64,11 @@ def record_papercut(
     timestamp = (now or datetime.now(UTC)).astimezone(UTC)
     working_directory = (cwd or Path.cwd()).expanduser().resolve()
     scope = _scope_for(working_directory, repository)
-    log_path = vault / scope.relative_path
+    log_path = resolve_vault_file(vault, scope.relative_path)
+    lock_path = resolve_vault_file(vault, log_path.with_name(f".{log_path.name}.lock").relative_to(vault))
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with _log_lock(log_path):
+    with _log_lock(lock_path):
         _ensure_log_header(log_path, scope)
         _append_papercut(log_path, report, timestamp, working_directory)
 
@@ -144,9 +147,8 @@ def _is_safe_repository_component(component: str) -> bool:
 
 
 @contextlib.contextmanager
-def _log_lock(log_path: Path) -> Iterator[None]:
+def _log_lock(lock_path: Path) -> Iterator[None]:
     """Serialize appends so concurrent agents cannot interleave entries."""
-    lock_path = log_path.with_name(f".{log_path.name}.lock")
     with lock_path.open("a", encoding="utf-8") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         try:

@@ -11,7 +11,7 @@ import yaml
 from lib.vault_index import cli
 
 
-@pytest.mark.parametrize("command", ["write", "papercut", "garden"])
+@pytest.mark.parametrize("command", ["write", "patch", "append", "papercut", "garden"])
 @pytest.mark.parametrize("repository", ["", "acme/tools"])
 @pytest.mark.parametrize("explicit_vault", [True, False])
 def test_configured_writer_receives_original_call(tmp_path, monkeypatch, command, repository, explicit_vault):
@@ -41,6 +41,8 @@ def test_configured_writer_receives_original_call(tmp_path, monkeypatch, command
     monkeypatch.setenv("OBSIDIAN_KNOWLEDGE_VAULTS_CONFIG", str(registry))
     monkeypatch.chdir(tmp_path)
     arguments = [command, "audit" if command == "garden" else "note.md"]
+    if command == "patch":
+        arguments += ["old text", "new text"]
     if explicit_vault:
         arguments += ["--vault", str(tmp_path)]
     monkeypatch.setattr(sys, "argv", ["obsidian-knowledge", *arguments])

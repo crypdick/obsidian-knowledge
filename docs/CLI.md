@@ -1,6 +1,7 @@
 # CLI reference
 
-Use the CLI without the Obsidian app running. Start with the
+Most commands work without Obsidian running. Only
+[app-backed commands](#app-backed-commands) require the app. Start with the
 [installation instructions](index.md#installation).
 
 ## First run
@@ -36,6 +37,11 @@ Use these commands to configure, search, and maintain the vault:
 | `init-vault-index` | Create the shared `config.yaml` preferences and its parent directory, or append search defaults to an existing mapping. An existing `vault_index` section is left unchanged. |
 | `read PATH` | Write the file's exact bytes to stdout. `PATH` must be vault-relative. |
 | `write PATH [--replace]` | Read stdin, apply opt-in [configured creation defaults](configuration.md#note-creation) to new Markdown files, then atomically write and verify bytes. Reject blank input, path escapes, and existing files unless you pass `--replace`. Then [indexes the written note](#index-on-write). |
+| `patch PATH OLD NEW [--expected-sha256 SHA]` | Replace exactly one literal text match and preserve other bytes. The optional SHA-256 rejects stale edits. |
+| `append PATH [--inline]` | Append literal UTF-8 from stdin to an existing visible file. Adds a leading newline unless you pass `--inline`. |
+| `list [PATH] [--recursive] [--depth N] [--pattern GLOB] [--limit N] [--offset N]` | List visible files and folders in a bounded page; defaults to the vault root. |
+| `search-status` | Report persisted index readiness without probing embeddings or building the index. |
+| `search-update [--force \| --path PATH]` | Queue reconciliation, a new generation, or selected path updates for the worker, even when it is offline. Repeat `--path` to queue multiple paths. |
 | `reindex [--force] [--path PATH] [--timeout-seconds N]` | Queue coalesced work when the worker runs (`--force` requests a new generation). Otherwise, drain the same queue and generation lifecycle in the foreground, with progress on interactive stderr. Index changed files and remove stale index entries. Keyword-only indexes receive a replacement vector generation when embeddings return. `--force` reprocesses unchanged files too. `--path` (repeatable) updates only the named vault-relative files or folders: notes present are indexed, and entries at or under a path that no longer exists (or is now excluded) are removed, so passing both the old and new path records a move without re-embedding. It exits 3 when the index is not ready, the embedder is unavailable, or another index operation holds the lock. Does not delete vault notes. |
 | `index-worker [--quiet-seconds N] [--scan-seconds N]` | Watch edits, coalesce work, cancel superseded indexing, and reconcile periodically. Defaults: 30 and 3600 seconds. |
 | `search QUERY [--top-k N] [--all] [--json]` | Print ranked paths and snippets, or a JSON search report. `--all` bypasses the digest filter, not the indexing exclusions. |
@@ -63,6 +69,25 @@ NOTE
 obsidian-knowledge read wiki/example.md
 obsidian-knowledge reindex --timeout-seconds 300
 ```
+
+`patch`, `append`, `list`, `search-status`, and `search-update`
+return JSON with the same fields as their [MCP counterparts](MCP.md#tools).
+Use `read PATH > OUTPUT` to save an attachment byte for byte. The MCP download
+size cap does not apply to local reads.
+
+## App-backed commands
+
+These commands use the [official Obsidian CLI](MCP.md#native-cli-configuration)
+with the same path checks and JSON results as the [MCP app tools](MCP.md#app-backed-tools).
+
+| Command | Behavior |
+| --- | --- |
+| `frontmatter PATH [--updates JSON]` | Read native properties or merge fields from a JSON object. |
+| `recent [--n N] [--path-filter FOLDER]` | List recently modified Markdown notes. |
+| `grep QUERY [--path-filter FOLDER] [--max-results N]` | Find literal text in live notes without the search index. |
+| `info` | Report native vault information. |
+| `delete PATH` | Trash a file through Obsidian. |
+| `move SOURCE DESTINATION [--dry-run]` | Move a file using Obsidian's link update settings. Use `--dry-run` to check the source and destination without moving. |
 
 ## JSON search output
 

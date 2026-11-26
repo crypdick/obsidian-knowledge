@@ -72,7 +72,11 @@ def read_index_status(vault: Path) -> IndexStatus:
 
 
 async def run_index_command(
-    command: list[str], operation: str, *, deadline_seconds: int | float | None = None
+    command: list[str],
+    operation: str,
+    *,
+    deadline_seconds: int | float | None = None,
+    accepted_exit_codes: tuple[int, ...] = (0,),
 ) -> tuple[bytes, bytes]:
     """Run one CLI operation with a deadline and reap its process on cancellation."""
     process = await asyncio.create_subprocess_exec(
@@ -87,7 +91,7 @@ async def run_index_command(
         if process.returncode is None:
             process.kill()
             await process.wait()
-    if process.returncode:
+    if process.returncode not in accepted_exit_codes:
         raise ValueError(stderr.decode(errors="replace").strip() or f"vault {operation} failed")
     return stdout, stderr
 

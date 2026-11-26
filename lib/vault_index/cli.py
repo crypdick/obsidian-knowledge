@@ -25,6 +25,7 @@ from vault_preferences import load_preferences, preferences_path
 from vault_registry import read_registry, registry_path
 
 from lib.vault_index.cache_paths import default_cache_dir
+from lib.vault_index.cli_vault import add_vault_commands, run_vault_command
 from lib.vault_index.index_generations import active_cache
 from lib.vault_index.models import Hit, IndexBusyError
 from lib.vault_index.registration import existing_vault, register_vault
@@ -279,6 +280,7 @@ def run_search_doctor(
     queries: list[str] | tuple[str, ...] = DEFAULT_DOCTOR_QUERIES,
     top_k: int = 3,
     override_digest_filter: bool = True,
+    show_locations: bool = True,
 ) -> tuple[int, str]:
     """Run a concise live vault-search health check.
 
@@ -287,11 +289,9 @@ def run_search_doctor(
     at least one result. Exit 2 means the index is empty/unreadable or a
     known-hit query returned no hits.
     """
-    lines = [
-        "obsidian-knowledge search doctor",
-        f"vault: {vault}",
-        f"cache: {cache}",
-    ]
+    lines = ["obsidian-knowledge search doctor"]
+    if show_locations:
+        lines.extend((f"vault: {vault}", f"cache: {cache}"))
     ok = True
     try:
         rows = idx.row_count()
@@ -486,7 +486,7 @@ def run_papercut(
 
 def run_host_write_command(command: str, repository: str | None, vault: Path | None) -> int | None:
     """Delegate host note mutations without changing their caller's identity."""
-    if command not in {"write", "papercut", "garden"}:
+    if command not in {"write", "patch", "append", "papercut", "garden"}:
         return None
     # NOTE: docs/configuration.md, Host writer command: preserve stdin and cwd;
     # never fall back to creating notes as a different identity after failure.
@@ -561,6 +561,7 @@ def run_retrieval_command(args: argparse.Namespace) -> int:
             queries=args.queries or DEFAULT_DOCTOR_QUERIES,
             top_k=args.top_k,
             override_digest_filter=not args.digest_only,
+            show_locations=not getattr(args, "no_host_paths", False),
         )
         print(report)
         return code
@@ -592,18 +593,8 @@ def positive_int(value: str) -> int:
     return number
 
 
-def main() -> int:
-    if sys.argv[1:2] == ["garden"]:
-        selection = argparse.ArgumentParser(add_help=False)
-        selection.add_argument("--vault", type=Path, default=None)
-        selected, _ = selection.parse_known_args(sys.argv[2:])
-        delegated = run_host_write_command("garden", None, selected.vault)
-        if delegated is not None:
-            return delegated
-        from gardener.cli import main as garden_main
-
-        return garden_main(sys.argv[2:])
-
+def build_parser() -> argparse.ArgumentParser:
+    """Build the public CLI command parser."""
     parser = argparse.ArgumentParser(prog="obsidian-knowledge")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -717,6 +708,8 @@ def main() -> int:
         help="Apply the normal digest filter instead of searching all indexed paths.",
     )
 
+    p_doctor.add_argument("--no-host-paths", action="store_true", help=argparse.SUPPRESS)
+
     p_rules = sub.add_parser("install-rules", help="Install i-insist and provider-owned vault rules")
     p_rules.add_argument("--global", dest="global_scope", action="store_true", help="Install in ~/.i-insist")
 
@@ -726,7 +719,24 @@ def main() -> int:
         p = hook_sub.add_parser(name, help=argparse.SUPPRESS)
         p.add_argument("--kind", default=None)
 
+    add_vault_commands(sub.add_parser)
     sub.add_parser("garden", help="audit and repair vault structure, links and reports")
+    return parser
+
+
+def main() -> int:
+    if sys.argv[1:2] == ["garden"]:
+        selection = argparse.ArgumentParser(add_help=False)
+        selection.add_argument("--vault", type=Path, default=None)
+        selected, _ = selection.parse_known_args(sys.argv[2:])
+        delegated = run_host_write_command("garden", None, selected.vault)
+        if delegated is not None:
+            return delegated
+        from gardener.cli import main as garden_main
+
+        return garden_main(sys.argv[2:])
+
+    parser = build_parser()
     args = parser.parse_args()
 
     delegated = run_host_write_command(
@@ -746,6 +756,8 @@ def main() -> int:
         asyncio.run(worker.run())
         return 0
 
+    if getattr(args, "vault_operation", False):
+        return run_vault_command(args, resolve_vault(args.vault))
     return run_command(args, parser)
 
 
@@ -845,17 +857,12 @@ def run_reindex(args: argparse.Namespace) -> int:
 
 
 def queue_running_worker(args: argparse.Namespace) -> bool:
-    from lib.vault_index.index_worker import enqueue_paths, request_scan, worker_running
+    from lib.vault_index.index_worker import queue_index_update, worker_running
 
     vault = resolve_vault(args.vault)
     if not worker_running(vault):
         return False
-    if args.force:
-        request_scan(vault, rebuild=True)
-    elif args.paths:
-        enqueue_paths(vault, args.paths)
-    else:
-        request_scan(vault)
+    queue_index_update(vault, force=args.force, paths=None if args.force else args.paths)
     print("Queued index update")
     return True
 

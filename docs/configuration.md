@@ -42,8 +42,8 @@ desktop apps, MCP services and host CLI creation. Shared groups grant access but
 do not make new files share an owner. Atomic replacement preserves the existing
 UID/GID and fails safely when the writer cannot retain them.
 
-To route host CLI `write`, `papercut` and `garden` calls through the same identity, set an
-argument-vector prefix in the host-local `vaults.yaml`:
+To route host CLI `write`, `patch`, `append`, `papercut`, and `garden` calls
+through the same identity, set an argument-vector prefix in the host-local `vaults.yaml`:
 
 ```yaml
 vaults:

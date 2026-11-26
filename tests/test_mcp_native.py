@@ -10,6 +10,7 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
+from lib.vault_index.cli import main as cli_main
 from lib.vault_index.config import VaultIndexConfig
 from lib.vault_index.index_generations import active_cache
 from lib.vault_index.index_worker import foreground_reindex
@@ -370,3 +371,53 @@ def test_native_reads_do_not_wait_for_mutation_lock(tmp_path, monkeypatch):
             lock.release()
 
     assert asyncio.run(read_while_locked())[1] == {"title": "Note"}
+
+
+def _run_native_cli(vault, capsys, monkeypatch, command, *flags):
+    monkeypatch.setattr(sys, "argv", ["obsidian-knowledge", command, "--vault", str(vault), *flags])
+    assert cli_main() == 0
+    return json.loads(capsys.readouterr().out)
+
+
+@pytest.mark.parametrize(
+    ("command", "flags", "arguments"),
+    [
+        ("frontmatter", ["folder/note.md"], {"path": "folder/note.md"}),
+        (
+            "frontmatter",
+            ["folder/note.md", "--updates", '{"new": [1, true]}'],
+            {"path": "folder/note.md", "updates": {"new": [1, True]}},
+        ),
+        ("recent", ["--n", "1", "--path-filter", "folder"], {"n": 1, "path_filter": "folder"}),
+        (
+            "grep",
+            ["term", "--max-results", "2", "--path-filter", "folder"],
+            {"query": "term", "max_results": 2, "path_filter": "folder"},
+        ),
+        ("info", [], {}),
+        (
+            "move",
+            ["folder/note.md", "new/moved.md", "--dry-run"],
+            {"from_path": "folder/note.md", "to_path": "new/moved.md", "dry_run": True},
+        ),
+    ],
+)
+def test_native_cli_matches_mcp(native_server, capsys, monkeypatch, command, flags, arguments):
+    server, vault, _ = native_server
+    assert _run_native_cli(vault, capsys, monkeypatch, command, *flags) == call(
+        server, f"vault_{command}", arguments
+    )
+
+
+def test_native_cli_move_and_trash(native_server, capsys, monkeypatch):
+    server, vault, _ = native_server
+    source, destination = "folder/note.md", "folder/moved.md"
+    moved = _run_native_cli(vault, capsys, monkeypatch, "move", source, destination)
+    assert not (vault / source).exists()
+    (vault / destination).rename(vault / source)
+    assert moved == call(server, "vault_move", {"from_path": source, "to_path": destination})
+    trashed = _run_native_cli(vault, capsys, monkeypatch, "delete", destination)
+    assert not (vault / destination).exists()
+    (vault / ".trash/moved.md").rename(vault / destination)
+    assert trashed == call(server, "vault_delete", {"path": destination})
+    assert (vault / ".trash/moved.md").read_text() == "Original"
