@@ -226,6 +226,8 @@ Preview is the default. Set `apply=True` to publish supported repairs.
   and never changes files.
 
 For scoped clients, `vault_managed_read` rejects protected paths and symlinks.
+`vault_managed_search` applies the same path restrictions to every search hit,
+including with `all_paths=true`, and omits hidden hit counts and diagnostics.
 `vault_managed_write` additionally requires Markdown in zones explicitly
 allowed by the vault's `.claude/obsidian-knowledge.yaml`. Grant these tools
 without the unrestricted file tooling. `vault_garden_unresolved`,

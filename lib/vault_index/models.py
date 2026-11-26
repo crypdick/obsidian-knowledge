@@ -37,3 +37,16 @@ class SearchReport(BaseModel):
     # Keyword results only: matching indexed notes hidden by the digest filter
     # when it left no hits, e.g. while a rebuild has not reached digest notes.
     outside_digest_matches: int = 0
+
+
+class ManagedSearchHit(BaseModel):
+    path: str
+    score: float
+    snippet: str
+
+
+class ManagedSearchReport(BaseModel):
+    """Only readable hits, without index diagnostics or hidden hit counts."""
+
+    mode: Literal["keyword", "hybrid"]
+    hits: list[ManagedSearchHit]

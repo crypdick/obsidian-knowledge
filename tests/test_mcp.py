@@ -1,6 +1,7 @@
 """MCP public tool and HTTP contracts."""
 
 import asyncio
+import json
 import subprocess
 import sys
 
@@ -221,6 +222,38 @@ def test_search_real_cli(tmp_path, monkeypatch):
                 await server.call_tool("vault_search", arguments)
 
     asyncio.run(exercise())
+
+
+def test_managed_search_does_not_return_protected_hits(tmp_path, monkeypatch):
+    (tmp_path / "wiki").mkdir()
+    (tmp_path / "wiki/link.md").symlink_to(tmp_path / "wiki/readable.md")
+    paths = [
+        "wiki/readable.md",
+        "wiki/_sources/note.md",
+        "wiki/link.md",
+        "Utility/obsidian-knowledge/reports/archive/note.md",
+    ]
+
+    async def search(command, operation):
+        assert operation == "search"
+        assert "--all" in command
+        return json.dumps(
+            {
+                "mode": "keyword",
+                "degraded_reason": "private diagnostic",
+                "outside_digest_matches": 4,
+                "hits": [{"path": path, "score": 1, "snippet": path} for path in paths],
+            }
+        ).encode(), b""
+
+    monkeypatch.setattr(mcp_server, "run_index_command", search)
+    _, result = asyncio.run(
+        create_server(tmp_path).call_tool("vault_managed_search", {"query": "note", "all_paths": True})
+    )
+    assert result == {
+        "mode": "keyword",
+        "hits": [{"path": "wiki/readable.md", "score": 1.0, "snippet": "wiki/readable.md"}],
+    }
 
 
 def test_http_protocol_and_auth(tmp_path):

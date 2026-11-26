@@ -39,7 +39,7 @@ from lib.vault_index.mcp_index import (
     run_index_command,
 )
 from lib.vault_index.mcp_native import register_native_tools
-from lib.vault_index.models import SearchReport
+from lib.vault_index.models import ManagedSearchHit, ManagedSearchReport, SearchReport
 from lib.vault_index.native_vault import restricted_vault_path, run_vault_mutation
 from lib.vault_index.vault_files import ExpectedDigest, patch_vault_file, read_vault_file, write_vault_file
 from lib.vault_index.vault_listing import ListingReport, list_vault_files
@@ -119,6 +119,23 @@ def _register_search_tools(server: FastMCP, vault: Path) -> None:
         return report
 
     server.add_tool(vault_search, annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    async def vault_managed_search(
+        query: Annotated[str, Field(min_length=1)],
+        top_k: Annotated[int | None, Field(gt=0)] = None,
+        all_paths: bool = False,
+    ) -> ManagedSearchReport:
+        """Search indexed notes within the same path scope as vault_managed_read."""
+        report = await vault_search(query, top_k, all_paths)
+        readable_hits = []
+        for hit in report.hits:
+            try:
+                path = restricted_vault_path(vault, hit.path)
+            except ValueError:
+                continue
+            readable_hits.append(ManagedSearchHit(path=path, score=hit.score, snippet=hit.snippet))
+        return ManagedSearchReport(mode=report.mode, hits=readable_hits)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     async def vault_remember(
