@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import secrets
 import subprocess
 import sys
 import tempfile
 from _thread import LockType
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -22,7 +24,8 @@ from lib.vault_index.obsidian_cli import NativeObsidian
 from lib.vault_index.search_budget import search_ttl_seconds
 
 # A full-vault audit walks files; its deadline is independent of search.
-AUDIT_DEADLINE_SECONDS = 120
+AUDIT_DEADLINE_SECONDS = 240
+AUDIT_POLL_SECONDS = 20
 
 
 class GardenReport(BaseModel):
@@ -35,6 +38,10 @@ def _page[T](items: list[T], offset: int, limit: int, snapshot: str) -> dict[str
     identity = hashlib.sha256(json.dumps(items, sort_keys=True).encode()).hexdigest()
     if (offset and not snapshot) or (snapshot and identity != snapshot):
         raise ValueError("missing or changed snapshot; restart at offset 0")
+    return _slice_page(items, offset, limit, identity)
+
+
+def _slice_page[T](items: list[T], offset: int, limit: int, identity: str) -> dict[str, Any]:
     if offset > len(items):
         raise ValueError("offset exceeds report size")
     end = offset + limit
@@ -45,6 +52,44 @@ def _page[T](items: list[T], offset: int, limit: int, snapshot: str) -> dict[str
         "next_offset": end if end < len(items) else None,
         "items": items[offset:end],
     }
+
+
+class AuditPages:
+    """Share one bounded read-only audit without holding an MCP request open."""
+
+    def __init__(self, audit: Callable[[], Awaitable[GardenReport]]) -> None:
+        self._audit = audit
+        self._task: asyncio.Task[GardenReport] | None = None
+        self._snapshot = ""
+
+    async def _run(self) -> GardenReport:
+        try:
+            return await self._audit()
+        except (OSError, ValueError) as exc:
+            return GardenReport(exit_code=1, stdout="", stderr=str(exc))
+
+    async def page(
+        self,
+        offset: Annotated[int, Field(ge=0)] = 0,
+        limit: Annotated[int, Field(ge=1, le=200)] = 100,
+        snapshot: str = "",
+    ) -> dict[str, Any]:
+        """Start or page an audit; on running, call again with snapshot and next_offset."""
+        task = self._task
+        if snapshot or offset:
+            if task is None or snapshot != self._snapshot:
+                raise ValueError("missing or changed audit snapshot; restart at offset 0")
+        elif task is None or task.done():
+            self._snapshot = secrets.token_hex(16)
+            task = self._task = asyncio.create_task(self._run())
+        identity = self._snapshot
+        done, _ = await asyncio.wait({task}, timeout=AUDIT_POLL_SECONDS)
+        if not done:
+            return {"status": "running", "snapshot": identity, "next_offset": offset, "items": []}
+        report = task.result()
+        if report.exit_code:
+            raise ValueError(report.stderr or "gardener audit failed")
+        return {"status": "ready", **_slice_page(report.stdout.splitlines(), offset, limit, identity)}
 
 
 class UnresolvedTarget(BaseModel):
@@ -94,22 +139,12 @@ def register_garden_tools(server: FastMCP, vault: Path, file_lock: LockType) -> 
             return await asyncio.to_thread(run_vault_mutation, file_lock, lambda: asyncio.run(command()))
         return await command()
 
-    @server.tool(annotations=readonly)
     async def vault_garden_audit() -> GardenReport:
         """Audit vault structure and conventions without writing files."""
         return await run("audit")
 
-    @server.tool(annotations=readonly)
-    async def vault_garden_audit_page(
-        offset: Annotated[int, Field(ge=0)] = 0,
-        limit: Annotated[int, Field(ge=1, le=200)] = 100,
-        snapshot: str = "",
-    ) -> dict[str, Any]:
-        """Page the combined structural and convention audit using a snapshot ID."""
-        report = await vault_garden_audit()
-        if report.exit_code:
-            raise ValueError(report.stderr or "gardener audit failed")
-        return _page(report.stdout.splitlines(), offset, limit, snapshot)
+    server.add_tool(vault_garden_audit, annotations=readonly)
+    server.add_tool(AuditPages(vault_garden_audit).page, name="vault_garden_audit_page", annotations=readonly)
 
     @server.tool(annotations=repair)
     async def vault_garden_links(
